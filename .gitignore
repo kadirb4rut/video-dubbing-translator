@@ -1,0 +1,30 @@
+.DS_Store
+.idea/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Generated media and pipeline output
+original_wav/
+transcripts/
+speaker_reference_clips/
+output_wav_files/
+uploads/
+background_volume_adjusted.wav
+vocal-remover/vocals/
+vocal-remover/wav/
+vocal-remover/mp3/
+vocal-remover/mp4/
+vocal-remover/final_movie/
+vocal-remover/final_video/
+vocal-remover/ffmpeg/
+vocal-remover/ffmpeg_optimized/
+vocal-remover/gender_dedector/
+temp/
+third_party/LatentSync/
+
+# Large downloaded model weights
+vocal-remover/models/*.pth
+vocal-remover/models/*.pt
+vocal-remover/models/*.ckpt
+!vocal-remover/models/.gitkeep

@@ -1,0 +1,18 @@
+torch==2.5.1
+torchaudio==2.5.1
+TTS==0.22.0
+openai-whisper @ git+https://github.com/openai/whisper.git@5979f03701209bb035a0a466f14131aeb1116cbb
+whisperx==3.1.5
+deep-translator==1.11.4
+moviepy==1.0.3
+num2words==0.5.13
+fsorter==2.4
+requests==2.32.3
+huggingface-hub>=0.30.2
+librosa==0.10.0
+matplotlib==3.8.4
+opencv-python==4.10.0.84
+resampy==0.4.3
+soundfile==0.12.1
+tqdm==4.66.6
+numpy==1.22.0

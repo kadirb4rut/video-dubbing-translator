@@ -1,0 +1,251 @@
+<div align="center">
+
+# Video Dubbing Translator
+
+### Local AI Video Dubbing with Browser-Based Controls
+
+Video Dubbing Translator is a local web application for translating and dubbing videos into another language. It extracts the original audio, separates vocals from background audio, transcribes speech, translates the transcript, generates a dubbed voice track, rebuilds the final video, and optionally runs a LatentSync lip-sync pass on CUDA-enabled machines.
+
+![Python](https://img.shields.io/badge/Python-3.10-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![FFmpeg](https://img.shields.io/badge/FFmpeg-Required-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)
+![Whisper](https://img.shields.io/badge/Whisper-Transcription-111827?style=for-the-badge)
+![Coqui XTTS](https://img.shields.io/badge/Coqui_XTTS-Voice_Generation-8A2BE2?style=for-the-badge)
+![Local App](https://img.shields.io/badge/Local_First-Browser_GUI-2563EB?style=for-the-badge)
+
+[Features](#-features) · [Quick Start](#-quick-start) · [Usage](#-usage) · [Tech Stack](#-tech-stack) · [Roadmap](#-roadmap)
+
+</div>
+
+## ✨ Features
+
+- Browser-based GUI for users who do not want to run command-line workflows.
+- Video upload, source language selection, target language selection, model checks, live process logs, and final video playback in one interface.
+- Speech extraction with vocal/background separation.
+- Whisper and WhisperX-based transcription and alignment.
+- Text translation with `deep-translator`.
+- Voice generation with Coqui XTTS.
+- Final video assembly with FFmpeg and MoviePy.
+- Optional LatentSync lip-sync step for CUDA-capable NVIDIA environments.
+- Generated media, model weights, uploaded videos, and temporary outputs are excluded from git by default.
+
+## 🎬 Demo Gallery
+
+No public demo video is embedded yet.
+
+When demo videos are ready, upload them to GitHub as user attachments and paste the generated `https://github.com/user-attachments/assets/...` URLs here. GitHub will render those URLs as playable video players directly in the README.
+
+Do not use local video paths in this section because they will not render for visitors.
+
+## 🚀 Quick Start
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/kadirb4rut/video-dubbing-translator.git
+cd video-dubbing-translator
+```
+
+### 2. Create a Python environment
+
+```bash
+python3.10 -m venv .venv
+source .venv/bin/activate
+```
+
+On Windows:
+
+```powershell
+.venv\Scripts\activate
+```
+
+### 3. Install dependencies
+
+```bash
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### 4. Install FFmpeg
+
+macOS:
+
+```bash
+brew install ffmpeg
+```
+
+Ubuntu or Debian:
+
+```bash
+sudo apt update
+sudo apt install ffmpeg
+```
+
+### 5. Download the vocal-remover model
+
+```bash
+python scripts/download_model.py
+```
+
+### 6. Start the GUI
+
+```bash
+python web_gui.py
+```
+
+Or on macOS/Linux:
+
+```bash
+./start_gui.sh
+```
+
+Open the app:
+
+```text
+http://127.0.0.1:8765
+```
+
+## 🕹️ Usage
+
+1. Open the local web interface.
+2. Choose a video file.
+3. Click `Upload Selected Video`.
+4. Choose the source language, or leave it as `Auto Detect`.
+5. Choose the target language.
+6. Click `Download / Check Dubbing Model` if the model is not installed yet.
+7. Optional: enable `Apply LatentSync after dubbing` if LatentSync is configured on a CUDA machine.
+8. Click `Start Dubbing`.
+9. Watch the process log.
+10. Play the generated final video directly in the web interface.
+11. Use `Open Output Folder` to inspect generated files locally.
+
+Final videos are written to:
+
+```text
+vocal-remover/final_video/final/
+```
+
+## 🧠 Optional Lip-Sync with LatentSync
+
+LatentSync is integrated as an optional post-processing step. The upstream LatentSync inference path is CUDA-oriented and is intended for NVIDIA GPU environments.
+
+Download LatentSync source and checkpoints:
+
+```bash
+python scripts/setup_latentsync.py
+```
+
+Install LatentSync dependencies in a separate environment:
+
+```bash
+cd third_party/LatentSync
+python3.10 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+If you use a different LatentSync Python environment, expose it before starting the GUI:
+
+```bash
+export LATENTSYNC_PYTHON=/path/to/latentsync/python
+```
+
+Then restart the GUI and enable `Apply LatentSync after dubbing`.
+
+## 🧱 Project Structure
+
+```text
+.
+├── Video_Translator.py              # Core dubbing pipeline
+├── web_gui.py                       # Browser-based local GUI
+├── video_translator_gui.py          # Legacy desktop GUI
+├── requirements.txt                 # Main Python dependencies
+├── scripts/
+│   ├── download_model.py            # Downloads the vocal-remover model
+│   ├── run_pipeline.py              # Runs dubbing and optional LatentSync
+│   └── setup_latentsync.py          # Clones LatentSync and downloads checkpoints
+├── vocal-remover/
+│   ├── inference.py                 # Vocal/background separation entrypoint
+│   ├── lib/                         # Vocal-remover model utilities
+│   └── models/.gitkeep              # Placeholder for local model weights
+├── start_gui.sh                     # macOS/Linux launcher
+├── start_gui.command                # macOS double-click launcher
+└── start_gui.bat                    # Windows launcher
+```
+
+Generated folders such as `uploads/`, `original_wav/`, `transcripts/`, `speaker_reference_clips/`, `vocal-remover/final_video/`, and model weights are intentionally ignored.
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+| --- | --- |
+| Language | Python 3.10 |
+| Local GUI | Python standard library HTTP server, HTML, CSS, JavaScript |
+| Audio/Video Processing | FFmpeg, MoviePy |
+| Transcription | Whisper, WhisperX |
+| Translation | deep-translator |
+| Voice Generation | Coqui TTS / XTTS |
+| Vocal Separation | Vocal-remover model |
+| Optional Lip-Sync | LatentSync |
+| Model Hosting | Hugging Face downloads |
+
+## 🔐 Environment Variables
+
+No environment variables are required for the default dubbing workflow.
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `LATENTSYNC_DIR` | No | Overrides the default LatentSync directory at `third_party/LatentSync`. |
+| `LATENTSYNC_PYTHON` | No | Points the app to a dedicated LatentSync Python environment. |
+| `LATENTSYNC_ALLOW_NO_CUDA` | No | Development escape hatch for bypassing the CUDA readiness check. Not recommended for normal use. |
+| `HF_HUB_ENABLE_HF_TRANSFER` | No | Optional Hugging Face download acceleration flag. The setup script disables it automatically if `hf_transfer` is unavailable. |
+
+## 📜 Scripts
+
+| Command | Description |
+| --- | --- |
+| `python web_gui.py` | Starts the local browser GUI. |
+| `./start_gui.sh` | Starts the GUI on macOS/Linux. |
+| `start_gui.bat` | Starts the GUI on Windows. |
+| `python scripts/download_model.py` | Downloads the vocal-remover baseline model. |
+| `python scripts/run_pipeline.py <video> --source-language auto --target-language tr` | Runs the full dubbing pipeline from the terminal. |
+| `python scripts/run_pipeline.py <video> --source-language auto --target-language tr --lip-sync` | Runs dubbing and then LatentSync. |
+| `python scripts/setup_latentsync.py` | Clones LatentSync and downloads required checkpoints. |
+| `python Video_Translator.py --list-languages` | Lists supported language codes. |
+
+## ☁️ Deployment Notes
+
+This project is designed as a local workstation application rather than a hosted multi-user service.
+
+Before sharing or deploying it in another environment:
+
+- Install FFmpeg on the target machine.
+- Use Python 3.10.
+- Do not commit model weights, uploaded videos, generated audio, generated transcripts, or final videos.
+- Keep LatentSync as an optional external dependency under `third_party/LatentSync`.
+- Use a CUDA-enabled NVIDIA environment for the optional lip-sync workflow.
+- Test with a short video before processing long videos.
+
+## 🔒 Security Notes
+
+- The GUI binds to `127.0.0.1` by default for local use.
+- User uploads are stored locally under `uploads/`, which is ignored by git.
+- Generated media is ignored by git.
+- Model weights are downloaded locally and ignored by git.
+- Do not expose this local server publicly without adding authentication, upload limits, storage controls, and cleanup policies.
+- Do not commit private videos, transcripts, model checkpoints, or generated outputs.
+
+## 🗺️ Roadmap
+
+- Add clearer progress stages in the web interface.
+- Add automatic cleanup for intermediate media files.
+- Add an export summary after each completed run.
+- Add configurable output naming.
+- Add better CPU/MPS fallback messaging for workflows that cannot run without CUDA.
+- Add a hosted demo video once GitHub user-attachment demos are available.
+
+## 📄 License
+
+No root project license has been selected yet. Add a license before distributing this project broadly or accepting external contributions.
+
+The bundled `vocal-remover/` code includes its own license file. Review third-party licenses and model terms before commercial use.
