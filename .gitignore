@@ -10,6 +10,7 @@ transcripts/
 speaker_reference_clips/
 output_wav_files/
 uploads/
+results/
 background_volume_adjusted.wav
 vocal-remover/vocals/
 vocal-remover/wav/
