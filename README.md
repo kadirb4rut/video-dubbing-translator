@@ -34,22 +34,22 @@ Compare the original English input video with the Turkish translated output gene
 
 The videos below are embedded as GitHub-hosted playable demos. Press play directly in the repository page.
 
-<table>
+<table align="center" width="820">
   <tr>
-    <td align="center" width="50%">
+    <td align="center" width="410">
       <strong>Original Input Video</strong><br>
       <sub>English source audio</sub>
     </td>
-    <td align="center" width="50%">
+    <td align="center" width="410">
       <strong>Translated Output Video</strong><br>
       <sub>Turkish dubbed audio</sub>
     </td>
   </tr>
   <tr>
-    <td align="center" width="50%">
+    <td align="center" width="410">
       <video controls muted width="360" src="https://github.com/user-attachments/assets/a2e3f207-dc94-406f-a0ab-4446b64b36ad"></video>
     </td>
-    <td align="center" width="50%">
+    <td align="center" width="410">
       <video controls muted width="360" src="https://github.com/user-attachments/assets/5d8ea8fe-e1c0-4849-99ab-d2cf06186653"></video>
     </td>
   </tr>
