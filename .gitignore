@@ -28,6 +28,8 @@ third_party/LatentSync/
 frontend/node_modules/
 frontend/dist/
 backend/.pytest_cache/
+data/
+infrastructure/terraform/.terraform/
 
 # Large downloaded model weights
 vocal-remover/models/*.pth

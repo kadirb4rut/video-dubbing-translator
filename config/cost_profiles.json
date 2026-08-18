@@ -1,0 +1,44 @@
+{
+  "dubbing": {
+    "credits_per_media_minute": 12,
+    "provider": "unmeasured-local-config",
+    "gpu_profile": "configure-before-production",
+    "measured": false,
+    "notes": "Development seed only. Replace with benchmark output before production pricing."
+  },
+  "transcription": {
+    "credits_per_media_minute": 2,
+    "provider": "whisperx",
+    "gpu_profile": "configure-before-production",
+    "measured": false,
+    "notes": "Development seed only."
+  },
+  "stems": {
+    "credits_per_media_minute": 6,
+    "provider": "demucs",
+    "gpu_profile": "configure-before-production",
+    "measured": false,
+    "notes": "Development seed only."
+  },
+  "noise": {
+    "credits_per_media_minute": 3,
+    "provider": "deepfilternet",
+    "gpu_profile": "configure-before-production",
+    "measured": false,
+    "notes": "Development seed only."
+  },
+  "tts": {
+    "credits_per_media_minute": 8,
+    "provider": "chatterbox-multilingual-v3",
+    "gpu_profile": "configure-before-production",
+    "measured": false,
+    "notes": "Development seed only."
+  },
+  "lip_sync": {
+    "credits_per_media_minute": 28,
+    "provider": "optional-lipsync-worker",
+    "gpu_profile": "configure-before-production",
+    "measured": false,
+    "notes": "Development seed only; the lip-sync provider is not enabled by default."
+  }
+}

@@ -1,0 +1,4 @@
+-r requirements.txt
+openai-whisper>=20240930
+demucs>=4.0.1
+deepfilternet>=0.5.6

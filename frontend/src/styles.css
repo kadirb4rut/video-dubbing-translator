@@ -33,3 +33,18 @@ a { color:inherit; text-decoration:none; }
 .video-scene, .output-scene, .media-preview > .video-scene { background-image:url('./assets/lingowave-video-still.png'); background-size:cover; background-position:center; }
 .video-scene:before, .output-scene:before, .media-preview:before { background:linear-gradient(170deg, transparent 50%, rgba(11,18,25,.35)); }
 .video-scene .person, .video-scene .mic, .output-scene .person, .media-preview .person, .media-preview .mic, .thumb .person { display:none; }
+/* Auth and live API states keep the landing/app visual language while exposing real account and job state. */
+.auth-page { min-height: 100vh; display: grid; place-items: center; background: var(--paper, #f7f8f5); padding: 32px 20px; }
+.auth-card { width: min(100%, 440px); padding: 42px; background: #fff; border: 1px solid #dfe5df; border-radius: 22px; box-shadow: 0 20px 60px rgba(26, 45, 42, .08); }
+.auth-card h1 { margin: 32px 0 8px; font-size: clamp(34px, 7vw, 52px); letter-spacing: -.05em; }
+.auth-card > p { color: #68716e; margin: 0 0 28px; }
+.auth-card form { display: grid; gap: 12px; }
+.auth-card input { width: 100%; box-sizing: border-box; border: 1px solid #dce4de; border-radius: 10px; padding: 13px 14px; font: inherit; color: #18312d; background: #fbfcfa; }
+.auth-card input:focus { outline: 2px solid rgba(57, 166, 111, .24); border-color: #46ae78; }
+.auth-card .button { justify-content: center; margin-top: 6px; }
+.auth-switch { border: 0; background: transparent; color: #297f5a; padding: 18px 0 0; cursor: pointer; font: inherit; }
+.auth-error { color: #a3443b; font-size: 13px; }
+.glyph { width: 18px; display: inline-grid; place-items: center; font-size: 18px; line-height: 1; }
+.empty-projects { color: #7d8782; font-size: 14px; margin: 20px 0 4px; }
+.button:disabled { opacity: .58; cursor: wait; }
+@media (max-width: 640px) { .auth-card { padding: 28px 22px; } }

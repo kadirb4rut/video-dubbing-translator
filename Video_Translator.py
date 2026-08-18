@@ -280,14 +280,12 @@ def create_Speaker_Reference_Clips(start, end, vocal_audio_path):
     
     
 def macbook_Speaker(sentences, path_wav, source_language, target_language, speaker_wav_dir): #  8 gender
-    import torch
     from deep_translator import GoogleTranslator
-    from TTS.api import TTS
+    from backend.app.providers_real import ChatterboxMultilingualVoiceProvider
 
     translator_source = source_language if source_language is not None else "auto"
     translator = GoogleTranslator(source=translator_source, target=target_language)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
+    tts = ChatterboxMultilingualVoiceProvider()
     for i in tqdm(range(len(sentences))):
         text = translator.translate(sentences[i])
         # if gender[i][0] == 'male':
@@ -311,7 +309,7 @@ def macbook_Speaker(sentences, path_wav, source_language, target_language, speak
 #         if i == 0:
 #             # Get device
 #             device = "cuda" if torch.cuda.is_available() else "cpu"
-#             tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
+#             # Legacy TTS path removed; use ChatterboxMultilingualVoiceProvider.
 # 
 #         wav_file = f"{path_wav}{i+1}.wav"
 #         if gender[i][0] == 'male':
@@ -327,7 +325,7 @@ def macbook_Speaker(sentences, path_wav, source_language, target_language, speak
         speaker_wav = Path(speaker_wav_dir) / f"{i+1}.wav"
         if not speaker_wav.exists():
             raise FileNotFoundError(f"Konusmaci referans sesi bulunamadi: {speaker_wav}")
-        tts.tts_to_file(text=text, speaker_wav=str(speaker_wav), language=target_language, file_path=wav_file)
+        tts.synthesize(text, reference_voice=speaker_wav, language=target_language, output_path=Path(wav_file))
 
 
 
@@ -553,7 +551,7 @@ def parse_args():
     parser.add_argument("--target-language", "-t", help="Hedef dil kodu veya adi. Ornek: en, tr")
     parser.add_argument(
         "--speaker-wav-dir",
-        help="XTTS icin 1.wav, 2.wav seklinde konusmaci referans seslerinin bulundugu klasor. Verilmezse vokal parcalarindan uretilir.",
+        help="Chatterbox Multilingual icin 1.wav, 2.wav seklinde konusmaci referans seslerinin bulundugu klasor. Verilmezse vokal parcalarindan uretilir.",
     )
     parser.add_argument("--list-languages", action="store_true", help="Desteklenen dil kodlarini yazdir")
     return parser.parse_args()
@@ -818,7 +816,7 @@ if __name__ == '__main__':
 # 
 # 
 # 
-# model = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to('cpu')
+# # Legacy TTS path removed; use ChatterboxMultilingualVoiceProvider.
 # import rubberband
 # synth_vocals, sr = model.tts("""Geçen yıllar, geçerken uğradılar yine geçen de
 #                                  Onlar anlatırken içim geçer de

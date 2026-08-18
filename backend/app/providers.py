@@ -50,9 +50,9 @@ class LipSyncProvider(Protocol):
 def provider_registry() -> dict[str, str]:
     """Production provider names are configuration, so model swaps do not change job orchestration."""
     return {
-        "transcription": "whisperx",
+        "transcription": "whisper (cached model adapter)",
         "translation": "configured-api",
-        "voice": "configured-commercial-multilingual-tts",
+        "voice": "chatterbox-multilingual-v3",
         "stem_separation": "demucs",
         "noise_removal": "deepfilternet",
         "lip_sync": "latentsync-optional",

@@ -1,0 +1,4 @@
+-r requirements.worker-cpu.txt
+torch>=2.5
+torchaudio>=2.5
+chatterbox-tts>=0.1.1
