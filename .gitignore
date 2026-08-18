@@ -24,6 +24,11 @@ vocal-remover/gender_dedector/
 temp/
 third_party/LatentSync/
 
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+backend/.pytest_cache/
+
 # Large downloaded model weights
 vocal-remover/models/*.pth
 vocal-remover/models/*.pt

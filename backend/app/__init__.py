@@ -1,0 +1,1 @@
+"""LingoWave API domain package."""
