@@ -20,7 +20,9 @@ class Settings:
     local_storage_dir: Path = Path(os.getenv("LOCAL_STORAGE_DIR", str(BASE_DIR / "data" / "objects")))
     s3_bucket: str | None = os.getenv("S3_BUCKET") or None
     s3_region: str = os.getenv("AWS_REGION", "eu-central-1")
+    s3_endpoint_url: str | None = os.getenv("S3_ENDPOINT_URL") or None
     sqs_queue_url: str | None = os.getenv("SQS_QUEUE_URL") or None
+    sqs_endpoint_url: str | None = os.getenv("SQS_ENDPOINT_URL") or None
     session_cookie_name: str = os.getenv("SESSION_COOKIE_NAME", "lingowave_session")
     session_ttl_days: int = int(os.getenv("SESSION_TTL_DAYS", "30"))
     cookie_secure: bool = _bool("COOKIE_SECURE", False)
@@ -30,10 +32,16 @@ class Settings:
     frontend_origin: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
     translation_api_url: str | None = os.getenv("TRANSLATION_API_URL") or None
     translation_api_key: str | None = os.getenv("TRANSLATION_API_KEY") or None
+    translation_provider: str = os.getenv("TRANSLATION_PROVIDER", "configured-api")
     whisper_model: str = os.getenv("WHISPER_MODEL", "small")
     chatterbox_device: str = os.getenv("CHATTERBOX_DEVICE", "cuda")
     demucs_model: str = os.getenv("DEMUCS_MODEL", "htdemucs")
     deepfilter_command: str = os.getenv("DEEPFILTER_COMMAND", "deepFilter")
+    rate_limit_per_minute: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "30"))
+    max_voice_seconds: int = int(os.getenv("MAX_VOICE_SECONDS", "90"))
+    min_voice_seconds: int = int(os.getenv("MIN_VOICE_SECONDS", "3"))
+    dev_mail_sink: bool = _bool("DEV_MAIL_SINK", True)
+    retention_days: int = int(os.getenv("MEDIA_RETENTION_DAYS", "30"))
 
 
 settings = Settings()

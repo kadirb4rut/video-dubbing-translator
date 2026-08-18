@@ -139,3 +139,52 @@ def write_srt(segments: Sequence[dict], output_path: Path) -> Path:
         for index, segment in enumerate(segments, start=1):
             handle.write(f"{index}\n{stamp(float(segment['start']))} --> {stamp(float(segment['end']))}\n{segment['text'].strip()}\n\n")
     return output_path
+
+
+def write_vtt(segments: Sequence[dict], output_path: Path) -> Path:
+    def stamp(seconds: float) -> str:
+        millis = max(0, round(seconds * 1000))
+        hours, millis = divmod(millis, 3_600_000)
+        minutes, millis = divmod(millis, 60_000)
+        seconds, millis = divmod(millis, 1_000)
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{millis:03d}"
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as handle:
+        handle.write("WEBVTT\n\n")
+        for segment in segments:
+            handle.write(f"{stamp(float(segment['start']))} --> {stamp(float(segment['end']))}\n{segment['text'].strip()}\n\n")
+    return output_path
+
+
+def write_txt(segments: Sequence[dict], output_path: Path) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(segment["text"].strip() for segment in segments).strip() + "\n", encoding="utf-8")
+    return output_path
+
+
+class FixtureTranslationProvider:
+    """Deterministic fixture translator for tests; unknown text fails loudly."""
+
+    name = "fixture-translation"
+    development_only = True
+    _phrases = {
+        ("hello world", "en", "es"): "hola mundo",
+        ("hello", "en", "es"): "hola",
+        ("this is a test", "en", "es"): "esto es una prueba",
+    }
+
+    def translate(self, segments: Sequence[dict], *, source: str, target: str) -> Sequence[dict]:
+        translated = []
+        for segment in segments:
+            key = (segment["text"].strip().lower(), source, target)
+            if key not in self._phrases:
+                raise ProviderUnavailable("Fixture translator has no mapping for this segment; configure TRANSLATION_API_URL for production")
+            translated.append({**segment, "text": self._phrases[key]})
+        return translated
+
+
+def translation_provider():
+    if settings.translation_provider == "fixture":
+        return FixtureTranslationProvider()
+    return ConfiguredTranslationProvider()

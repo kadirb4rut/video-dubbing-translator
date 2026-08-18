@@ -6,5 +6,7 @@ COPY backend/requirements.txt backend/requirements.worker-cpu.txt backend/requir
 ARG WORKER_REQUIREMENTS=requirements.worker-cpu.txt
 RUN pip install --no-cache-dir -r ${WORKER_REQUIREMENTS}
 COPY backend/app ./app
+COPY backend/alembic ./alembic
+COPY backend/alembic.ini ./alembic.ini
 COPY config ./config
 CMD ["python", "-m", "app.worker"]

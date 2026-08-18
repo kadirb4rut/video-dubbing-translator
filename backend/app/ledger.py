@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import secrets
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -24,20 +25,38 @@ def grant(db: Session, user_id: str, credits: int, *, reference_key: str, entry_
     return entry
 
 
+def adjust(db: Session, user_id: str, credits: int, *, reference_key: str, entry_type: str, metadata: dict | None = None) -> CreditLedgerEntry:
+    if credits == 0:
+        raise ValueError("credits must be non-zero")
+    existing = db.scalar(select(CreditLedgerEntry).where(CreditLedgerEntry.reference_key == reference_key))
+    if existing:
+        return existing
+    entry = CreditLedgerEntry(user_id=user_id, credits=credits, entry_type=entry_type, reference_key=reference_key, metadata_json=json.dumps(metadata or {}))
+    db.add(entry)
+    return entry
+
+
 def reserve(db: Session, user: User, job: Job, amount: int) -> CreditReservation:
     # Serialize reservations for one account on PostgreSQL so concurrent requests
     # cannot both spend the same available balance. SQLite ignores FOR UPDATE.
     db.execute(select(User).where(User.id == user.id).with_for_update())
     existing = db.scalar(select(CreditReservation).where(CreditReservation.job_id == job.id))
-    if existing:
+    if existing and existing.status in {"reserved", "finalized"}:
         return existing
     if amount <= 0:
         raise ValueError("Reservation amount must be positive")
     if balance(db, user.id) < amount:
         raise HTTPException(status_code=402, detail="Insufficient credits")
-    db.add(CreditLedgerEntry(user_id=user.id, job_id=job.id, credits=-amount, entry_type="reservation", reference_key=f"reserve:{job.id}"))
-    reservation = CreditReservation(user_id=user.id, job_id=job.id, amount=amount)
-    db.add(reservation)
+    reference = f"reserve:{job.id}" if not existing else f"reserve:{job.id}:retry:{secrets.token_urlsafe(8)}"
+    db.add(CreditLedgerEntry(user_id=user.id, job_id=job.id, credits=-amount, entry_type="reservation", reference_key=reference))
+    if existing:
+        existing.amount = amount
+        existing.status = "reserved"
+        existing.finalized_at = None
+        reservation = existing
+    else:
+        reservation = CreditReservation(user_id=user.id, job_id=job.id, amount=amount)
+        db.add(reservation)
     return reservation
 
 

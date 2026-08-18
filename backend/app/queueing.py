@@ -38,7 +38,7 @@ class SQSQueue:
         if not settings.sqs_queue_url:
             raise RuntimeError("SQS_QUEUE_URL is required for SQS queueing")
         self.url = settings.sqs_queue_url
-        self.client = boto3.client("sqs", region_name=settings.s3_region)
+        self.client = boto3.client("sqs", region_name=settings.s3_region, endpoint_url=settings.sqs_endpoint_url)
 
     def send(self, message: JobMessage) -> None:
         params = {"QueueUrl": self.url, "MessageBody": json.dumps(message.__dict__)}

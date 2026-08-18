@@ -19,3 +19,7 @@ Credits are an auditable ledger, not a mutable balance supplied by the browser. 
 - Store consent records and deletion events for reference voices.
 - Enforce upload MIME/size validation and safe subprocess argument arrays.
 - Add rate limits, abuse reporting, public-figure protections, and private signed downloads before launch.
+
+## Verification boundary
+
+The local API, ledger, media inspection, job lifecycle, artifact delivery, consent records, and tool shell are covered by automated tests and browser smoke checks. Provider execution still requires the worker images, model weights, a configured translation service, and representative GPU capacity; until those are provisioned, benchmark output remains explicitly skipped and development cost profiles remain unmeasured.

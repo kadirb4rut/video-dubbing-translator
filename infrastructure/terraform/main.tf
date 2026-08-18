@@ -42,6 +42,19 @@ resource "aws_s3_bucket_lifecycle_configuration" "media" {
       days_after_initiation = 1
     }
   }
+  rule {
+    id     = "expire-generated-outputs"
+    status = "Enabled"
+    filter {
+      tag {
+        key   = "lingowave-category"
+        value = "outputs"
+      }
+    }
+    expiration {
+      days = 30
+    }
+  }
 }
 
 resource "aws_sqs_queue" "dlq" {
@@ -66,12 +79,32 @@ resource "aws_iam_role_policy" "worker" {
   policy = jsonencode({ Version = "2012-10-17", Statement = [
     { Effect = "Allow", Action = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes", "sqs:ChangeMessageVisibility"], Resource = aws_sqs_queue.jobs.arn },
     { Effect = "Allow", Action = ["sqs:SendMessage"], Resource = aws_sqs_queue.dlq.arn },
-    { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], Resource = "${aws_s3_bucket.media.arn}/*" }
+    { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:PutObjectTagging", "s3:DeleteObject"], Resource = "${aws_s3_bucket.media.arn}/*" }
   ] })
 }
 resource "aws_iam_instance_profile" "worker" {
   name = "${var.name}-worker"
   role = aws_iam_role.worker.name
+}
+
+resource "aws_iam_role" "ecs_task_execution" {
+  name               = "${var.name}-ecs-execution"
+  assume_role_policy = jsonencode({ Version = "2012-10-17", Statement = [{ Effect = "Allow", Principal = { Service = "ecs-tasks.amazonaws.com" }, Action = "sts:AssumeRole" }] })
+}
+resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
+  role       = aws_iam_role.ecs_task_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+resource "aws_iam_role" "ecs_task_worker" {
+  name               = "${var.name}-ecs-task"
+  assume_role_policy = jsonencode({ Version = "2012-10-17", Statement = [{ Effect = "Allow", Principal = { Service = "ecs-tasks.amazonaws.com" }, Action = "sts:AssumeRole" }] })
+}
+resource "aws_iam_role_policy" "ecs_task_worker" {
+  role = aws_iam_role.ecs_task_worker.id
+  policy = jsonencode({ Version = "2012-10-17", Statement = [
+    { Effect = "Allow", Action = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes", "sqs:ChangeMessageVisibility"], Resource = aws_sqs_queue.jobs.arn },
+    { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:PutObjectTagging", "s3:DeleteObject"], Resource = "${aws_s3_bucket.media.arn}/*" }
+  ] })
 }
 
 resource "aws_launch_template" "gpu_worker" {
@@ -123,8 +156,8 @@ resource "aws_ecs_task_definition" "worker" {
   network_mode             = "awsvpc"
   cpu                      = "4096"
   memory                   = "15360"
-  execution_role_arn       = aws_iam_role.worker.arn
-  task_role_arn            = aws_iam_role.worker.arn
+  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task_worker.arn
   container_definitions    = jsonencode([{ name = "worker", image = var.worker_image, essential = true, command = ["python", "-m", "app.worker"], resourceRequirements = [{ type = "GPU", value = "1" }], environment = [{ name = "SQS_QUEUE_URL", value = aws_sqs_queue.jobs.url }, { name = "S3_BUCKET", value = aws_s3_bucket.media.bucket }, { name = "STORAGE_BACKEND", value = "s3" }] }])
 }
 resource "aws_ecs_service" "worker" {

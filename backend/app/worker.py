@@ -7,6 +7,8 @@ import subprocess
 import tempfile
 import time
 import zipfile
+from contextlib import contextmanager
+from datetime import timedelta
 from pathlib import Path
 
 from sqlalchemy import select
@@ -15,8 +17,9 @@ from sqlalchemy.orm import Session
 from .db import SessionLocal
 from .domain import JobState
 from .ledger import finalize, release
-from .models import Job, JobEvent, MediaAsset, UsageRecord, VoiceProfile, now
-from .providers_real import ChatterboxMultilingualVoiceProvider, ConfiguredTranslationProvider, DeepFilterNetNoiseProvider, DemucsStemSeparationProvider, ProviderUnavailable, WhisperTranscriptionProvider, write_srt
+from .media import validate_output
+from .models import Job, JobArtifact, JobEvent, JobStageMetric, MediaAsset, UsageRecord, VoiceProfile, now
+from .providers_real import ChatterboxMultilingualVoiceProvider, DeepFilterNetNoiseProvider, DemucsStemSeparationProvider, ProviderUnavailable, WhisperTranscriptionProvider, translation_provider, write_srt, write_txt, write_vtt
 from .queueing import JobMessage, job_queue
 from .storage import object_key, object_store
 
@@ -25,6 +28,8 @@ class JobWorker:
     def __init__(self):
         self.queue = job_queue()
         self.worker_type = os.getenv("WORKER_TYPE", "cpu-audio")
+        self.gpu_type = os.getenv("GPU_TYPE") or None
+        self.max_retries = int(os.getenv("JOB_MAX_RETRIES", "3"))
 
     def _claim(self, db: Session, message: JobMessage | None = None) -> Job | None:
         if message:
@@ -34,9 +39,27 @@ class JobWorker:
         if not job:
             return None
         job.state = JobState.PROVISIONING.value
-        db.add(JobEvent(job_id=job.id, state=job.state, message="Worker claimed job", metadata_json=json.dumps({"worker_type": self.worker_type})))
+        job.retry_count = (job.retry_count or 0) + 1
+        db.add(JobEvent(job_id=job.id, state=job.state, message="Worker claimed job", metadata_json=json.dumps({"worker_type": self.worker_type, "attempt": job.retry_count})))
         db.commit()
         return job
+
+    def _recover_stale(self, db: Session) -> None:
+        cutoff = now() - timedelta(minutes=int(os.getenv("JOB_STALE_MINUTES", "30")))
+        stale = db.scalars(select(Job).where(Job.state == JobState.PROVISIONING.value, Job.updated_at < cutoff)).all()
+        for job in stale:
+            if (job.retry_count or 0) < self.max_retries:
+                job.state = JobState.QUEUED.value
+                db.add(JobEvent(job_id=job.id, state=job.state, message="Recovered stale worker lease", metadata_json=json.dumps({"attempt": job.retry_count})))
+                self.queue.send(JobMessage(job.id, job.operation))
+            else:
+                release(db, job, "worker_lease_exhausted")
+                job.state = JobState.FAILED.value
+                job.error_code = "WORKER_LEASE_EXHAUSTED"
+                job.error_message = "The worker lease expired too many times"
+                db.add(JobEvent(job_id=job.id, state=job.state, message=job.error_message, metadata_json="{}"))
+        if stale:
+            db.commit()
 
     def _event(self, db: Session, job: Job, state: str, message: str, metadata: dict | None = None) -> None:
         job.state = state
@@ -44,8 +67,20 @@ class JobWorker:
         db.add(JobEvent(job_id=job.id, state=state, message=message, metadata_json=json.dumps(metadata or {})))
         db.commit()
 
+    @contextmanager
+    def _stage(self, db: Session, job: Job, state: str, message: str, metadata: dict | None = None):
+        self._event(db, job, state, message, metadata)
+        started_at = now()
+        started = time.monotonic()
+        try:
+            yield
+        finally:
+            finished_at = now()
+            db.add(JobStageMetric(job_id=job.id, stage=state, started_at=started_at, finished_at=finished_at, wall_clock_seconds=time.monotonic() - started, metadata_json=json.dumps(metadata or {})))
+            db.commit()
+
     def _download(self, asset: MediaAsset, work: Path) -> Path:
-        source = work / asset.original_filename
+        source = work / Path(asset.original_filename).name
         object_store().download(asset.object_key, source)
         return source
 
@@ -54,65 +89,84 @@ class JobWorker:
 
     def _extract_audio(self, source: Path, output: Path) -> Path:
         self._ffmpeg(["-i", str(source), "-vn", "-ac", "1", "-ar", "24000", str(output)])
+        validate_output(output, "audio")
         return output
 
-    def _upload_output(self, job: Job, output: Path) -> str:
-        key = object_key(job.user_id, "outputs", output.name)
+    def _upload_artifact(self, db: Session, job: Job, output: Path, *, artifact_name: str, content_type: str) -> JobArtifact:
+        if not output.is_file() or output.stat().st_size <= 0:
+            raise ProviderUnavailable(f"Output artifact is empty: {output.name}")
+        key = object_key(job.user_id, f"outputs/{job.id}", output.name)
         with output.open("rb") as source:
-            object_store().put(key, source, content_type="application/octet-stream")
-        return key
+            size = object_store().put(key, source, content_type=content_type)
+        artifact = JobArtifact(job_id=job.id, artifact_name=artifact_name, object_key=key, filename=output.name, content_type=content_type, size_bytes=size)
+        db.add(artifact)
+        db.flush()
+        if job.output_object_key is None:
+            job.output_object_key = key
+        return artifact
 
-    def _transcribe(self, audio: Path, output: Path, language: str | None) -> Path:
-        segments = WhisperTranscriptionProvider().transcribe(audio, language=language)
-        return write_srt(segments, output)
+    def _transcribe(self, audio: Path, output_dir: Path, language: str | None) -> tuple[list[dict], dict[str, Path]]:
+        segments = list(WhisperTranscriptionProvider().transcribe(audio, language=language))
+        return segments, {"srt": write_srt(segments, output_dir / "transcript.srt"), "vtt": write_vtt(segments, output_dir / "transcript.vtt"), "txt": write_txt(segments, output_dir / "transcript.txt")}
 
-    def _stems(self, audio: Path, output: Path, stem_count: int) -> Path:
+    def _stems(self, audio: Path, output: Path, stem_count: int) -> tuple[Path, dict[str, Path]]:
         stems = DemucsStemSeparationProvider().separate(audio, stems=stem_count, output_dir=output.parent / "demucs")
         with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             for name, path in stems.items():
                 archive.write(path, arcname=f"{name}.wav")
-        return output
+        return output, stems
 
     def _noise(self, audio: Path, output: Path) -> Path:
-        return DeepFilterNetNoiseProvider().enhance(audio, output_path=output)
+        result = DeepFilterNetNoiseProvider().enhance(audio, output_path=output)
+        validate_output(result, "audio")
+        return result
 
-    def _tts(self, db: Session, job: Job, work: Path, audio: Path, output: Path) -> Path:
+    def _reference(self, db: Session, job: Job, work: Path) -> Path:
         options = json.loads(job.options_json)
         voice_id = options.get("voice_profile_id")
-        text = options.get("text")
-        language = options.get("target_language") or "en"
-        if not voice_id or not text:
-            raise ProviderUnavailable("tts jobs require voice_profile_id and text options")
-        profile = db.scalar(select(VoiceProfile).where(VoiceProfile.id == voice_id, VoiceProfile.user_id == job.user_id, VoiceProfile.deleted_at.is_(None)))
+        if not voice_id:
+            raise ProviderUnavailable("A consented voice_profile_id is required")
+        profile = db.scalar(select(VoiceProfile).where(VoiceProfile.id == voice_id, VoiceProfile.user_id == job.user_id, VoiceProfile.status == "active", VoiceProfile.deleted_at.is_(None)))
         if not profile:
-            raise ProviderUnavailable("Voice profile not found")
+            raise ProviderUnavailable("Voice profile not found or revoked")
         reference = work / ("reference" + Path(profile.reference_object_key).suffix)
         object_store().download(profile.reference_object_key, reference)
-        return ChatterboxMultilingualVoiceProvider().synthesize(text, reference_voice=reference, language=language, output_path=output)
+        return reference
+
+    def _tts(self, db: Session, job: Job, work: Path, output: Path) -> Path:
+        options = json.loads(job.options_json)
+        text = options.get("text")
+        if not text:
+            raise ProviderUnavailable("tts jobs require text")
+        result = ChatterboxMultilingualVoiceProvider().synthesize(text, reference_voice=self._reference(db, job, work), language=options.get("target_language") or "en", output_path=output)
+        validate_output(result, "audio")
+        return result
 
     def _dubbing(self, db: Session, job: Job, work: Path, source: Path, audio: Path, output: Path) -> Path:
         options = json.loads(job.options_json)
         source_language = options.get("source_language")
         target_language = options.get("target_language")
-        voice_id = options.get("voice_profile_id")
-        if not target_language or not voice_id:
-            raise ProviderUnavailable("dubbing jobs require target_language and voice_profile_id")
-        segments = list(WhisperTranscriptionProvider().transcribe(audio, language=source_language))
-        segments = list(ConfiguredTranslationProvider().translate(segments, source=source_language or "auto", target=target_language))
-        profile = db.scalar(select(VoiceProfile).where(VoiceProfile.id == voice_id, VoiceProfile.user_id == job.user_id, VoiceProfile.deleted_at.is_(None)))
-        if not profile:
-            raise ProviderUnavailable("Voice profile not found")
-        reference = work / ("reference" + Path(profile.reference_object_key).suffix)
-        object_store().download(profile.reference_object_key, reference)
-        clips: list[Path] = []
-        for index, segment in enumerate(segments):
-            clip = work / f"segment-{index:04d}.wav"
-            ChatterboxMultilingualVoiceProvider().synthesize(segment["text"], reference_voice=reference, language=target_language, output_path=clip)
-            clips.append(clip)
+        if not target_language:
+            raise ProviderUnavailable("dubbing jobs require target_language")
+        background = None
+        if options.get("keep_background", True):
+            with self._stage(db, job, JobState.SEPARATING_AUDIO.value, "Separating background audio with Demucs"):
+                background = DemucsStemSeparationProvider().separate(audio, stems=2, output_dir=work / "background")["no_vocals"]
+        with self._stage(db, job, JobState.TRANSCRIBING.value, "Transcribing source speech"):
+            segments = list(WhisperTranscriptionProvider().transcribe(audio, language=source_language))
+        with self._stage(db, job, JobState.TRANSLATING.value, "Translating subtitle segments"):
+            segments = list(translation_provider().translate(segments, source=source_language or "auto", target=target_language))
+        with self._stage(db, job, JobState.SYNTHESIZING.value, "Synthesizing translated speech with Chatterbox Multilingual"):
+            reference = self._reference(db, job, work)
+            clips: list[Path] = []
+            for index, segment in enumerate(segments):
+                clip = work / f"segment-{index:04d}.wav"
+                ChatterboxMultilingualVoiceProvider().synthesize(segment["text"], reference_voice=reference, language=target_language, output_path=clip)
+                clips.append(clip)
         if not clips:
             raise ProviderUnavailable("Transcription returned no speech segments")
-        inputs = []
-        filters = []
+        inputs: list[str] = []
+        filters: list[str] = []
         for index, clip in enumerate(clips):
             inputs.extend(["-i", str(clip)])
             delay = max(0, round(float(segments[index]["start"]) * 1000))
@@ -120,9 +174,24 @@ class JobWorker:
         mix_inputs = "".join(f"[a{index}]" for index in range(len(clips)))
         filters.append(f"{mix_inputs}amix=inputs={len(clips)}:duration=longest:normalize=0[dub]")
         dubbed_audio = work / "dubbed.wav"
-        self._ffmpeg([*inputs, "-filter_complex", ";".join(filters), "-map", "[dub]", "-ar", "48000", str(dubbed_audio)])
-        self._ffmpeg(["-i", str(source), "-i", str(dubbed_audio), "-map", "0:v?", "-map", "1:a", "-c:v", "copy", "-shortest", str(output)])
+        with self._stage(db, job, JobState.MIXING.value, "Mixing translated speech"):
+            self._ffmpeg([*inputs, "-filter_complex", ";".join(filters), "-map", "[dub]", "-ar", "48000", str(dubbed_audio)])
+            if background:
+                mixed_audio = work / "mixed.wav"
+                self._ffmpeg(["-i", str(background), "-i", str(dubbed_audio), "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=first:normalize=0[mix]", "-map", "[mix]", "-ar", "48000", str(mixed_audio)])
+                dubbed_audio = mixed_audio
+            self._ffmpeg(["-i", str(source), "-i", str(dubbed_audio), "-map", "0:v?", "-map", "1:a", "-c:v", "copy", "-shortest", str(output)])
+        validate_output(output, "video")
         return output
+
+    def _record_usage(self, db: Session, job: Job, duration: float | None, started: float) -> None:
+        record = db.scalar(select(UsageRecord).where(UsageRecord.job_id == job.id))
+        values = {"user_id": job.user_id, "job_id": job.id, "input_duration_seconds": duration, "wall_clock_seconds": time.monotonic() - started, "worker_type": self.worker_type, "gpu_type": self.gpu_type, "retry_count": max(0, (job.retry_count or 1) - 1)}
+        if record:
+            for key, value in values.items():
+                setattr(record, key, value)
+        else:
+            db.add(UsageRecord(**values))
 
     def process(self, job_id: str) -> None:
         started = time.monotonic()
@@ -131,64 +200,85 @@ class JobWorker:
         if not job or job.state in {JobState.CANCELLED.value, JobState.COMPLETED.value}:
             db.close()
             return
+        asset = db.get(MediaAsset, job.media_asset_id) if job.media_asset_id else None
         try:
-            asset = db.get(MediaAsset, job.media_asset_id)
-            if not asset:
-                raise ProviderUnavailable("Input media asset not found")
             with tempfile.TemporaryDirectory(prefix=f"lingowave-{job.id}-") as temp:
                 work = Path(temp)
-                self._event(db, job, JobState.DOWNLOADING.value, "Downloading source media")
-                source = self._download(asset, work)
-                audio = self._extract_audio(source, work / "source.wav")
                 options = json.loads(job.options_json)
                 operation = job.operation
-                if operation == "transcription":
-                    self._event(db, job, JobState.TRANSCRIBING.value, "Transcribing source audio")
-                    output = self._transcribe(audio, work / "transcript.srt", options.get("source_language"))
+                artifacts: list[tuple[Path, str, str]] = []
+                source = audio = None
+                if asset:
+                    with self._stage(db, job, JobState.DOWNLOADING.value, "Downloading source media"):
+                        source = self._download(asset, work)
+                    audio = self._extract_audio(source, work / "source.wav")
+                if operation in {"transcription", "subtitle_translation"}:
+                    with self._stage(db, job, JobState.TRANSCRIBING.value, "Transcribing source audio"):
+                        segments, outputs = self._transcribe(audio, work, options.get("source_language"))
+                    if operation == "subtitle_translation":
+                        with self._stage(db, job, JobState.TRANSLATING.value, "Translating subtitle segments"):
+                            segments = list(translation_provider().translate(segments, source=options.get("source_language") or "auto", target=options.get("target_language") or "en"))
+                            outputs = {"srt": write_srt(segments, work / "translated.srt"), "vtt": write_vtt(segments, work / "translated.vtt"), "txt": write_txt(segments, work / "translated.txt")}
+                    artifacts.extend((path, name, {"srt": "application/x-subrip", "vtt": "text/vtt", "txt": "text/plain"}[name]) for name, path in outputs.items())
                 elif operation == "stems":
-                    self._event(db, job, JobState.SEPARATING_AUDIO.value, "Separating audio stems with Demucs")
-                    output = self._stems(audio, work / "stems.zip", int(options.get("stems", 4)))
+                    with self._stage(db, job, JobState.SEPARATING_AUDIO.value, "Separating audio stems with Demucs"):
+                        archive, stems = self._stems(audio, work / "stems.zip", int(options.get("stems", 4)))
+                    artifacts.append((archive, "stems_zip", "application/zip"))
+                    artifacts.extend((path, name, "audio/wav") for name, path in stems.items())
                 elif operation == "noise":
-                    self._event(db, job, JobState.SEPARATING_AUDIO.value, "Removing background noise with DeepFilterNet")
-                    output = self._noise(audio, work / "enhanced.wav")
+                    with self._stage(db, job, JobState.SEPARATING_AUDIO.value, "Removing background noise with DeepFilterNet"):
+                        output = self._noise(audio, work / "enhanced.wav")
+                    artifacts.append((output, "enhanced_audio", "audio/wav"))
                 elif operation == "tts":
-                    self._event(db, job, JobState.SYNTHESIZING.value, "Synthesizing with Chatterbox Multilingual")
-                    output = self._tts(db, job, work, audio, work / "speech.wav")
+                    with self._stage(db, job, JobState.DOWNLOADING.value, "Preparing consented voice reference"):
+                        pass
+                    with self._stage(db, job, JobState.SYNTHESIZING.value, "Synthesizing with Chatterbox Multilingual"):
+                        output = self._tts(db, job, work, work / "speech.wav")
+                    artifacts.append((output, "speech", "audio/wav"))
                 elif operation == "dubbing":
-                    self._event(db, job, JobState.SEPARATING_AUDIO.value, "Preparing source audio")
-                    self._event(db, job, JobState.TRANSCRIBING.value, "Transcribing source speech")
-                    self._event(db, job, JobState.TRANSLATING.value, "Translating subtitle segments")
-                    self._event(db, job, JobState.SYNTHESIZING.value, "Synthesizing translated speech with Chatterbox Multilingual")
                     output = self._dubbing(db, job, work, source, audio, work / "dubbed.mp4")
+                    artifacts.append((output, "dubbed_video", "video/mp4"))
                 else:
                     raise ProviderUnavailable(f"Unsupported operation: {operation}")
-                self._event(db, job, JobState.UPLOADING.value, "Uploading completed output")
-                job.output_object_key = self._upload_output(job, output)
+                with self._stage(db, job, JobState.UPLOADING.value, "Uploading completed artifacts"):
+                    for path, artifact_name, content_type in artifacts:
+                        self._upload_artifact(db, job, path, artifact_name=artifact_name, content_type=content_type)
+                    db.commit()
             finalize(db, job, job.reserved_credits)
             job.completed_at = now()
-            self._event(db, job, JobState.COMPLETED.value, "Job completed", {"output_object_key": job.output_object_key})
-            db.add(UsageRecord(user_id=job.user_id, job_id=job.id, input_duration_seconds=asset.duration_seconds, wall_clock_seconds=time.monotonic() - started, worker_type=self.worker_type, retry_count=0))
+            self._event(db, job, JobState.COMPLETED.value, "Job completed", {"artifact_count": len(artifacts)})
+            self._record_usage(db, job, asset.duration_seconds if asset else None, started)
             db.commit()
         except Exception as exc:
             db.rollback()
             job = db.get(Job, job_id)
             if job and job.state != JobState.CANCELLED.value:
-                release(db, job, "provider_or_infrastructure_failure")
-                job.state = JobState.FAILED.value
-                job.error_code = "PROVIDER_FAILURE" if isinstance(exc, ProviderUnavailable) else "WORKER_FAILURE"
-                job.error_message = str(exc)[:2000]
-                db.add(JobEvent(job_id=job.id, state=job.state, message=job.error_message, metadata_json=json.dumps({"error_type": type(exc).__name__})))
-                asset = db.get(MediaAsset, job.media_asset_id)
-                db.add(UsageRecord(user_id=job.user_id, job_id=job.id, input_duration_seconds=asset.duration_seconds if asset else None, wall_clock_seconds=time.monotonic() - started, worker_type=self.worker_type, retry_count=0))
-                db.commit()
+                if (job.retry_count or 0) >= self.max_retries:
+                    release(db, job, "provider_or_infrastructure_failure")
+                    job.state = JobState.FAILED.value
+                    job.error_code = "PROVIDER_FAILURE" if isinstance(exc, ProviderUnavailable) else "WORKER_FAILURE"
+                    job.error_message = str(exc)[:2000]
+                    db.add(JobEvent(job_id=job.id, state=job.state, message=job.error_message, metadata_json=json.dumps({"error_type": type(exc).__name__, "attempt": job.retry_count})))
+                    self._record_usage(db, job, asset.duration_seconds if asset else None, started)
+                    db.commit()
+                else:
+                    job.state = JobState.QUEUED.value
+                    job.error_code = "RETRYING"
+                    job.error_message = str(exc)[:2000]
+                    db.add(JobEvent(job_id=job.id, state=job.state, message="Job returned to queue after worker failure", metadata_json=json.dumps({"error_type": type(exc).__name__, "attempt": job.retry_count})))
+                    db.commit()
+                    self.queue.send(JobMessage(job.id, job.operation))
         finally:
             db.close()
 
     def run_once(self) -> bool:
         db = SessionLocal()
         try:
+            self._recover_stale(db)
             message = self.queue.receive(timeout=0.05)
             job = self._claim(db, message)
+            if message and not job:
+                self.queue.delete(message)
             if not job:
                 return False
             if message:

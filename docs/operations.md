@@ -10,7 +10,7 @@ The API creates an immutable job specification, reserves credits, and sends an S
 - Use a private S3 bucket and signed downloads; never put media in a public bucket.
 - Set SQS visibility timeout longer than the measured worst-case job, with a DLQ and bounded redelivery.
 - Keep API and worker images separate. GPU capacity starts at zero and scales from queue depth in `infrastructure/terraform`.
-- Run `scripts/benchmarks/benchmark_media.py` against representative media and replace the development-only values in `config/cost_profiles.json` only with measured results.
+- Run `PYTHONPATH=backend python scripts/benchmarks/benchmark_providers.py <media>` against representative media and replace the development-only values in `config/cost_profiles.json` only with measured results. The script reports missing providers as skipped; it never emits synthetic timings.
 - Do not enable public voice cloning until consent, deletion, abuse reporting, and the model/checkpoint license review are complete.
 
 ## Incident handling

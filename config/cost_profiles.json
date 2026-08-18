@@ -13,6 +13,13 @@
     "measured": false,
     "notes": "Development seed only."
   },
+  "subtitle_translation": {
+    "credits_per_media_minute": 3,
+    "provider": "configured-translation-api",
+    "gpu_profile": "none",
+    "measured": false,
+    "notes": "Development seed only. Translation API cost must be benchmarked before production pricing."
+  },
   "stems": {
     "credits_per_media_minute": 6,
     "provider": "demucs",

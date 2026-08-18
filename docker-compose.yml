@@ -1,11 +1,97 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: lingowave
+      POSTGRES_USER: lingowave
+      POSTGRES_PASSWORD: lingowave-local-only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lingowave -d lingowave"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - lingowave-postgres:/var/lib/postgresql/data
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: lingowave
+      MINIO_ROOT_PASSWORD: lingowave-local-only
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - lingowave-minio:/data
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["until mc alias set local http://minio:9000 lingowave lingowave-local-only; do sleep 1; done; mc mb --ignore-existing local/lingowave; mc anonymous set none local/lingowave"]
+  localstack:
+    image: localstack/localstack:latest
+    environment:
+      SERVICES: sqs
+      AWS_DEFAULT_REGION: eu-central-1
+    ports:
+      - "4566:4566"
+  localstack-init:
+    image: amazon/aws-cli:latest
+    environment:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: eu-central-1
+    depends_on:
+      - localstack
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["until aws --endpoint-url http://localstack:4566 sqs create-queue --queue-name lingowave-jobs >/dev/null 2>&1; do sleep 1; done"]
   api:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://lingowave:lingowave-local-only@postgres:5432/lingowave
+      STORAGE_BACKEND: s3
+      S3_BUCKET: lingowave
+      S3_ENDPOINT_URL: http://minio:9000
+      SQS_QUEUE_URL: http://localstack:4566/000000000000/lingowave-jobs
+      SQS_ENDPOINT_URL: http://localstack:4566
+      AWS_ACCESS_KEY_ID: lingowave
+      AWS_SECRET_ACCESS_KEY: lingowave-local-only
+      AWS_REGION: eu-central-1
+      FRONTEND_ORIGIN: http://localhost:5173
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      localstack-init:
+        condition: service_completed_successfully
     ports:
       - "8000:8000"
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.worker
+    environment:
+      DATABASE_URL: postgresql+psycopg://lingowave:lingowave-local-only@postgres:5432/lingowave
+      STORAGE_BACKEND: s3
+      S3_BUCKET: lingowave
+      S3_ENDPOINT_URL: http://minio:9000
+      SQS_QUEUE_URL: http://localstack:4566/000000000000/lingowave-jobs
+      SQS_ENDPOINT_URL: http://localstack:4566
+      AWS_ACCESS_KEY_ID: lingowave
+      AWS_SECRET_ACCESS_KEY: lingowave-local-only
+      AWS_REGION: eu-central-1
+    depends_on:
+      api:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+      localstack-init:
+        condition: service_completed_successfully
   frontend:
     image: node:22-alpine
     working_dir: /app
@@ -14,3 +100,7 @@ services:
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     ports:
       - "5173:5173"
+
+volumes:
+  lingowave-postgres:
+  lingowave-minio:

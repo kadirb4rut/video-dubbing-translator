@@ -68,6 +68,7 @@ class MediaAsset(Base):
     height: Mapped[int | None] = mapped_column(nullable=True)
     fps: Mapped[float | None] = mapped_column(nullable=True)
     media_kind: Mapped[str] = mapped_column(String(32), default="unknown")
+    status: Mapped[str] = mapped_column(String(24), default="ready")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -79,13 +80,14 @@ class Job(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
-    media_asset_id: Mapped[str] = mapped_column(ForeignKey("media_assets.id", ondelete="RESTRICT"))
+    media_asset_id: Mapped[str | None] = mapped_column(ForeignKey("media_assets.id", ondelete="RESTRICT"), nullable=True)
     operation: Mapped[str] = mapped_column(String(48), index=True)
     state: Mapped[str] = mapped_column(String(48), default="created", index=True)
     idempotency_key: Mapped[str] = mapped_column(String(128))
     options_json: Mapped[str] = mapped_column(Text, default="{}")
     estimate_credits: Mapped[int] = mapped_column(Integer)
     reserved_credits: Mapped[int] = mapped_column(Integer)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
     actual_credits: Mapped[int | None] = mapped_column(Integer, nullable=True)
     output_object_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -105,6 +107,34 @@ class JobEvent(Base):
     message: Mapped[str] = mapped_column(String(500))
     metadata_json: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class JobArtifact(Base):
+    __tablename__ = "job_artifacts"
+    __table_args__ = (UniqueConstraint("job_id", "artifact_name", name="uq_job_artifact_name"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    artifact_name: Mapped[str] = mapped_column(String(120))
+    object_key: Mapped[str] = mapped_column(String(512), unique=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(120))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class JobStageMetric(Base):
+    __tablename__ = "job_stage_metrics"
+    __table_args__ = (Index("ix_stage_metrics_job_stage", "job_id", "stage"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    stage: Mapped[str] = mapped_column(String(48))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    wall_clock_seconds: Mapped[float | None] = mapped_column(nullable=True)
+    model_seconds: Mapped[float | None] = mapped_column(nullable=True)
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
 
 
 class CreditLedgerEntry(Base):
@@ -181,5 +211,61 @@ class AuditEvent(Base):
     user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     event_type: Mapped[str] = mapped_column(String(64), index=True)
     ip_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AbuseEvent(Base):
+    __tablename__ = "abuse_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    event_type: Mapped[str] = mapped_column(String(64), index=True)
+    target_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    target_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    description: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(24), default="open")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ModelVersion(Base):
+    __tablename__ = "model_versions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    provider: Mapped[str] = mapped_column(String(80), index=True)
+    model_name: Mapped[str] = mapped_column(String(160))
+    version: Mapped[str] = mapped_column(String(160))
+    artifact_license: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    enabled: Mapped[bool] = mapped_column(default=False)
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class GpuCostProfile(Base):
+    __tablename__ = "gpu_cost_profiles"
+    __table_args__ = (UniqueConstraint("provider", "gpu_type", "region", name="uq_gpu_cost_profile"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    provider: Mapped[str] = mapped_column(String(80))
+    gpu_type: Mapped[str] = mapped_column(String(80))
+    region: Mapped[str] = mapped_column(String(40))
+    pricing_mode: Mapped[str] = mapped_column(String(24))
+    hourly_price_usd: Mapped[float | None] = mapped_column(nullable=True)
+    startup_seconds: Mapped[float | None] = mapped_column(nullable=True)
+    model_load_seconds: Mapped[float | None] = mapped_column(nullable=True)
+    processed_minutes_per_hour: Mapped[float | None] = mapped_column(nullable=True)
+    measured: Mapped[bool] = mapped_column(default=False)
     metadata_json: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

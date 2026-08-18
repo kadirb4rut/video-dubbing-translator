@@ -57,3 +57,12 @@ def inspect_media(path: Path) -> dict:
         "media_kind": "video" if video else "audio",
         "streams": [{"codec_type": s.get("codec_type"), "codec_name": s.get("codec_name")} for s in streams],
     }
+
+
+def validate_output(path: Path, expected_kind: str, *, minimum_duration_seconds: float = 0.01) -> dict:
+    metadata = inspect_media(path)
+    if metadata["media_kind"] != expected_kind:
+        raise ValueError(f"Expected {expected_kind} output, got {metadata['media_kind']}")
+    if metadata["duration_seconds"] < minimum_duration_seconds:
+        raise ValueError("Output media has no usable duration")
+    return metadata
