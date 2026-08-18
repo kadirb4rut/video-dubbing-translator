@@ -5,7 +5,7 @@ import json
 from fastapi import Depends, File, Form, Header, HTTPException, Request, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .billing import PLANS, plan
@@ -13,7 +13,7 @@ from .config import settings
 from .db import create_tables, get_db
 from .domain import JobState
 from .ledger import balance, finalize, grant, ledger_rows
-from .models import AuditEvent, Job, JobEvent, User, VoiceConsent, VoiceProfile, now
+from .models import AuditEvent, Job, JobEvent, UsageRecord, User, VoiceConsent, VoiceProfile, now
 from .providers import provider_registry
 from .schemas import EstimateRequest, JobCreateRequest, LoginRequest, SignupRequest
 from .security import current_user, hash_password, new_session, require_admin, revoke_session, verify_password
@@ -108,6 +108,25 @@ def admin_grant(user_id: str, credits: int, reference_key: str, admin: User = De
     entry = grant(db, user_id, credits, reference_key=reference_key, entry_type="operator_grant", metadata={"operator_id": admin.id})
     db.commit()
     return {"id": entry.id, "credits": entry.credits, "balance": balance(db, user_id)}
+
+
+@app.get("/api/admin/metrics")
+def admin_metrics(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    rows = db.execute(select(Job.state, func.count(Job.id)).group_by(Job.state)).all()
+    usage_count = db.scalar(select(func.count(UsageRecord.id))) or 0
+    return {"job_counts": {state: count for state, count in rows}, "usage_records": usage_count, "operator_id": admin.id}
+
+
+@app.get("/api/admin/jobs")
+def admin_jobs(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    jobs = db.scalars(select(Job).order_by(Job.created_at.desc()).limit(100)).all()
+    return [serialize_job(job) | {"user_id": job.user_id} for job in jobs]
+
+
+@app.get("/api/admin/audit")
+def admin_audit(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    events = db.scalars(select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(200)).all()
+    return [{"id": event.id, "user_id": event.user_id, "event_type": event.event_type, "metadata": json.loads(event.metadata_json), "created_at": event.created_at.isoformat()} for event in events]
 
 
 @app.post("/api/media/upload")
