@@ -1,8 +1,18 @@
 .DS_Store
 .idea/
 .venv/
+.env
+.env.*
+!.env.example
 __pycache__/
 *.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.log
 
 # Generated media and pipeline output
 original_wav/
@@ -28,4 +38,5 @@ third_party/LatentSync/
 vocal-remover/models/*.pth
 vocal-remover/models/*.pt
 vocal-remover/models/*.ckpt
+vocal-remover/models/*.part
 !vocal-remover/models/.gitkeep

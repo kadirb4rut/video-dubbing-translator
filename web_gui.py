@@ -19,6 +19,7 @@ from Video_Translator import LANGUAGES
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 MODEL_PATH = BASE_DIR / "vocal-remover" / "models" / "baseline.pth"
+XTTS_MODEL_DIR_NAME = "tts_models--multilingual--multi-dataset--xtts_v2"
 OUTPUT_DIR = BASE_DIR / "vocal-remover" / "final_video" / "final"
 LATENTSYNC_DIR = BASE_DIR / "third_party" / "LatentSync"
 LATENTSYNC_CHECKPOINTS = [
@@ -58,6 +59,21 @@ def expected_output_path(uploaded_video, lip_sync=False):
 
 def latentsync_files_ready():
     return all(path.exists() for path in LATENTSYNC_CHECKPOINTS)
+
+
+def xtts_model_path():
+    try:
+        from TTS.utils.generic_utils import get_user_data_dir
+    except ImportError:
+        return None
+    return Path(get_user_data_dir("tts")) / XTTS_MODEL_DIR_NAME
+
+
+def xtts_model_ready():
+    model_dir = xtts_model_path()
+    if model_dir is None:
+        return False
+    return all((model_dir / name).exists() for name in ("model.pth", "config.json", "vocab.json"))
 
 
 def run_process(command, status, output_path=None):
@@ -310,8 +326,13 @@ def page():
       </div>
       <div class="step">
         <h2>3. Models</h2>
-        <button class="secondary" onclick="downloadModel()">Download / Check Dubbing Model</button>
-        <div id="modelHint" class="hint">Checking model...</div>
+        <label class="checkline" for="acceptCpml">
+          <input id="acceptCpml" type="checkbox">
+          I accept the XTTS-v2 CPML terms
+        </label>
+        <div class="hint">XTTS-v2 and its outputs are limited to non-commercial use. <a href="https://huggingface.co/coqui/XTTS-v2/blob/main/LICENSE.txt" target="_blank" rel="noreferrer">Read the license</a>.</div>
+        <button class="secondary" style="margin-top:10px" onclick="downloadModel()">Download / Check Required Models</button>
+        <div id="modelHint" class="hint">Checking models...</div>
         <button class="secondary" style="margin-top:10px" onclick="setupLatentSync()">Setup / Check LatentSync</button>
         <div id="latentSyncHint" class="hint">Checking LatentSync...</div>
       </div>
@@ -379,8 +400,8 @@ async function refresh() {{
   setStatus(data.status);
   document.getElementById('console').textContent = data.logs || 'Ready.';
   document.getElementById('modelHint').textContent = data.modelInstalled
-    ? `Installed: baseline.pth (${{data.modelSizeMb}} MB)`
-    : 'Not installed yet.';
+    ? `Vocal model ready (${{data.modelSizeMb}} MB); XTTS-v2 ${{data.xttsModelInstalled ? 'ready' : 'not installed'}}.`
+    : 'Vocal model not installed; XTTS-v2 ' + (data.xttsModelInstalled ? 'ready.' : 'not installed.');
   document.getElementById('latentSyncHint').textContent = data.latentSyncReady
     ? 'LatentSync files ready.'
     : 'Optional: not installed yet.';
@@ -425,7 +446,15 @@ async function uploadVideo() {{
 
 async function downloadModel() {{
   try {{
-    await api('/api/download-model', {{ method: 'POST' }});
+    const acceptCpml = document.getElementById('acceptCpml').checked;
+    if (!acceptCpml) {{
+      throw new Error('Read and accept the XTTS-v2 CPML terms before downloading the model.');
+    }}
+    await api('/api/download-model', {{
+      method: 'POST',
+      headers: {{ 'Content-Type': 'application/json' }},
+      body: JSON.stringify({{ acceptCpml }})
+    }});
     await refresh();
   }} catch (error) {{
     showError(error);
@@ -523,6 +552,7 @@ class Handler(BaseHTTPRequestHandler):
                     "outputVideoUrl": output_video_url,
                     "modelInstalled": MODEL_PATH.exists() and MODEL_PATH.stat().st_size > 0,
                     "modelSizeMb": round(MODEL_PATH.stat().st_size / (1024 * 1024), 1) if MODEL_PATH.exists() else 0,
+                    "xttsModelInstalled": xtts_model_ready(),
                     "latentSyncReady": latentsync_files_ready(),
                 },
             )
@@ -534,7 +564,19 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/upload":
             self.handle_upload()
         elif parsed.path == "/api/download-model":
-            ok, message = run_process([sys.executable, str(BASE_DIR / "scripts" / "download_model.py")], "Downloading model")
+            content_length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(content_length) or "{}")
+            if not payload.get("acceptCpml"):
+                json_response(self, {"error": "XTTS-v2 CPML acceptance is required."}, 400)
+                return
+            ok, message = run_process(
+                [
+                    sys.executable,
+                    str(BASE_DIR / "scripts" / "setup_models.py"),
+                    "--accept-xtts-cpml",
+                ],
+                "Downloading models",
+            )
             json_response(self, {"ok": ok, "message": message}, 200 if ok else 409)
         elif parsed.path == "/api/setup-latentsync":
             ok, message = run_process([sys.executable, str(BASE_DIR / "scripts" / "setup_latentsync.py")], "Setting up LatentSync")
@@ -659,7 +701,10 @@ class Handler(BaseHTTPRequestHandler):
             json_response(self, {"error": "Upload a video first."}, 400)
             return
         if not MODEL_PATH.exists():
-            json_response(self, {"error": "Download the model first."}, 400)
+            json_response(self, {"error": "Download the required models first."}, 400)
+            return
+        if not xtts_model_ready():
+            json_response(self, {"error": "Download the XTTS-v2 model first."}, 400)
             return
         if lip_sync and not latentsync_files_ready():
             json_response(
@@ -709,7 +754,12 @@ def main():
     url = f"http://127.0.0.1:{port}"
     print(f"Video Dubbing Translator GUI: {url}")
     webbrowser.open(url)
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nVideo Dubbing Translator GUI stopped.")
+    finally:
+        server.server_close()
 
 
 if __name__ == "__main__":

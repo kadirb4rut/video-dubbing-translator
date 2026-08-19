@@ -19,7 +19,7 @@ def run(command, cwd=None):
 
 def ensure_ffmpeg():
     if not FFMPEG or not Path(FFMPEG).exists():
-        raise RuntimeError("ffmpeg bulunamadi. Once ffmpeg kurun ve tekrar deneyin.")
+        raise RuntimeError("FFmpeg was not found. Install FFmpeg and try again.")
     return FFMPEG
 
 
@@ -37,9 +37,10 @@ def latentsync_python(latentsync_dir):
     if env_python:
         return Path(env_python).expanduser()
 
-    local_venv_python = latentsync_dir / ".venv" / "bin" / "python"
-    if local_venv_python.exists():
-        return local_venv_python
+    for relative_path in ((".venv", "bin", "python"), (".venv", "Scripts", "python.exe")):
+        local_venv_python = latentsync_dir.joinpath(*relative_path)
+        if local_venv_python.exists():
+            return local_venv_python
 
     return Path(sys.executable)
 
@@ -55,9 +56,9 @@ def check_latentsync_ready(latentsync_dir, python_executable):
     if missing:
         missing_text = "\n".join(f"- {path}" for path in missing)
         raise RuntimeError(
-            "LatentSync kurulu degil veya checkpoint dosyalari eksik.\n"
-            "Kurulum icin: python scripts/setup_latentsync.py\n"
-            f"Eksik dosyalar:\n{missing_text}"
+            "LatentSync is not installed or checkpoint files are missing.\n"
+            "Run: python scripts/setup_latentsync.py\n"
+            f"Missing files:\n{missing_text}"
         )
 
     if os.environ.get("LATENTSYNC_ALLOW_NO_CUDA") == "1":
@@ -77,17 +78,16 @@ def check_latentsync_ready(latentsync_dir, python_executable):
     )
     if probe.returncode != 0:
         raise RuntimeError(
-            "LatentSync Python ortaminda torch yuklu degil veya acilamiyor.\n"
-            "LatentSync bagimliliklarini kendi ortaminda kurun ve gerekirse "
-            "LATENTSYNC_PYTHON degiskeniyle Python yolunu belirtin.\n"
-            f"Cikti:\n{probe.stdout}"
+            "PyTorch is missing or cannot be imported in the LatentSync environment.\n"
+            "Install LatentSync dependencies in its environment and, if needed, set "
+            "LATENTSYNC_PYTHON to that Python executable.\n"
+            f"Output:\n{probe.stdout}"
         )
     if "cuda=True" not in probe.stdout:
         raise RuntimeError(
-            "LatentSync upstream surumu NVIDIA CUDA GPU gerektiriyor. Bu Python "
-            "ortami CUDA gormuyor.\n"
-            "CUDA destekli bir makinede LatentSync ortamini kurun veya "
-            "LATENTSYNC_PYTHON ile CUDA destekli Python yolunu belirtin."
+            "LatentSync 1.6 requires an NVIDIA CUDA GPU, and this environment cannot "
+            "see CUDA. Use a CUDA machine or point LATENTSYNC_PYTHON to a CUDA-enabled "
+            "environment."
         )
 
 
@@ -143,7 +143,8 @@ def main():
     args = parse_args()
     video_path = Path(args.video).expanduser().resolve()
     if not video_path.exists():
-        raise FileNotFoundError(f"Video dosyasi bulunamadi: {video_path}")
+        print(f"Error: video file not found: {video_path}", file=sys.stderr)
+        return 2
 
     run(
         [
@@ -159,11 +160,11 @@ def main():
 
     final_output = expected_dubbed_output(video_path)
     if not final_output.exists():
-        raise RuntimeError(f"Dublaj cikti dosyasi bulunamadi: {final_output}")
+        raise RuntimeError(f"Dubbed output was not created: {final_output}")
 
     if args.lip_sync:
         lip_sync_output = expected_lipsync_output(video_path)
-        print(f"\nLatentSync lip-sync basliyor: {lip_sync_output}\n", flush=True)
+        print(f"\nStarting LatentSync lip-sync: {lip_sync_output}\n", flush=True)
         run_latentsync(
             str(final_output),
             lip_sync_output,
@@ -174,7 +175,8 @@ def main():
         final_output = lip_sync_output
 
     print(f"\nFINAL_OUTPUT={final_output}\n", flush=True)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

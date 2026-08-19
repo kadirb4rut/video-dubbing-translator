@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a reproducible installation, GUI, or pipeline problem
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not upload private media, transcripts, voices, credentials, or model weights.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Include the expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Activate Python 3.10 environment
+        2. Run ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, hardware, Python version, FFmpeg version, and whether CUDA is available.
+    validations:
+      required: true
+  - type: textarea
+    id: preflight
+    attributes:
+      label: Preflight output
+      description: Paste redacted output from `python scripts/check_setup.py`. Remove local paths if sensitive.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: latentsync
+    attributes:
+      label: LatentSync enabled?
+      options:
+        - "No"
+        - "Yes"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Include the smallest useful excerpt and redact private paths or transcript text.
+      render: text
