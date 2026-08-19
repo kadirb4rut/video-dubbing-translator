@@ -17,6 +17,8 @@ jobs:
           python-version: "3.10"
       - name: Compile Python sources
         run: python -m compileall -q .
+      - name: Run dependency-free unit tests
+        run: python -m unittest discover -s tests -v
       - name: Validate launch scripts
         run: |
           bash -n start_gui.sh

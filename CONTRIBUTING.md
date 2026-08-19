@@ -21,7 +21,7 @@ python -m pip install -r requirements.txt
 python scripts/check_setup.py --skip-imports
 ```
 
-Model setup is optional for documentation and static checks. Full inference requires explicit XTTS-v2 CPML acceptance; do not automate acceptance on behalf of contributors or CI.
+Model setup is optional for documentation and static checks. Full inference requires the pinned VoxCPM2 snapshot; download it with `python scripts/setup_models.py` and never commit its files or caches.
 
 ## Pull requests
 

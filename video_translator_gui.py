@@ -7,24 +7,13 @@ from pathlib import Path
 from tkinter import END, StringVar, Tk, filedialog, messagebox
 from tkinter import scrolledtext, ttk
 
-from Video_Translator import LANGUAGES
+from Video_Translator import SOURCE_LANGUAGES, TARGET_LANGUAGES
+from voxcpm_runtime import model_ready
 
 
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "vocal-remover" / "models" / "baseline.pth"
 OUTPUT_DIR = BASE_DIR / "vocal-remover" / "final_video" / "final"
-XTTS_MODEL_DIR_NAME = "tts_models--multilingual--multi-dataset--xtts_v2"
-
-
-def xtts_model_ready():
-    try:
-        from TTS.utils.generic_utils import get_user_data_dir
-    except ImportError:
-        return False
-    model_dir = Path(get_user_data_dir("tts")) / XTTS_MODEL_DIR_NAME
-    return all((model_dir / name).exists() for name in ("model.pth", "config.json", "vocab.json"))
-
-
 class VideoTranslatorGUI:
     def __init__(self, root):
         self.root = root
@@ -102,11 +91,11 @@ class VideoTranslatorGUI:
 
         ttk.Label(parent, text="2. Languages", style="Section.TLabel").pack(anchor="w", pady=(6, 8))
         ttk.Label(parent, text="Source", style="Body.TLabel").pack(anchor="w")
-        self.source_combo = ttk.Combobox(parent, textvariable=self.source_language, values=list(LANGUAGES.keys()), state="readonly")
+        self.source_combo = ttk.Combobox(parent, textvariable=self.source_language, values=list(SOURCE_LANGUAGES.keys()), state="readonly")
         self.source_combo.pack(fill="x", pady=(4, 10))
 
         ttk.Label(parent, text="Target", style="Body.TLabel").pack(anchor="w")
-        target_languages = [name for name, code in LANGUAGES.items() if code != "automatic"]
+        target_languages = list(TARGET_LANGUAGES.keys())
         self.target_combo = ttk.Combobox(parent, textvariable=self.target_language, values=target_languages, state="readonly")
         self.target_combo.pack(fill="x", pady=(4, 18))
 
@@ -166,19 +155,8 @@ class VideoTranslatorGUI:
         if self.process is not None:
             messagebox.showinfo("Busy", "Another process is already running.")
             return
-        accepted = messagebox.askyesno(
-            "XTTS-v2 license",
-            "XTTS-v2 and its outputs are licensed for non-commercial use under the CPML.\n\n"
-            "Read: https://huggingface.co/coqui/XTTS-v2/blob/main/LICENSE.txt\n\nDo you accept these terms?",
-        )
-        if not accepted:
-            return
         self._run(
-            [
-                sys.executable,
-                str(BASE_DIR / "scripts" / "setup_models.py"),
-                "--accept-xtts-cpml",
-            ],
+            [sys.executable, str(BASE_DIR / "scripts" / "setup_models.py")],
             "Downloading models",
         )
 
@@ -192,12 +170,13 @@ class VideoTranslatorGUI:
         if not MODEL_PATH.exists():
             messagebox.showerror("Missing model", "Download the required models before starting.")
             return
-        if not xtts_model_ready():
-            messagebox.showerror("Missing model", "Download the XTTS-v2 model before starting.")
+        voxcpm_ready, _ = model_ready()
+        if not voxcpm_ready:
+            messagebox.showerror("Missing model", "Download the VoxCPM2 model before starting.")
             return
 
-        source_code = LANGUAGES[self.source_language.get()]
-        target_code = LANGUAGES[self.target_language.get()]
+        source_code = SOURCE_LANGUAGES[self.source_language.get()]
+        target_code = TARGET_LANGUAGES[self.target_language.get()]
         source_arg = "auto" if source_code == "automatic" else source_code
 
         command = [
@@ -295,8 +274,9 @@ class VideoTranslatorGUI:
     def _refresh_model_status(self):
         if MODEL_PATH.exists() and MODEL_PATH.stat().st_size > 0:
             size_mb = MODEL_PATH.stat().st_size / (1024 * 1024)
-            xtts_status = "ready" if xtts_model_ready() else "not installed"
-            self.model_status.set(f"Vocal model: {size_mb:.1f} MB; XTTS-v2: {xtts_status}.")
+            voxcpm_ready, _ = model_ready()
+            voxcpm_status = "ready" if voxcpm_ready else "not installed"
+            self.model_status.set(f"Vocal model: {size_mb:.1f} MB; VoxCPM2: {voxcpm_status}.")
         else:
             self.model_status.set("Required models are not installed yet.")
 

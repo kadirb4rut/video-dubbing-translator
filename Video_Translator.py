@@ -2,16 +2,24 @@ import pickle
 import os
 import sys
 import argparse
+import json
 import shutil
 from pathlib import Path
 from tqdm import tqdm
 from fsorter import fsorter
 import subprocess
 from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_videoclips
+from voxcpm_runtime import (
+    VOXCPM_OUTPUT_SAMPLE_RATE,
+    VOXCPM_REFERENCE_SAMPLE_RATE,
+    load_model,
+    synthesize_cloned_speech,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 VOCAL_REMOVER_DIR = BASE_DIR / "vocal-remover"
 FFMPEG = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
+FFPROBE = shutil.which("ffprobe") or "/opt/homebrew/bin/ffprobe"
 PYTHON = sys.executable
 MOVIEPY_DURATION_EPSILON = 0.05
 MIN_CLIP_DURATION = 0.04
@@ -186,40 +194,57 @@ def create_Sentences(loaded_transcript, character_set): #  6
 def create_Speaker_Reference_Clips(start, end, vocal_audio_path):
     speaker_reference_dir = BASE_DIR / "speaker_reference_clips"
     speaker_reference_dir.mkdir(exist_ok=True)
-    vocal_audioclip = AudioFileClip(vocal_audio_path)
     for i in range(len(start)):
-        reference_clip = vocal_audioclip.subclip(start[i], end[i])
-        reference_clip.write_audiofile(str(speaker_reference_dir / f"{i+1}.wav"))
-    vocal_audioclip.close()
+        output_path = speaker_reference_dir / f"{i+1}.wav"
+        duration = safe_float(end[i]) - safe_float(start[i])
+        if duration < MIN_CLIP_DURATION:
+            raise RuntimeError(f"Speaker reference segment {i + 1} is too short: {duration:.3f}s")
+        run_command(
+            [
+                ensure_ffmpeg(),
+                "-y",
+                "-ss",
+                start[i],
+                "-t",
+                duration,
+                "-i",
+                vocal_audio_path,
+                "-vn",
+                "-ac",
+                "1",
+                "-ar",
+                VOXCPM_REFERENCE_SAMPLE_RATE,
+                "-c:a",
+                "pcm_s16le",
+                output_path,
+            ]
+        )
     return str(speaker_reference_dir) + "/"
     
     
 def generate_dubbed_speech(sentences, path_wav, source_language, target_language, speaker_wav_dir):
-    import torch
     from deep_translator import GoogleTranslator
-    from TTS.api import TTS
 
     translator_source = source_language if source_language is not None else "auto"
     translator = GoogleTranslator(source=translator_source, target=target_language)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
+    print("Loading pinned VoxCPM2 voice-cloning model...", flush=True)
+    model = load_model()
     for i in tqdm(range(len(sentences))):
-        text = translator.translate(sentences[i])
+        source_text = sentences[i].strip()
+        text = translator.translate(source_text)
+        if not text or not text.strip():
+            raise RuntimeError(f"Translation returned empty text for segment {i + 1}.")
+        print(f"Segment {i + 1}: {source_text!r} -> {text.strip()!r}", flush=True)
         wav_file = f"{path_wav}{i+1}.wav"
         speaker_wav = Path(speaker_wav_dir) / f"{i+1}.wav"
-        if not speaker_wav.exists():
-            raise FileNotFoundError(f"Speaker reference audio was not found: {speaker_wav}")
-        tts.tts_to_file(text=text, speaker_wav=str(speaker_wav), language=target_language, file_path=wav_file)
-
-
-def wav_to_mp3(sentences, path_wav, path_mp3): #  9
-    sort_wav = fsorter.fileSort(path_wav, ['.wav'])
-    just_name = list()
-    for i in tqdm(range(len(sentences))):  
-        audio = AudioFileClip(path_wav+f'{i+1}.wav')
-        file = sort_wav[i].split('.')
-        just_name.append(file[0])
-        audio.write_audiofile(path_mp3+f'{i+1}.mp3')
+        synthesize_cloned_speech(
+            model=model,
+            text=text,
+            reference_wav_path=speaker_wav,
+            output_wav_path=wav_file,
+            prompt_text=source_text,
+            seed=42 + i,
+        )
 
 
 def save_Subclips(sentences, start, end, videoclip, path_mp4, video_path_concat): #  10
@@ -231,38 +256,64 @@ def save_Subclips(sentences, start, end, videoclip, path_mp4, video_path_concat)
         ])
         
 
-def change_ClipSpeed(start, path_ffmpeg, ffmpeg_optimized, path_mp3, path_mp4, path_wav, final_movie): #  11
+def media_duration(path):
+    if not FFPROBE or not Path(FFPROBE).exists():
+        raise RuntimeError("ffprobe was not found. Install FFmpeg and try again.")
+    probe = subprocess.run(
+        [FFPROBE, "-v", "error", "-show_entries", "format=duration", "-of", "json", str(path)],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    return float(json.loads(probe.stdout)["format"]["duration"])
+
+
+def atempo_filter(tempo):
+    if tempo <= 0:
+        raise ValueError(f"Audio tempo must be positive, got {tempo}.")
+    factors = []
+    while tempo > 2.0:
+        factors.append(2.0)
+        tempo /= 2.0
+    while tempo < 0.5:
+        factors.append(0.5)
+        tempo /= 0.5
+    factors.append(tempo)
+    return ",".join(f"atempo={factor:.8f}" for factor in factors)
+
+
+def change_ClipSpeed(start, path_ffmpeg, path_mp4, path_wav, final_movie): #  11
     sort_wav = fsorter.fileSort(path_wav, ['.wav'])    
     sort_mp4 = fsorter.fileSort(path_mp4, ['.mp4'])
     for i in tqdm(range(len(start))):
-        videoclip = VideoFileClip(path_mp4 + sort_mp4[i]) 
-        audioclip = AudioFileClip(path_wav + sort_wav[i])
-        adjusted_audio_path = path_wav + sort_wav[i]
-        if audioclip.duration != videoclip.duration:
-            result = audioclip.duration / videoclip.duration
-            if result < 0.5:
-                result = 0.5
-            adjusted_audio_path = path_ffmpeg + sort_wav[i]
-            run_command([ensure_ffmpeg(), "-y", "-i", (path_wav + sort_wav[i]), "-filter:a", f"atempo={result}", adjusted_audio_path])
-            audioclip = AudioFileClip(adjusted_audio_path)
-            if videoclip.duration != audioclip.duration:
-                result = audioclip.duration / videoclip.duration
-                if result < 0.5:
-                    result = 0.5
-                    adjusted_audio_path = ffmpeg_optimized + sort_wav[i]
-                    run_command([ensure_ffmpeg(), "-y", "-i", (path_ffmpeg + sort_wav[i]), "-filter:a", f"atempo={result}", adjusted_audio_path])
-                    audioclip = AudioFileClip(adjusted_audio_path)
-            else:
-                audioclip = AudioFileClip(path_ffmpeg + sort_wav[i])
-            silent_video = f"{path_mp4}{i}_sessiz.mp4"
-            run_command([ensure_ffmpeg(), "-y", "-i", f"{path_mp4}{sort_mp4[i]}", "-c:v", "copy", "-an", silent_video])
-            run_command([ensure_ffmpeg(), "-y", "-i", silent_video, "-i", adjusted_audio_path, "-c:v", "copy", "-c:a", "aac", f"{final_movie}{sort_mp4[i]}"])
-            os.remove(path_mp4+str(i)+'_sessiz.mp4')
-        else:
-            silent_video = f"{path_mp4}{i}_sessiz.mp4"
-            run_command([ensure_ffmpeg(), "-y", "-i", f"{path_mp4}{sort_mp4[i]}", "-c:v", "copy", "-an", silent_video])
-            run_command([ensure_ffmpeg(), "-y", "-i", silent_video, "-i", adjusted_audio_path, "-c:v", "copy", "-c:a", "aac", f"{final_movie}{sort_mp4[i]}"])
-            os.remove(path_mp4+str(i)+'_sessiz.mp4')
+        video_path = Path(path_mp4) / sort_mp4[i]
+        audio_path = Path(path_wav) / sort_wav[i]
+        video_duration = media_duration(video_path)
+        audio_duration = media_duration(audio_path)
+        adjusted_audio_path = Path(path_ffmpeg) / sort_wav[i]
+        tempo = audio_duration / video_duration
+        run_command(
+            [
+                ensure_ffmpeg(), "-y", "-i", audio_path,
+                "-filter:a", atempo_filter(tempo),
+                "-ar", VOXCPM_OUTPUT_SAMPLE_RATE,
+                "-ac", "1",
+                "-c:a", "pcm_s24le",
+                adjusted_audio_path,
+            ]
+        )
+        output_path = Path(final_movie) / sort_mp4[i]
+        run_command(
+            [
+                ensure_ffmpeg(), "-y", "-i", video_path, "-i", adjusted_audio_path,
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                "-ar", VOXCPM_OUTPUT_SAMPLE_RATE, "-ac", "1",
+                "-af", "apad", "-t", f"{video_duration:.6f}",
+                output_path,
+            ]
+        )
             
 def clip_Parts_without_speaker(start, end, videoclip): #  12
     videoclip = videoclip.without_audio()
@@ -333,26 +384,32 @@ def save_Final_Video(final, final_video_name): #  16
     final_video_full_dir.mkdir(exist_ok=True)
     final_video_path = str(final_video_dir / final_video_name)
     final__full_video_path = str(final_video_full_dir / final_video_name)
-    final.write_videofile(f'{final_video_path}', codec="libx264", audio_codec="aac") # fps=fps, codec=codec, preset=preset, bitrate=bitrate
+    final.write_videofile(
+        final_video_path,
+        codec="libx264",
+        audio_codec="aac",
+        audio_fps=VOXCPM_OUTPUT_SAMPLE_RATE,
+        audio_bitrate="192k",
+    )
     
     return final_video_path, final__full_video_path
-
-
-def volume_Settings_Background_Sound(instrumental_audio_path, ): #  17
-    # Reduce the background track so the generated speech remains clear.
-    run_command([ensure_ffmpeg(), "-i", instrumental_audio_path, "-filter:a", "volume=2.0", str(BASE_DIR / "background_volume_adjusted.wav")])
-
 
 
 def concatenate_Video_And_Background_Sound(final_video_path, instrumental_audio_path, final__full_video_path): #  18
     run_command([
         ensure_ffmpeg(), "-y", "-i", final_video_path, "-i", instrumental_audio_path,
         "-c:v", "copy",
-        "-filter_complex", "[0:a]aformat=fltp:44100:stereo,apad[0a];[1]aformat=fltp:44100:stereo,volume=1[1a];[0a][1a]amerge[a]",
-        "-map", "0:v", "-map", "[a]", "-ac", "2", final__full_video_path,
+        "-filter_complex",
+        "[0:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
+        "loudnorm=I=-20:TP=-2:LRA=11[dub];"
+        "[1:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,volume=0.35[bg];"
+        "[dub][bg]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]",
+        "-map", "0:v:0", "-map", "[a]",
+        "-c:a", "aac", "-b:a", "192k", "-ar", VOXCPM_OUTPUT_SAMPLE_RATE,
+        "-ac", "2", "-shortest", final__full_video_path,
     ])
 
-LANGUAGES = {
+SOURCE_LANGUAGES = {
     'Auto Detect': 'automatic',
     'English': 'en',
     'Italian': 'it',
@@ -365,7 +422,13 @@ LANGUAGES = {
     'Turkish': 'tr',
     'Dutch': 'nl',
     'Polish': 'pl',
-    'Czech': 'cs',
+    'Czech (source only)': 'cs',
+}
+
+TARGET_LANGUAGES = {
+    name: code
+    for name, code in SOURCE_LANGUAGES.items()
+    if code not in {"automatic", "cs"}
 }
 
 
@@ -375,15 +438,16 @@ def normalize_language(value, allow_auto=False):
     value = value.strip()
     if allow_auto and value.lower() in {"auto", "automatic", "auto detect"}:
         return None
-    for name, code in LANGUAGES.items():
+    languages = SOURCE_LANGUAGES if allow_auto else TARGET_LANGUAGES
+    for name, code in languages.items():
         if value.lower() == name.lower() or value.lower() == code.lower():
             return None if code == "automatic" else code
-    valid = ", ".join(f"{name}={code}" for name, code in LANGUAGES.items())
+    valid = ", ".join(f"{name}={code}" for name, code in languages.items())
     raise ValueError(f"Invalid language: {value}. Valid values: {valid}")
 
 
 def ask_language(prompt, allow_auto=False):
-    languages = LANGUAGES if allow_auto else {k: v for k, v in LANGUAGES.items() if v != "automatic"}
+    languages = SOURCE_LANGUAGES if allow_auto else TARGET_LANGUAGES
     [print(element, ' ----> ', number + 1) for number, element in enumerate(list(languages.keys()))]
     selected_index = int(input(prompt))
     selected_code = list(languages.values())[selected_index - 1]
@@ -397,7 +461,7 @@ def parse_args():
     parser.add_argument("--target-language", "-t", help="Target language code or name, for example: en, tr")
     parser.add_argument(
         "--speaker-wav-dir",
-        help="Directory containing 1.wav, 2.wav, etc. for XTTS speaker references. Generated from the source vocals when omitted.",
+        help="Directory containing 1.wav, 2.wav, etc. for VoxCPM2 speaker references. Generated from the source vocals when omitted.",
     )
     parser.add_argument("--list-languages", action="store_true", help="Print supported language codes")
     return parser.parse_args()
@@ -409,8 +473,11 @@ def main():
     
     args = parse_args()
     if args.list_languages:
-        for name, code in LANGUAGES.items():
+        print("VoxCPM2 target languages:")
+        for name, code in TARGET_LANGUAGES.items():
             print(f"{name}: {code}")
+        print("Source-only transcription languages:")
+        print("Czech: cs")
         return
 
     print('\n\n'+' '*30 + '* VIDEO TRANSLATOR *\n\n')
@@ -473,30 +540,22 @@ def main():
         speaker_wav_dir = str(Path(speaker_wav_dir).expanduser().resolve()) + "/"
     # 7 -----------------------------------------
     
-    dir_list = ['wav','mp3','mp4','final_movie','ffmpeg','ffmpeg_optimized']
+    dir_list = ['wav','mp4','final_movie','ffmpeg']
     for i in range(len(dir_list)):
         if (dir_list[i] in os.listdir()) != True:
             os.mkdir(dir_list[i])
     path_wav = os.getcwd() + '/wav/'
-    path_mp3 = os.getcwd() + '/mp3/'
     path_mp4 = os.getcwd() + '/mp4/'
     final_movie = os.getcwd() + '/final_movie/'
     path_ffmpeg = os.getcwd() + '/ffmpeg/'
-    ffmpeg_optimized = os.getcwd() + '/ffmpeg_optimized/'
     
     generate_dubbed_speech(sentences, path_wav, source_language, target_language, speaker_wav_dir)
-    
-    # 8 -----------------------------------------
-    
-    wav_to_mp3(sentences, path_wav, path_mp3)
-    
-    # 9 -----------------------------------------
     
     save_Subclips(sentences, start, end, videoclip, path_mp4, video_path_concat)
     
     # 10 -----------------------------------------
     
-    change_ClipSpeed(start, path_ffmpeg, ffmpeg_optimized, path_mp3, path_mp4, path_wav, final_movie)
+    change_ClipSpeed(start, path_ffmpeg, path_mp4, path_wav, final_movie)
     
     # 11 -----------------------------------------
     

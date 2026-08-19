@@ -5,19 +5,24 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(BASE_DIR))
+
+from voxcpm_runtime import default_runtime_device, model_ready  # noqa: E402
+
+
 VOCAL_MODEL = BASE_DIR / "vocal-remover" / "models" / "baseline.pth"
 LATENTSYNC_DIR = Path(
     os.environ.get("LATENTSYNC_DIR", BASE_DIR / "third_party" / "LatentSync")
 ).expanduser().resolve()
-XTTS_MODEL_DIR_NAME = "tts_models--multilingual--multi-dataset--xtts_v2"
 IMPORTS = {
     "torch": "torch",
     "torchaudio": "torchaudio",
-    "TTS": "TTS",
+    "voxcpm": "voxcpm",
     "openai-whisper": "whisper",
     "whisperx": "whisperx",
     "deep-translator": "deep_translator",
@@ -32,6 +37,8 @@ IMPORTS = {
     "soundfile": "soundfile",
     "tqdm": "tqdm",
     "numpy": "numpy",
+    "transformers": "transformers",
+    "safetensors": "safetensors",
 }
 
 
@@ -52,14 +59,6 @@ def command_version(command):
     )
     first_line = probe.stdout.splitlines()[0] if probe.stdout else "version unavailable"
     return path, first_line
-
-
-def xtts_model_path():
-    try:
-        from TTS.utils.generic_utils import get_user_data_dir
-    except ImportError:
-        return None
-    return Path(get_user_data_dir("tts")) / XTTS_MODEL_DIR_NAME
 
 
 def parse_args():
@@ -119,20 +118,23 @@ def main():
         failures += 1
         report("FAIL", "Vocal-remover model is missing; run `python scripts/setup_models.py`.")
 
-    xtts_path = xtts_model_path()
-    xtts_ready = bool(
-        xtts_path
-        and all((xtts_path / name).exists() for name in ("model.pth", "config.json", "vocab.json"))
-    )
-    if xtts_ready:
-        report("PASS", f"XTTS-v2 model: {xtts_path}")
+    voxcpm_ready, voxcpm_path = model_ready()
+    if voxcpm_ready:
+        report("PASS", f"VoxCPM2 model: {voxcpm_path}")
     else:
         failures += 1
         report(
             "FAIL",
-            "XTTS-v2 is missing. Read https://huggingface.co/coqui/XTTS-v2/blob/main/LICENSE.txt, then run "
-            "`python scripts/setup_models.py --accept-xtts-cpml` if you accept the terms.",
+            "VoxCPM2 is missing or incomplete; run `python scripts/setup_models.py`.",
         )
+
+    try:
+        with tempfile.NamedTemporaryFile(prefix=".write-check-", dir=BASE_DIR):
+            pass
+        report("PASS", f"Project path is writable: {BASE_DIR}")
+    except OSError as exc:
+        failures += 1
+        report("FAIL", f"Project path is not writable: {exc}")
 
     required_latentsync = [
         LATENTSYNC_DIR / "scripts" / "inference.py",
@@ -151,7 +153,20 @@ def main():
         if torch.cuda.is_available():
             report("PASS", f"CUDA available: {torch.cuda.get_device_name(0)}")
         elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
-            report("WARN", "Apple MPS is available; some stages still fall back to CPU and LatentSync is unavailable.")
+            selected = default_runtime_device()
+            if selected == "cpu":
+                report(
+                    "WARN",
+                    "Apple MPS is available, but this machine has less than 16 GB unified memory. "
+                    "VoxCPM2 defaults to slower CPU/bfloat16 inference to avoid MPS/float32 exhaustion; "
+                    "LatentSync remains unavailable.",
+                )
+            else:
+                report(
+                    "WARN",
+                    "Apple MPS is available. VoxCPM2 uses float32 on MPS for stability and needs substantial "
+                    "unified memory; LatentSync remains unavailable.",
+                )
         else:
             report("WARN", "No GPU accelerator detected; expect slow CPU processing.")
     except ImportError:
