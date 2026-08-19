@@ -13,6 +13,16 @@ from Video_Translator import LANGUAGES
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "vocal-remover" / "models" / "baseline.pth"
 OUTPUT_DIR = BASE_DIR / "vocal-remover" / "final_video" / "final"
+XTTS_MODEL_DIR_NAME = "tts_models--multilingual--multi-dataset--xtts_v2"
+
+
+def xtts_model_ready():
+    try:
+        from TTS.utils.generic_utils import get_user_data_dir
+    except ImportError:
+        return False
+    model_dir = Path(get_user_data_dir("tts")) / XTTS_MODEL_DIR_NAME
+    return all((model_dir / name).exists() for name in ("model.pth", "config.json", "vocab.json"))
 
 
 class VideoTranslatorGUI:
@@ -100,9 +110,9 @@ class VideoTranslatorGUI:
         self.target_combo = ttk.Combobox(parent, textvariable=self.target_language, values=target_languages, state="readonly")
         self.target_combo.pack(fill="x", pady=(4, 18))
 
-        ttk.Label(parent, text="3. Required Model", style="Section.TLabel").pack(anchor="w", pady=(6, 8))
+        ttk.Label(parent, text="3. Required Models", style="Section.TLabel").pack(anchor="w", pady=(6, 8))
         ttk.Label(parent, textvariable=self.model_status, style="Muted.TLabel", wraplength=320).pack(anchor="w", pady=(0, 8))
-        self.download_button = ttk.Button(parent, text="Download Model", command=self.download_model)
+        self.download_button = ttk.Button(parent, text="Download Models", command=self.download_model)
         self.download_button.pack(fill="x", pady=(0, 18))
 
         ttk.Label(parent, text="4. Run", style="Section.TLabel").pack(anchor="w", pady=(6, 8))
@@ -156,7 +166,21 @@ class VideoTranslatorGUI:
         if self.process is not None:
             messagebox.showinfo("Busy", "Another process is already running.")
             return
-        self._run([sys.executable, str(BASE_DIR / "scripts" / "download_model.py")], "Downloading model")
+        accepted = messagebox.askyesno(
+            "XTTS-v2 license",
+            "XTTS-v2 and its outputs are licensed for non-commercial use under the CPML.\n\n"
+            "Read: https://huggingface.co/coqui/XTTS-v2/blob/main/LICENSE.txt\n\nDo you accept these terms?",
+        )
+        if not accepted:
+            return
+        self._run(
+            [
+                sys.executable,
+                str(BASE_DIR / "scripts" / "setup_models.py"),
+                "--accept-xtts-cpml",
+            ],
+            "Downloading models",
+        )
 
     def start(self):
         if self.process is not None:
@@ -166,7 +190,10 @@ class VideoTranslatorGUI:
             messagebox.showerror("Missing video", "Please choose a video file first.")
             return
         if not MODEL_PATH.exists():
-            messagebox.showerror("Missing model", "Download the required model before starting.")
+            messagebox.showerror("Missing model", "Download the required models before starting.")
+            return
+        if not xtts_model_ready():
+            messagebox.showerror("Missing model", "Download the XTTS-v2 model before starting.")
             return
 
         source_code = LANGUAGES[self.source_language.get()]
@@ -268,9 +295,10 @@ class VideoTranslatorGUI:
     def _refresh_model_status(self):
         if MODEL_PATH.exists() and MODEL_PATH.stat().st_size > 0:
             size_mb = MODEL_PATH.stat().st_size / (1024 * 1024)
-            self.model_status.set(f"Installed: baseline.pth ({size_mb:.1f} MB)")
+            xtts_status = "ready" if xtts_model_ready() else "not installed"
+            self.model_status.set(f"Vocal model: {size_mb:.1f} MB; XTTS-v2: {xtts_status}.")
         else:
-            self.model_status.set("Not installed yet. Download once before dubbing.")
+            self.model_status.set("Required models are not installed yet.")
 
 
 def main():
