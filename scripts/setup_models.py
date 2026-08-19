@@ -1,13 +1,20 @@
-import argparse
-import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
-XTTS_MODEL_NAME = "tts_models/multilingual/multi-dataset/xtts_v2"
-XTTS_LICENSE_URL = "https://huggingface.co/coqui/XTTS-v2/blob/main/LICENSE.txt"
+sys.path.insert(0, str(BASE_DIR))
+
+from voxcpm_runtime import (  # noqa: E402
+    VOXCPM_MODEL_ID,
+    VOXCPM_MODEL_REVISION,
+    VOXCPM_EXPECTED_SIZES,
+    VOXCPM_REQUIRED_FILES,
+    model_ready,
+    resolve_model_path,
+)
 
 
 def run(command):
@@ -15,55 +22,43 @@ def run(command):
     subprocess.run([str(part) for part in command], cwd=BASE_DIR, check=True)
 
 
-def xtts_model_path(manager):
-    return Path(manager.output_prefix) / "tts_models--multilingual--multi-dataset--xtts_v2"
-
-
-def xtts_model_ready(path):
-    return all((path / name).exists() for name in ("model.pth", "config.json", "vocab.json"))
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Download and verify the vocal-remover and XTTS-v2 models."
-    )
-    parser.add_argument(
-        "--accept-xtts-cpml",
-        action="store_true",
-        help="Confirm that you have read and accept the XTTS-v2 CPML terms.",
-    )
-    return parser.parse_args()
-
-
 def main():
-    args = parse_args()
     run([sys.executable, BASE_DIR / "scripts" / "download_model.py"])
 
-    try:
-        from TTS.utils.manage import ModelManager
-    except ImportError as exc:
-        raise RuntimeError(
-            "Coqui TTS is not installed. Activate the Python 3.10 environment and run "
-            "`pip install -r requirements.txt` first."
-        ) from exc
+    ready, model_path = model_ready()
+    if ready:
+        print(f"VoxCPM2 model already exists and passed verification: {model_path}")
+    else:
+        free_gb = shutil.disk_usage(BASE_DIR).free / (1024**3)
+        if free_gb < 6:
+            raise RuntimeError(
+                f"Only {free_gb:.1f} GB of free disk space remains. VoxCPM2 needs approximately "
+                "5 GB for its pinned model snapshot; free at least 6 GB and retry."
+            )
 
-    manager = ModelManager(progress_bar=True, verbose=True)
-    model_path = xtts_model_path(manager)
-    if xtts_model_ready(model_path):
-        print(f"XTTS-v2 model already exists: {model_path}")
-        return
-
-    if not args.accept_xtts_cpml:
-        raise RuntimeError(
-            "XTTS-v2 is licensed under the non-commercial Coqui Public Model License.\n"
-            f"Read {XTTS_LICENSE_URL}, then rerun with --accept-xtts-cpml if you accept it."
+        print(
+            f"Downloading VoxCPM2 model files from {VOXCPM_MODEL_ID} at "
+            f"revision {VOXCPM_MODEL_REVISION}...",
+            flush=True,
         )
+        model_path = resolve_model_path(local_files_only=False)
 
-    os.environ["COQUI_TOS_AGREED"] = "1"
-    manager.download_model(XTTS_MODEL_NAME)
-    if not xtts_model_ready(model_path):
-        raise RuntimeError(f"XTTS-v2 download did not produce the expected files: {model_path}")
-    print(f"XTTS-v2 model ready: {model_path}")
+    ready, verified_path = model_ready()
+    if not ready or verified_path != model_path:
+        issues = []
+        for name in VOXCPM_REQUIRED_FILES:
+            path = model_path / name
+            if not path.is_file():
+                issues.append(f"{name} is missing")
+            elif name in VOXCPM_EXPECTED_SIZES and path.stat().st_size != VOXCPM_EXPECTED_SIZES[name]:
+                issues.append(
+                    f"{name} has {path.stat().st_size} bytes; expected {VOXCPM_EXPECTED_SIZES[name]}"
+                )
+        raise RuntimeError(f"VoxCPM2 setup is incomplete: {'; '.join(issues)}")
+
+    size_gb = sum((model_path / name).stat().st_size for name in VOXCPM_REQUIRED_FILES) / (1024**3)
+    print(f"VoxCPM2 model ready: {model_path} ({size_gb:.2f} GB)")
+    print("VoxCPM2 code and model weights are Apache-2.0 and permit commercial use.")
 
 
 if __name__ == "__main__":
