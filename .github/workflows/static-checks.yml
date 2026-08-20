@@ -23,3 +23,5 @@ jobs:
         run: |
           bash -n start_gui.sh
           bash -n start_gui.command
+          bash -n install.sh
+          bash -n scripts/create_demo_comparison.sh
