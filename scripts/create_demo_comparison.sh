@@ -19,7 +19,8 @@ mkdir -p "$(dirname "$OUTPUT_VIDEO")"
 # deliberately minimal so the same artifact works in README links and social posts.
 # Some minimal FFmpeg builds omit libfreetype/drawtext, so a colored label bar is
 # retained as a portable fallback instead of making the generator fail.
-if ffmpeg -hide_banner -filters 2>/dev/null | grep -q 'drawtext'; then
+FILTER_LIST="$(ffmpeg -hide_banner -filters 2>/dev/null || true)"
+if [[ "$FILTER_LIST" == *drawtext* ]]; then
   LABEL_0="drawbox=x=0:y=0:w=iw:h=58:color=black@0.70:t=fill,drawtext=text='ORIGINAL  —  ENGLISH':fontcolor=white:fontsize=28:x=40:y=15"
   LABEL_1="drawbox=x=0:y=0:w=iw:h=58:color=black@0.70:t=fill,drawtext=text='AI DUB  —  TURKISH':fontcolor=white:fontsize=28:x=40:y=15"
 else
