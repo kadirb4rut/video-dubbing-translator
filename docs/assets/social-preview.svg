@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+  <title id="title">Video Dubbing Translator social preview</title>
+  <desc id="desc">A dark developer-oriented social preview reading Video Dubbing Translator, Local-first AI video dubbing, Voice cloning, Translation, Optional lip-sync, Open Source.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#08111f"/>
+      <stop offset="0.55" stop-color="#102b45"/>
+      <stop offset="1" stop-color="#1e5360"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#52d7c6"/>
+      <stop offset="1" stop-color="#87f0a4"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <circle cx="1080" cy="100" r="180" fill="#52d7c6" opacity="0.12" filter="url(#glow)"/>
+  <circle cx="1160" cy="520" r="250" fill="#87f0a4" opacity="0.08" filter="url(#glow)"/>
+  <path d="M760 0 C910 130 840 280 1010 370 S1180 560 1280 590" fill="none" stroke="#52d7c6" stroke-opacity="0.25" stroke-width="2"/>
+  <path d="M700 40 C850 170 780 310 950 400 S1120 590 1260 620" fill="none" stroke="#87f0a4" stroke-opacity="0.18" stroke-width="2"/>
+  <rect x="72" y="72" width="122" height="8" rx="4" fill="url(#accent)"/>
+  <text x="72" y="190" fill="#f7fbff" font-family="Inter, Arial, sans-serif" font-size="68" font-weight="700">Video Dubbing</text>
+  <text x="72" y="270" fill="#f7fbff" font-family="Inter, Arial, sans-serif" font-size="68" font-weight="700">Translator</text>
+  <text x="76" y="338" fill="#b7cfda" font-family="Inter, Arial, sans-serif" font-size="30">Local-first AI video dubbing</text>
+  <text x="76" y="418" fill="#e9f7f2" font-family="Inter, Arial, sans-serif" font-size="25">Voice cloning  •  Translation  •  Optional lip-sync</text>
+  <rect x="76" y="500" width="184" height="46" rx="23" fill="#d9fff2"/>
+  <text x="168" y="531" text-anchor="middle" fill="#0b2530" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="700">OPEN SOURCE</text>
+  <g transform="translate(900 245)">
+    <rect x="0" y="0" width="250" height="150" rx="18" fill="#08111f" fill-opacity="0.72" stroke="#52d7c6" stroke-opacity="0.55"/>
+    <path d="M30 76 C58 44 76 108 103 76 S148 44 176 76 S220 108 232 76" fill="none" stroke="url(#accent)" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="30" cy="76" r="7" fill="#52d7c6"/><circle cx="232" cy="76" r="7" fill="#87f0a4"/>
+    <text x="125" y="126" text-anchor="middle" fill="#b7cfda" font-family="Inter, Arial, sans-serif" font-size="18">speech → translated video</text>
+  </g>
+</svg>
