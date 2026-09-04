@@ -66,3 +66,19 @@ test('protected dashboard persists across a browser reload', async ({ page }) =>
   await expect(page.locator('.app-shell')).toBeVisible();
   await expect(page.locator('.credit-pill')).toContainText('credits');
 });
+
+test('mobile workspace keeps navigation and content within the viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await createAccount(page);
+  await expect(page.locator('.app-shell')).toBeVisible();
+
+  const dimensions = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    content: document.documentElement.scrollWidth,
+  }));
+  expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
+
+  await page.getByRole('button', { name: 'Projects' }).click();
+  await expect(page.locator('.project-history')).toBeVisible();
+});
