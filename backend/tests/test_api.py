@@ -196,6 +196,20 @@ def test_unauthenticated_requests_are_rejected():
         assert response.status_code == 401
 
 
+def test_billing_fails_closed_until_stripe_is_configured():
+    with TestClient(app) as client:
+        signup = client.post("/api/auth/signup", json={"email": "billing-fail-closed@example.com", "password": "a-strong-password-123", "display_name": "Billing"})
+        assert signup.status_code == 200
+        summary = client.get("/api/billing")
+        assert summary.status_code == 200
+        assert summary.json()["provider"] == "disabled"
+        assert summary.json()["checkout_enabled"] is False
+        assert client.post("/api/billing/checkout", json={"kind": "credits", "key": "starter"}).status_code == 503
+        assert client.post("/api/billing/portal").status_code == 503
+        assert client.post("/api/billing/webhook", content=b"{}").status_code == 400
+        assert client.post("/api/billing/webhook", headers={"Stripe-Signature": "test"}, content=b"{}").status_code == 503
+
+
 def test_password_reset_token_rotates_password_and_revokes_sessions():
     with TestClient(app) as client:
         signup = client.post("/api/auth/signup", json={"email": "reset@example.com", "password": "old-password-123", "display_name": "Reset"})
