@@ -1,0 +1,42 @@
+{
+  "manifest_version": 1,
+  "release": "replace-with-release-id",
+  "artifacts": [
+    {
+      "provider": "whisper",
+      "model": "small",
+      "checkpoint_snapshot": "replace-with-exact-checkpoint-snapshot",
+      "commercial_status": "pending",
+      "license": "MIT",
+      "source_url": "https://github.com/openai/whisper/blob/main/LICENSE",
+      "downstream_notices": "replace-with-audited-notices"
+    },
+    {
+      "provider": "demucs",
+      "model": "htdemucs",
+      "checkpoint_snapshot": "replace-with-exact-checkpoint-snapshot",
+      "commercial_status": "pending",
+      "license": "MIT-code-checkpoint-review-required",
+      "source_url": "https://github.com/facebookresearch/demucs",
+      "downstream_notices": "replace-with-audited-notices"
+    },
+    {
+      "provider": "deepfilternet",
+      "model": "DeepFilterNet3",
+      "checkpoint_snapshot": "replace-with-exact-checkpoint-snapshot",
+      "commercial_status": "pending",
+      "license": "Apache-2.0-project-artifact-review-required",
+      "source_url": "https://github.com/Rikorose/DeepFilterNet",
+      "downstream_notices": "replace-with-audited-notices"
+    },
+    {
+      "provider": "chatterbox",
+      "model": "multilingual-v3",
+      "checkpoint_snapshot": "replace-with-exact-checkpoint-snapshot",
+      "commercial_status": "pending",
+      "license": "MIT-upstream-model-card-review-required",
+      "source_url": "https://huggingface.co/ResembleAI/chatterbox",
+      "downstream_notices": "watermark-and-dependency-review-required"
+    }
+  ]
+}

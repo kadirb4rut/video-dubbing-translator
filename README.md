@@ -57,7 +57,7 @@ docker compose up --build
 Run the automated checks with:
 
 ```bash
-PYTHONPATH=backend pytest -q backend/tests
+PYTHONPATH=.:backend pytest -q backend/tests
 cd frontend && npm run build
 ```
 

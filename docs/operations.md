@@ -6,6 +6,8 @@ The API creates an immutable job specification, reserves credits, and sends an S
 
 ## Production checks
 
+- Run `PYTHONPATH=. python scripts/production_readiness.py` from the repository root before enabling public processing. It fails closed unless PostgreSQL/S3/SQS, secure cookies, measured pricing, exact model-release evidence, an eligible GPU profile, verified mail, and complete Stripe configuration are present; it never prints secret values. Keep `config/model_release_manifest.json` outside git or populate it from the checked-in example only after the exact checkpoint and dependency review is complete.
+
 - Set PostgreSQL, S3, SQS, `COOKIE_SECURE=true`, and a non-local `FRONTEND_ORIGIN`.
 - Set `MAIL_PROVIDER=smtp` plus `MAIL_FROM` and SMTP credentials, or `MAIL_PROVIDER=ses` with a verified SES sender and the ECS task-role permission, before enabling password-reset mail. The development sink is only intended for local SQLite and returns a development token.
 - Use a private S3 bucket and signed downloads; never put media in a public bucket.

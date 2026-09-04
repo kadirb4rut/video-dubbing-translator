@@ -18,7 +18,7 @@ jobs:
       - run: pip-audit -r backend/requirements-dev.txt --progress-spinner off
       - run: ruff check backend/app backend/tests scripts
       - run: bandit -q -r backend/app --severity-level medium
-      - run: PYTHONPATH=backend pytest -q backend/tests
+      - run: PYTHONPATH=.:backend pytest -q backend/tests
       - run: python -m compileall -q backend/app backend/tests scripts
       - run: DATABASE_URL=sqlite:////tmp/lingowave-ci.db PYTHONPATH=. alembic upgrade head
         working-directory: backend
