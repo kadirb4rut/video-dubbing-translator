@@ -66,6 +66,11 @@ variable "mail_from" {
   type        = string
   default     = "no-reply@lingowave.local"
 }
+variable "ses_identity_arn" {
+  description = "Verified SES identity ARN. Required when mail_provider is ses so SendEmail can be scoped to one identity."
+  type        = string
+  default     = ""
+}
 variable "api_subnet_ids" {
   description = "Subnets for the API service and public load balancer when create_network is false."
   type        = list(string)

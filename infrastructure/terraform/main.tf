@@ -164,7 +164,7 @@ resource "aws_iam_role_policy" "ecs_task_api" {
   policy = jsonencode({ Version = "2012-10-17", Statement = concat([
     { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:PutObjectTagging", "s3:DeleteObject"], Resource = "${aws_s3_bucket.media.arn}/*" },
     { Effect = "Allow", Action = ["sqs:SendMessage", "sqs:GetQueueAttributes"], Resource = aws_sqs_queue.jobs.arn }
-  ], var.mail_provider == "ses" ? [{ Effect = "Allow", Action = ["ses:SendEmail"], Resource = "*" }] : []) })
+  ], var.mail_provider == "ses" ? [{ Effect = "Allow", Action = ["ses:SendEmail"], Resource = var.ses_identity_arn != "" ? var.ses_identity_arn : "*" }] : []) })
 }
 
 resource "aws_cloudwatch_log_group" "worker" {
@@ -407,6 +407,10 @@ resource "aws_ecs_task_definition" "api" {
     precondition {
       condition     = local.effective_api_security_group_id != "" && local.effective_load_balancer_security_group_id != ""
       error_message = "API and load balancer security groups must be supplied or created by Terraform."
+    }
+    precondition {
+      condition     = var.mail_provider != "ses" || var.ses_identity_arn != ""
+      error_message = "ses_identity_arn is required when mail_provider is ses."
     }
   }
 }

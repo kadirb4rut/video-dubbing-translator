@@ -19,6 +19,7 @@ Required production controls before enabling public traffic:
 - The production default `translation_provider = "aws-translate"` uses Amazon Translate through the worker task role; Terraform grants only `translate:TranslateText` in that mode. Set `configured-api` when using an external translation endpoint and inject its key through `worker_secrets`.
 - S3 object validation, lifecycle retention rules, and signed URLs.
 - SQS visibility timeout, bounded retries, idempotency keys, and dead-letter queue.
+- For SES mail, set `mail_provider = "ses"`, use a verified `mail_from`, and pass its `ses_identity_arn`; Terraform scopes `ses:SendEmail` to that identity.
 - `sqs_visibility_timeout_seconds` defaults to 3600 seconds and should cover the measured worst-case dubbing job; it is configurable up to AWS's 12-hour maximum.
 - CloudWatch metrics for queue age, successful minutes, startup time, and actual cost per minute.
 - Separate model images for transcription/separation, voice, and optional lip sync.
