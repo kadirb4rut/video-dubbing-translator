@@ -10,4 +10,4 @@ The repository deliberately does not bundle model weights. `config/cost_profiles
 - Chatterbox Multilingual V3: MIT upstream/model-card status and built-in watermark are recorded above; pin the exact Hugging Face snapshot and audit downstream artifacts before public commercial voice cloning.
 - FFmpeg, fonts, icons, and any future lip-sync provider: review the exact distributed artifact and its terms.
 
-No capability is considered commercially cleared merely because its Python package installs.
+No capability is considered commercially cleared merely because its Python package installs. The GPU worker deliberately omits Chatterbox's optional Gradio UI and overrides its vulnerable dependency pins with the reviewed runtime set in `requirements.worker-gpu.txt`; this is a compatibility/security measure, not a license clearance. Re-run the provider import, real media benchmark, dependency audit, and exact checkpoint manifest review for every release.

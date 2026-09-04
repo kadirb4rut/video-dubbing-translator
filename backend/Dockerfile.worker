@@ -4,9 +4,13 @@ ENV PYTHONUNBUFFERED=1
 ENV HOME=/home/lingowave
 ENV XDG_CACHE_HOME=/home/lingowave/.cache
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libsndfile1 cargo && rm -rf /var/lib/apt/lists/*
-COPY backend/requirements.txt backend/requirements.worker-cpu.txt backend/requirements.worker-gpu.txt ./
+COPY backend/requirements.txt backend/requirements.worker-common.txt backend/requirements.worker-cpu.txt backend/requirements.worker-gpu.txt ./
 ARG WORKER_REQUIREMENTS=requirements.worker-cpu.txt
-RUN pip install --no-cache-dir -r ${WORKER_REQUIREMENTS}
+RUN python -m pip install --no-cache-dir --upgrade "pip>=26.2" "setuptools>=83" \
+    && python -m pip install --no-cache-dir -r ${WORKER_REQUIREMENTS} \
+    && if [ "${WORKER_REQUIREMENTS}" = "requirements.worker-gpu.txt" ]; then \
+         python -m pip install --no-cache-dir --no-deps chatterbox-tts==0.1.7; \
+       fi
 COPY backend/app ./app
 COPY backend/alembic ./alembic
 COPY backend/alembic.ini ./alembic.ini

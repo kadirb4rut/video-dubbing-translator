@@ -1,4 +1,18 @@
--r requirements.worker-cpu.txt
-torch>=2.5
-torchaudio>=2.5
-chatterbox-tts==0.1.7
+-r requirements.worker-common.txt
+# Chatterbox 0.1.7 declares vulnerable exact pins for several optional/UI
+# dependencies. The backend uses chatterbox.mtl_tts only, so install the
+# package itself with --no-deps in Dockerfile.worker and audit these runtime
+# dependencies independently at secure versions.
+torch==2.10.0
+torchaudio==2.10.0
+transformers==5.16.1
+diffusers==0.38.0
+tokenizers==0.23.2
+safetensors==0.8.0
+s3tokenizer==0.3.0
+resemble-perth==1.0.1
+conformer==0.3.2
+spacy-pkuseg
+pykakasi==2.3.0
+pyloudnorm
+omegaconf

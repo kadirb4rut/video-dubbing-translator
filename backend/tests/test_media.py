@@ -22,8 +22,12 @@ def test_api_container_contract_includes_ffmpeg_for_upload_inspection():
 
 
 def test_cpu_worker_contract_includes_deepfilter_native_runtime():
-    requirements = Path(__file__).parents[2] / "backend" / "requirements.worker-cpu.txt"
+    backend_dir = Path(__file__).parents[2] / "backend"
+    requirements = backend_dir / "requirements.worker-cpu.txt"
     contents = requirements.read_text(encoding="utf-8")
+    common_contents = (backend_dir / "requirements.worker-common.txt").read_text(encoding="utf-8")
+    assert "-r requirements.worker-common.txt" in contents
+    contents = f"{contents}\n{common_contents}"
     assert "deepfilternet==0.5.6" in contents
     assert "deepfilterlib==0.5.6" in contents
 
