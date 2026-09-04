@@ -1,9 +1,15 @@
 from fastapi import HTTPException
+from starlette.requests import Request
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.db import Base
-from app.rate_limit import _consume
+from app.rate_limit import _client_key, _consume
+
+
+def test_rate_limit_uses_viewer_ip_from_forwarded_chain():
+    scope = {"type": "http", "method": "GET", "path": "/", "headers": [(b"x-forwarded-for", b"203.0.113.8, 10.42.0.1")], "client": ("10.42.0.1", 1234), "scheme": "http", "server": ("test", 80), "query_string": b""}
+    assert _client_key(Request(scope)) == "203.0.113.8"
 
 
 def test_rate_limit_window_is_persisted_and_shared_between_sessions():

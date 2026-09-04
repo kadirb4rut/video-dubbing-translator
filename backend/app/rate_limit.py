@@ -56,11 +56,23 @@ def _consume(db: Session, *, bucket: str, key: str, limit: int) -> None:
                 raise HTTPException(status_code=429, detail="Rate limit temporarily unavailable; try again shortly", headers={"Retry-After": "5"}) from None
 
 
+def _client_key(request: Request) -> str:
+    # The API is reachable through the CloudFront/ALB path, whose security
+    # group admits CloudFront origin traffic only. Use the first viewer IP
+    # from the proxy-preserved X-Forwarded-For chain instead of rate-limiting
+    # every public user by the ALB task's private address.
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        viewer_ip = forwarded.split(",", 1)[0].strip()
+        if viewer_ip:
+            return viewer_ip[:255]
+    return request.client.host if request.client else "unknown"
+
+
 def rate_limited(bucket: str, limit: int | None = None):
     max_requests = limit or settings.rate_limit_per_minute
 
     def dependency(request: Request, db: Session = Depends(get_db)) -> None:
-        client_host = request.client.host if request.client else "unknown"
-        _consume(db, bucket=bucket, key=client_host, limit=max_requests)
+        _consume(db, bucket=bucket, key=_client_key(request), limit=max_requests)
 
     return dependency
