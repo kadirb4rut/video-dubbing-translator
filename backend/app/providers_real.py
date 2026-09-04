@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import json
+import inspect
+import math
 import os
 import shutil
 import subprocess
@@ -9,10 +10,28 @@ from pathlib import Path
 from typing import Sequence
 
 from .config import settings
+from .media import validate_output
 
 
 class ProviderUnavailable(RuntimeError):
     """Raised when a configured provider cannot run in the current worker image."""
+
+
+def validate_segments(segments: Sequence[dict]) -> list[dict]:
+    validated: list[dict] = []
+    previous_start = -1.0
+    for index, segment in enumerate(segments):
+        try:
+            start = float(segment["start"])
+            end = float(segment["end"])
+            text = str(segment["text"]).strip()
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ProviderUnavailable(f"Invalid transcript segment at index {index}") from exc
+        if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start or start < previous_start or not text:
+            raise ProviderUnavailable(f"Invalid transcript timing or text at index {index}")
+        validated.append({**segment, "start": start, "end": end, "text": text})
+        previous_start = start
+    return validated
 
 
 def _require(module: str):
@@ -28,6 +47,7 @@ class WhisperTranscriptionProvider:
 
     def __init__(self, model_name: str | None = None):
         self.model_name = model_name or settings.whisper_model
+        self.detected_language: str | None = None
 
     def transcribe(self, audio_path: Path, *, language: str | None = None) -> Sequence[dict]:
         whisper = _require("whisper")
@@ -36,6 +56,7 @@ class WhisperTranscriptionProvider:
             model = whisper.load_model(self.model_name)
             self._models[self.model_name] = model
         result = model.transcribe(str(audio_path), language=language, verbose=False)
+        self.detected_language = result.get("language")
         return [{"start": float(s["start"]), "end": float(s["end"]), "text": s["text"].strip()} for s in result.get("segments", []) if s.get("text", "").strip()]
 
 
@@ -55,7 +76,37 @@ class ConfiguredTranslationProvider:
         translated = payload.get("segments") if isinstance(payload, dict) else payload
         if not isinstance(translated, list) or len(translated) != len(segments):
             raise ProviderUnavailable("Translation provider returned an invalid segment payload")
-        return translated
+        return validate_segments(translated)
+
+
+class AwsTranslateProvider:
+    """Translate segments through Amazon Translate while preserving source timing."""
+
+    name = "aws-translate"
+
+    def __init__(self, client=None):
+        if client is None:
+            import boto3
+
+            client = boto3.client("translate", region_name=settings.s3_region)
+        self.client = client
+
+    def translate(self, segments: Sequence[dict], *, source: str, target: str) -> Sequence[dict]:
+        translated = []
+        for segment in validate_segments(segments):
+            try:
+                response = self.client.translate_text(
+                    Text=segment["text"],
+                    SourceLanguageCode=source,
+                    TargetLanguageCode=target,
+                )
+                text = str(response.get("TranslatedText", "")).strip()
+            except Exception as exc:
+                raise ProviderUnavailable("AWS Translate request failed") from exc
+            if not text:
+                raise ProviderUnavailable("AWS Translate returned empty text")
+            translated.append({**segment, "text": text})
+        return validate_segments(translated)
 
 
 class ChatterboxMultilingualVoiceProvider:
@@ -65,8 +116,8 @@ class ChatterboxMultilingualVoiceProvider:
     def __init__(self, device: str | None = None):
         self.device = device or settings.chatterbox_device
 
-    def synthesize(self, text: str, *, reference_voice: Path, language: str, output_path: Path) -> Path:
-        if not reference_voice.is_file():
+    def synthesize(self, text: str, *, reference_voice: Path | None, language: str, output_path: Path) -> Path:
+        if reference_voice is not None and not reference_voice.is_file():
             raise ProviderUnavailable("Reference voice file is missing")
         _require("torch")
         try:
@@ -77,11 +128,19 @@ class ChatterboxMultilingualVoiceProvider:
         key = (self.device, "v3")
         model = self._models.get(key)
         if model is None:
-            model = ChatterboxMultilingualTTS.from_pretrained(device=self.device, t3_model="v3")
+            loader = ChatterboxMultilingualTTS.from_pretrained
+            if "t3_model" in inspect.signature(loader).parameters:
+                model = loader(device=self.device, t3_model="v3")
+            else:
+                # Current Chatterbox checks the string value for CPU/MPS before
+                # choosing map_location; passing torch.device('cpu') would
+                # accidentally try to deserialize CUDA checkpoints on CPU.
+                model = loader(device=self.device)
             self._models[key] = model
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        wav = model.generate(text, language_id=language, audio_prompt_path=str(reference_voice))
+        wav = model.generate(text, language_id=language, audio_prompt_path=str(reference_voice) if reference_voice else None)
         torchaudio.save(str(output_path), wav, model.sr)
+        validate_output(output_path, "audio")
         return output_path
 
 
@@ -96,16 +155,22 @@ class DemucsStemSeparationProvider:
         command = [sys.executable, "-m", "demucs.separate", "-n", settings.demucs_model, "-o", str(output_dir)]
         if stems == 2:
             command.extend(["--two-stems", "vocals"])
+        command.append("--mp3")
         command.append(str(audio_path))
         subprocess.run(command, check=True, timeout=3600)
         model_dir = output_dir / settings.demucs_model / audio_path.stem
-        if stems == 2:
-            expected = {"vocals": model_dir / "vocals.wav", "no_vocals": model_dir / "no_vocals.wav"}
-        else:
-            expected = {name: model_dir / f"{name}.wav" for name in ("vocals", "drums", "bass", "other")}
-        missing = [name for name, path in expected.items() if not path.is_file()]
+        demucs_names = ("vocals", "no_vocals") if stems == 2 else ("vocals", "drums", "bass", "other")
+        encoded = {name: model_dir / f"{name}.mp3" for name in demucs_names}
+        missing = [name for name, path in encoded.items() if not path.is_file()]
         if missing:
             raise ProviderUnavailable(f"Demucs completed without expected stems: {', '.join(missing)}")
+        expected = {}
+        for name, mp3_path in encoded.items():
+            output_name = "instrumental" if name == "no_vocals" else name
+            wav_path = model_dir / f"{output_name}.wav"
+            subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(mp3_path), "-ar", "48000", "-ac", "2", str(wav_path)], check=True, timeout=600)
+            validate_output(wav_path, "audio")
+            expected[output_name] = wav_path
         return expected
 
 
@@ -115,6 +180,17 @@ class DeepFilterNetNoiseProvider:
     def enhance(self, audio_path: Path, *, output_path: Path) -> Path:
         command = shutil.which(settings.deepfilter_command)
         if not command:
+            fallback = os.getenv("NOISE_REMOVAL_FALLBACK", settings.noise_removal_fallback)
+            if fallback == "ffmpeg-afftdn":
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+                subprocess.run(
+                    [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", str(audio_path), "-af", "afftdn=nf=-25", str(output_path)],
+                    check=True,
+                    timeout=3600,
+                )
+                validate_output(output_path, "audio")
+                return output_path
             raise ProviderUnavailable(f"{settings.deepfilter_command} is not installed in this worker image")
         output_path.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run([command, "-m", "DeepFilterNet3", "-o", str(output_path.parent), str(audio_path)], check=True, timeout=3600)
@@ -123,10 +199,13 @@ class DeepFilterNetNoiseProvider:
             produced.replace(output_path)
         if not output_path.is_file():
             raise ProviderUnavailable("DeepFilterNet did not produce the requested output")
+        validate_output(output_path, "audio")
         return output_path
 
 
 def write_srt(segments: Sequence[dict], output_path: Path) -> Path:
+    segments = validate_segments(segments)
+
     def stamp(seconds: float) -> str:
         millis = max(0, round(seconds * 1000))
         hours, millis = divmod(millis, 3_600_000)
@@ -142,6 +221,8 @@ def write_srt(segments: Sequence[dict], output_path: Path) -> Path:
 
 
 def write_vtt(segments: Sequence[dict], output_path: Path) -> Path:
+    segments = validate_segments(segments)
+
     def stamp(seconds: float) -> str:
         millis = max(0, round(seconds * 1000))
         hours, millis = divmod(millis, 3_600_000)
@@ -158,6 +239,8 @@ def write_vtt(segments: Sequence[dict], output_path: Path) -> Path:
 
 
 def write_txt(segments: Sequence[dict], output_path: Path) -> Path:
+    segments = validate_segments(segments)
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("\n".join(segment["text"].strip() for segment in segments).strip() + "\n", encoding="utf-8")
     return output_path
@@ -187,4 +270,6 @@ class FixtureTranslationProvider:
 def translation_provider():
     if settings.translation_provider == "fixture":
         return FixtureTranslationProvider()
+    if settings.translation_provider == "aws-translate":
+        return AwsTranslateProvider()
     return ConfiguredTranslationProvider()

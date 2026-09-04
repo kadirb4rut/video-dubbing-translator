@@ -41,7 +41,10 @@ def reserve(db: Session, user: User, job: Job, amount: int) -> CreditReservation
     # cannot both spend the same available balance. SQLite ignores FOR UPDATE.
     db.execute(select(User).where(User.id == user.id).with_for_update())
     existing = db.scalar(select(CreditReservation).where(CreditReservation.job_id == job.id))
-    if existing and existing.status in {"reserved", "finalized"}:
+    # A queued job is idempotent while its reservation is active. A finalized
+    # cancelled job may be retried by an operator, which needs a fresh ledger
+    # debit while reusing the job's reservation row.
+    if existing and existing.status == "reserved":
         return existing
     if amount <= 0:
         raise ValueError("Reservation amount must be positive")

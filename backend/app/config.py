@@ -6,7 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-BASE_DIR = Path(__file__).resolve().parents[2]
+_CONFIG_MODULE = Path(__file__).resolve()
+BASE_DIR = next(
+    (parent for parent in _CONFIG_MODULE.parents if (parent / "config").is_dir()),
+    _CONFIG_MODULE.parents[2],
+)
 
 
 def _bool(name: str, default: bool) -> bool:
@@ -21,8 +25,10 @@ class Settings:
     s3_bucket: str | None = os.getenv("S3_BUCKET") or None
     s3_region: str = os.getenv("AWS_REGION", "eu-central-1")
     s3_endpoint_url: str | None = os.getenv("S3_ENDPOINT_URL") or None
+    s3_presign_endpoint_url: str | None = os.getenv("S3_PRESIGN_ENDPOINT_URL") or None
     sqs_queue_url: str | None = os.getenv("SQS_QUEUE_URL") or None
     sqs_endpoint_url: str | None = os.getenv("SQS_ENDPOINT_URL") or None
+    sqs_visibility_timeout_seconds: int = int(os.getenv("SQS_VISIBILITY_TIMEOUT_SECONDS", "3600"))
     session_cookie_name: str = os.getenv("SESSION_COOKIE_NAME", "lingowave_session")
     session_ttl_days: int = int(os.getenv("SESSION_TTL_DAYS", "30"))
     cookie_secure: bool = _bool("COOKIE_SECURE", False)
@@ -37,11 +43,29 @@ class Settings:
     chatterbox_device: str = os.getenv("CHATTERBOX_DEVICE", "cuda")
     demucs_model: str = os.getenv("DEMUCS_MODEL", "htdemucs")
     deepfilter_command: str = os.getenv("DEEPFILTER_COMMAND", "deepFilter")
+    noise_removal_fallback: str = os.getenv("NOISE_REMOVAL_FALLBACK", "")
     rate_limit_per_minute: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "30"))
     max_voice_seconds: int = int(os.getenv("MAX_VOICE_SECONDS", "90"))
     min_voice_seconds: int = int(os.getenv("MIN_VOICE_SECONDS", "3"))
-    dev_mail_sink: bool = _bool("DEV_MAIL_SINK", True)
+    dev_mail_sink: bool = _bool("DEV_MAIL_SINK", not os.getenv("DATABASE_URL") or os.getenv("DATABASE_URL", "").startswith("sqlite"))
+    mail_provider: str = os.getenv("MAIL_PROVIDER", "dev")
+    mail_from: str = os.getenv("MAIL_FROM", "no-reply@lingowave.local")
+    smtp_host: str | None = os.getenv("SMTP_HOST") or None
+    smtp_port: int = int(os.getenv("SMTP_PORT", "587"))
+    smtp_username: str | None = os.getenv("SMTP_USERNAME") or None
+    smtp_password: str | None = os.getenv("SMTP_PASSWORD") or None
     retention_days: int = int(os.getenv("MEDIA_RETENTION_DAYS", "30"))
+    stripe_secret_key: str | None = os.getenv("STRIPE_SECRET_KEY") or None
+    stripe_webhook_secret: str | None = os.getenv("STRIPE_WEBHOOK_SECRET") or None
+    stripe_success_url: str = os.getenv("STRIPE_SUCCESS_URL", "http://localhost:5173/?billing=success")
+    stripe_cancel_url: str = os.getenv("STRIPE_CANCEL_URL", "http://localhost:5173/?billing=cancelled")
+    stripe_billing_portal_return_url: str = os.getenv("STRIPE_BILLING_PORTAL_RETURN_URL", "http://localhost:5173/?billing=portal")
+    stripe_price_creator: str | None = os.getenv("STRIPE_PRICE_CREATOR") or None
+    stripe_price_pro: str | None = os.getenv("STRIPE_PRICE_PRO") or None
+    stripe_price_studio: str | None = os.getenv("STRIPE_PRICE_STUDIO") or None
+    stripe_price_credits_starter: str | None = os.getenv("STRIPE_PRICE_CREDITS_STARTER") or None
+    stripe_price_credits_growth: str | None = os.getenv("STRIPE_PRICE_CREDITS_GROWTH") or None
+    stripe_price_credits_scale: str | None = os.getenv("STRIPE_PRICE_CREDITS_SCALE") or None
 
 
 settings = Settings()

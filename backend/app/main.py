@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import hashlib
+from contextlib import asynccontextmanager
+from io import BytesIO
 import secrets
 from datetime import timedelta
 
@@ -11,28 +13,31 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .billing import PLANS, plan
+from .billing import BillingNotConfigured, PLANS, StripeBillingProvider, billing_provider, plan, process_stripe_event
 from .config import settings
 from .db import create_tables, get_db
 from .domain import JobState
 from .ledger import adjust, balance, finalize, grant, ledger_rows, reserve
-from .models import AbuseEvent, AuditEvent, GpuCostProfile, Job, JobArtifact, JobEvent, MediaAsset, ModelVersion, PasswordResetToken, Project, SessionToken, UsageRecord, User, VoiceConsent, VoiceProfile, now
+from .mail import mail_provider
+from .models import AbuseEvent, AuditEvent, CreditPurchase, GpuCostProfile, Job, JobArtifact, JobEvent, MediaAsset, ModelVersion, PasswordResetToken, Project, SessionToken, Subscription, UsageRecord, User, VoiceConsent, VoiceProfile, WorkerLease, now
 from .rate_limit import rate_limited
 from .providers import provider_registry
-from .schemas import AccountUpdateRequest, AbuseReportRequest, EstimateRequest, GpuProfileRequest, JobCreateRequest, LoginRequest, MediaPresignRequest, ModelVersionRequest, PasswordResetConfirmRequest, PasswordResetRequest, ProjectRequest, SignupRequest, VoiceSynthesisRequest
+from .queueing import job_queue
+from .schemas import AccountUpdateRequest, AbuseReportRequest, ArtifactTextUpdateRequest, CheckoutRequest, EstimateRequest, GpuProfileRequest, JobCreateRequest, LoginRequest, MediaPresignRequest, ModelVersionRequest, PasswordResetConfirmRequest, PasswordResetRequest, ProjectRequest, SignupRequest, VoiceSynthesisRequest
 from .security import current_user, hash_password, new_session, require_admin, revoke_session, verify_password
 from .services import asset_for_user, complete_presigned_asset, create_job, create_voice_profile, estimate_for_duration, presign_asset, serialize_artifact, serialize_asset, serialize_job, upload_asset
 from .storage import object_store
 
 
-app = FastAPI(title="LingoWave API", version="0.2.0")
-app.add_middleware(CORSMiddleware, allow_origins=[settings.frontend_origin], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-
-
-@app.on_event("startup")
-def startup() -> None:
+@asynccontextmanager
+async def lifespan(_: FastAPI):
     if settings.database_url.startswith("sqlite"):
         create_tables()
+    yield
+
+
+app = FastAPI(title="LingoWave API", version="0.2.0", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=[settings.frontend_origin], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 
 def user_payload(user: User) -> dict:
@@ -62,6 +67,76 @@ def job_states() -> list[str]:
 @app.get("/api/plans")
 def plans() -> list[dict]:
     return [p.__dict__ for p in PLANS.values()]
+
+
+@app.get("/api/billing")
+def billing_summary(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    subscriptions = db.scalars(select(Subscription).where(Subscription.user_id == user.id).order_by(Subscription.updated_at.desc())).all()
+    purchases = db.scalars(select(CreditPurchase).where(CreditPurchase.user_id == user.id).order_by(CreditPurchase.created_at.desc()).limit(20)).all()
+    return {
+        "provider": "stripe" if settings.stripe_secret_key else "disabled",
+        "checkout_enabled": bool(settings.stripe_secret_key),
+        "plan": plan(user.plan_key).__dict__,
+        "credits": balance(db, user.id),
+        "subscriptions": [{"plan": row.plan_key, "status": row.status, "current_period_end": row.current_period_end.isoformat() if row.current_period_end else None, "cancel_at_period_end": row.cancel_at_period_end} for row in subscriptions],
+        "purchases": [{"pack_key": row.pack_key, "credits": row.credits, "refunded_credits": row.refunded_credits, "status": row.status, "amount_minor": row.amount_minor, "currency": row.currency, "created_at": row.created_at.isoformat()} for row in purchases],
+    }
+
+
+@app.post("/api/billing/checkout")
+def billing_checkout(payload: CheckoutRequest, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    if payload.kind == "subscription" and payload.key not in {"creator", "pro", "studio"}:
+        raise HTTPException(status_code=422, detail="Choose a paid subscription plan")
+    if payload.kind == "credits" and payload.key not in {"starter", "growth", "scale"}:
+        raise HTTPException(status_code=422, detail="Choose a valid credit pack")
+    provider = billing_provider()
+    if not isinstance(provider, StripeBillingProvider):
+        raise HTTPException(status_code=503, detail="Billing is not configured")
+    try:
+        session = provider.create_checkout_session(db, user, kind=payload.kind, key=payload.key)
+        db.commit()
+        return {"session_id": getattr(session, "id", None) or session.get("id"), "url": getattr(session, "url", None) or session.get("url")}
+    except BillingNotConfigured as exc:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Billing is not configured") from exc
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=502, detail="Stripe could not create the checkout session") from exc
+
+
+@app.post("/api/billing/portal")
+def billing_portal(user: User = Depends(current_user)) -> dict:
+    provider = billing_provider()
+    if not isinstance(provider, StripeBillingProvider):
+        raise HTTPException(status_code=503, detail="Billing is not configured")
+    try:
+        session = provider.create_billing_portal_session(user)
+        return {"url": getattr(session, "url", None) or session.get("url")}
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Stripe could not create the billing portal session") from exc
+
+
+@app.post("/api/billing/webhook")
+async def billing_webhook(request: Request, stripe_signature: str | None = Header(default=None, alias="Stripe-Signature"), db: Session = Depends(get_db)) -> dict:
+    if not stripe_signature:
+        raise HTTPException(status_code=400, detail="Stripe-Signature header is required")
+    provider = billing_provider()
+    if not isinstance(provider, StripeBillingProvider):
+        raise HTTPException(status_code=503, detail="Billing webhook is not configured")
+    payload = await request.body()
+    try:
+        event = provider.verify_webhook(payload, stripe_signature)
+        return process_stripe_event(db, event)
+    except BillingNotConfigured as exc:
+        raise HTTPException(status_code=503, detail="Billing webhook is not configured") from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Invalid Stripe webhook") from exc
 
 
 @app.post("/api/projects")
@@ -124,6 +199,10 @@ def password_reset_request(payload: PasswordResetRequest, db: Session = Depends(
         db.add(PasswordResetToken(user_id=user.id, token_hash=hashlib.sha256(raw.encode()).hexdigest(), expires_at=now() + timedelta(minutes=30)))
         db.add(AuditEvent(user_id=user.id, event_type="auth.password_reset.requested", metadata_json="{}"))
         db.commit()
+        try:
+            mail_provider().send_password_reset(user.email, raw)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail="Password reset mail is not configured") from exc
         if settings.dev_mail_sink and settings.database_url.startswith("sqlite"):
             response["dev_token"] = raw
     return response
@@ -203,6 +282,39 @@ def credits(user: User = Depends(current_user), db: Session = Depends(get_db)) -
     return {"balance": balance(db, user.id), "plan": plan(user.plan_key).__dict__, "ledger": [{"type": row.entry_type, "credits": row.credits, "reference": row.reference_key, "created_at": row.created_at.isoformat()} for row in rows]}
 
 
+@app.get("/api/usage")
+def usage_history(user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[dict]:
+    rows = db.execute(
+        select(UsageRecord, Job.operation, Job.state, Job.actual_credits)
+        .join(Job, Job.id == UsageRecord.job_id)
+        .where(UsageRecord.user_id == user.id)
+        .order_by(UsageRecord.created_at.desc())
+        .limit(100)
+    ).all()
+    return [
+        {
+            "job_id": record.job_id,
+            "operation": operation,
+            "state": state,
+            "actual_credits": actual_credits,
+            "input_duration_seconds": record.input_duration_seconds,
+            "output_duration_seconds": record.output_duration_seconds,
+            "input_bytes": record.input_bytes,
+            "output_bytes": record.output_bytes,
+            "wall_clock_seconds": record.wall_clock_seconds,
+            "model_seconds": record.model_seconds,
+            "worker_type": record.worker_type,
+            "gpu_type": record.gpu_type,
+            "model_version": record.model_version,
+            "estimated_cost_usd": record.estimated_cost_usd,
+            "actual_cost_usd": record.actual_cost_usd,
+            "retry_count": record.retry_count,
+            "created_at": record.created_at.isoformat(),
+        }
+        for record, operation, state, actual_credits in rows
+    ]
+
+
 @app.post("/api/admin/credits/grant")
 def admin_grant(user_id: str, credits: int, reference_key: str, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
     if not db.get(User, user_id):
@@ -228,11 +340,36 @@ def admin_revoke(user_id: str, credits: int, reference_key: str, admin: User = D
 @app.get("/api/admin/metrics")
 def admin_metrics(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
     rows = db.execute(select(Job.state, func.count(Job.id)).group_by(Job.state)).all()
+    operation_rows = db.execute(select(Job.operation, Job.retry_count)).all()
+    operation_counts: dict[str, dict[str, int]] = {}
+    for operation, retry_count in operation_rows:
+        entry = operation_counts.setdefault(operation, {"jobs": 0, "retry_attempts": 0})
+        entry["jobs"] += 1
+        entry["retry_attempts"] += max(0, int(retry_count or 0) - 1)
     usage_count = db.scalar(select(func.count(UsageRecord.id))) or 0
     processed_seconds = db.scalar(select(func.coalesce(func.sum(UsageRecord.input_duration_seconds), 0))) or 0
+    processed_by_kind = db.execute(
+        select(MediaAsset.media_kind, func.coalesce(func.sum(UsageRecord.input_duration_seconds), 0))
+        .join(Job, Job.media_asset_id == MediaAsset.id)
+        .join(UsageRecord, UsageRecord.job_id == Job.id)
+        .group_by(MediaAsset.media_kind)
+    ).all()
+    processed_minutes_by_kind = {kind: float(seconds or 0) / 60 for kind, seconds in processed_by_kind}
     credits_used = db.scalar(select(func.coalesce(func.sum(Job.actual_credits), 0)).where(Job.state == JobState.COMPLETED.value)) or 0
     measured_cost = db.scalar(select(func.coalesce(func.sum(UsageRecord.actual_cost_usd), 0))) or 0
-    return {"job_counts": {state: count for state, count in rows}, "usage_records": usage_count, "processed_minutes": float(processed_seconds) / 60, "credits_used": int(credits_used), "measured_compute_cost_usd": float(measured_cost), "measured_cost_available": bool(measured_cost), "operator_id": admin.id}
+    measured_cost_records = db.scalar(select(func.count(UsageRecord.id)).where(UsageRecord.actual_cost_usd.is_not(None))) or 0
+    estimated_cost = db.scalar(select(func.coalesce(func.sum(UsageRecord.estimated_cost_usd), 0))) or 0
+    estimated_cost_records = db.scalar(select(func.count(UsageRecord.id)).where(UsageRecord.estimated_cost_usd.is_not(None))) or 0
+    operation_cost_rows = db.execute(select(Job.operation, func.sum(UsageRecord.estimated_cost_usd), func.sum(UsageRecord.actual_cost_usd)).join(UsageRecord, UsageRecord.job_id == Job.id).group_by(Job.operation)).all()
+    worker_cost_rows = db.execute(select(UsageRecord.worker_type, UsageRecord.gpu_type, func.sum(UsageRecord.estimated_cost_usd), func.sum(UsageRecord.actual_cost_usd)).group_by(UsageRecord.worker_type, UsageRecord.gpu_type)).all()
+    model_cost_rows = db.execute(select(UsageRecord.model_version, func.sum(UsageRecord.estimated_cost_usd), func.sum(UsageRecord.actual_cost_usd)).group_by(UsageRecord.model_version)).all()
+    try:
+        queue = job_queue().stats()
+    except Exception:
+        queue = {"visible": None, "in_flight": None}
+    total_processed_minutes = float(processed_seconds) / 60
+    active_workers = db.scalar(select(func.count(WorkerLease.id)).where(WorkerLease.expires_at > now())) or 0
+    return {"job_counts": {state: count for state, count in rows}, "operation_counts": operation_counts, "cost_by_tool": [{"operation": operation, "estimated_cost_usd": float(estimated or 0) if estimated is not None else None, "actual_cost_usd": float(actual or 0) if actual is not None else None} for operation, estimated, actual in operation_cost_rows], "cost_by_worker": [{"worker_type": worker_type, "gpu_type": gpu_type, "estimated_cost_usd": float(estimated or 0) if estimated is not None else None, "actual_cost_usd": float(actual or 0) if actual is not None else None} for worker_type, gpu_type, estimated, actual in worker_cost_rows], "cost_by_model": [{"model_version": model_version, "estimated_cost_usd": float(estimated or 0) if estimated is not None else None, "actual_cost_usd": float(actual or 0) if actual is not None else None} for model_version, estimated, actual in model_cost_rows], "usage_records": usage_count, "processed_minutes": total_processed_minutes, "processed_audio_minutes": processed_minutes_by_kind.get("audio", 0), "processed_video_minutes": processed_minutes_by_kind.get("video", 0), "credits_used": int(credits_used), "estimated_compute_cost_usd": float(estimated_cost), "estimated_cost_available": bool(estimated_cost_records), "measured_compute_cost_usd": float(measured_cost), "measured_cost_available": bool(measured_cost_records), "cost_per_processed_minute_usd": round(float(measured_cost) / total_processed_minutes, 6) if measured_cost_records and total_processed_minutes > 0 else None, "gross_margin_estimate_available": False, "active_workers": int(active_workers), "active_workers_available": True, "queue": queue, "operator_id": admin.id}
 
 
 @app.post("/api/admin/gpu-profiles")
@@ -270,7 +407,27 @@ def model_versions(admin: User = Depends(require_admin), db: Session = Depends(g
 @app.get("/api/admin/jobs")
 def admin_jobs(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
     jobs = db.scalars(select(Job).order_by(Job.created_at.desc()).limit(100)).all()
-    return [serialize_job(job) | {"user_id": job.user_id} for job in jobs]
+    return [serialize_job(job, include_internal_error=True) | {"user_id": job.user_id} for job in jobs]
+
+
+@app.get("/api/admin/queue")
+def admin_queue(admin: User = Depends(require_admin)):
+    try:
+        return job_queue().stats()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Queue metrics unavailable") from exc
+
+
+@app.get("/api/admin/users")
+def admin_users(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    rows = db.scalars(select(User).order_by(User.created_at.desc()).limit(200)).all()
+    return [{"id": row.id, "email": row.email, "display_name": row.display_name, "role": row.role, "plan": row.plan_key, "is_active": row.is_active, "created_at": row.created_at.isoformat()} for row in rows]
+
+
+@app.get("/api/admin/voices")
+def admin_voices(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    rows = db.scalars(select(VoiceProfile).order_by(VoiceProfile.created_at.desc()).limit(200)).all()
+    return [{"id": row.id, "user_id": row.user_id, "name": row.name, "status": row.status, "created_at": row.created_at.isoformat()} for row in rows]
 
 
 @app.get("/api/admin/audit")
@@ -311,18 +468,18 @@ def admin_disable_user(user_id: str, admin: User = Depends(require_admin), db: S
 
 
 @app.post("/api/media/upload")
-def media_upload(upload: UploadFile = File(...), user: User = Depends(current_user), db: Session = Depends(get_db)):
+def media_upload(upload: UploadFile = File(...), user: User = Depends(current_user), db: Session = Depends(get_db), _limit: None = Depends(rate_limited("media-upload", 20))):
     return serialize_asset(upload_asset(db, user, upload))
 
 
 @app.post("/api/media/presign")
-def media_presign(payload: MediaPresignRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def media_presign(payload: MediaPresignRequest, user: User = Depends(current_user), db: Session = Depends(get_db), _limit: None = Depends(rate_limited("media-presign", 20))):
     asset, url = presign_asset(db, user, payload.filename, payload.content_type, payload.size_bytes)
-    return {"asset": serialize_asset(asset), "upload_url": url, "method": "PUT", "headers": {"Content-Type": payload.content_type, "x-amz-server-side-encryption": "AES256"}}
+    return {"asset": serialize_asset(asset), "upload_url": url, "method": "PUT", "headers": {"Content-Type": payload.content_type, "x-amz-server-side-encryption": "AES256", "x-amz-tagging": "lingowave-category=media"}}
 
 
 @app.post("/api/media/{asset_id}/complete")
-def media_complete(asset_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def media_complete(asset_id: str, user: User = Depends(current_user), db: Session = Depends(get_db), _limit: None = Depends(rate_limited("media-complete", 20))):
     return serialize_asset(complete_presigned_asset(db, user, asset_id))
 
 
@@ -342,7 +499,9 @@ def media_download(asset_id: str, user: User = Depends(current_user), db: Sessio
 
 
 @app.post("/api/jobs/estimate")
-def job_estimate(payload: EstimateRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def job_estimate(payload: EstimateRequest, user: User = Depends(current_user), db: Session = Depends(get_db), _limit: None = Depends(rate_limited("job-estimate", 30))):
+    if payload.operation in {"dubbing", "subtitle_translation"} and not payload.target_language:
+        raise HTTPException(status_code=422, detail="target_language is required for this operation")
     asset = asset_for_user(db, user, payload.media_asset_id) if payload.media_asset_id else None
     if not asset and payload.operation != "tts":
         raise HTTPException(status_code=422, detail="media_asset_id is required for this operation")
@@ -354,7 +513,7 @@ def job_estimate(payload: EstimateRequest, user: User = Depends(current_user), d
 
 
 @app.post("/api/jobs")
-def jobs_create(payload: JobCreateRequest, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"), user: User = Depends(current_user), db: Session = Depends(get_db)):
+def jobs_create(payload: JobCreateRequest, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"), user: User = Depends(current_user), db: Session = Depends(get_db), _limit: None = Depends(rate_limited("job-create", 20))):
     return serialize_job(create_job(db, user, payload.model_dump(), idempotency_key))
 
 
@@ -413,6 +572,25 @@ def job_artifact_preview(job_id: str, artifact_id: str, user: User = Depends(cur
     return {"filename": artifact.filename, "text": text}
 
 
+@app.patch("/api/jobs/{job_id}/artifacts/{artifact_id}")
+def job_artifact_update(job_id: str, artifact_id: str, payload: ArtifactTextUpdateRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    artifact = db.scalar(select(JobArtifact).join(Job, Job.id == JobArtifact.job_id).where(JobArtifact.id == artifact_id, JobArtifact.job_id == job_id, Job.user_id == user.id))
+    if not artifact or not (artifact.content_type.startswith("text/") or "subrip" in artifact.content_type):
+        raise HTTPException(status_code=404, detail="Text artifact not found")
+    encoded = payload.text.encode("utf-8")
+    if len(encoded) > settings.max_upload_bytes:
+        raise HTTPException(status_code=413, detail="Text artifact is too large")
+    try:
+        size = object_store().put(artifact.object_key, BytesIO(encoded), content_type=artifact.content_type, max_bytes=settings.max_upload_bytes)
+    except (RuntimeError, OSError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail="Text artifact could not be saved") from exc
+    artifact.size_bytes = size
+    db.add(AuditEvent(user_id=user.id, event_type="artifact.text.updated", metadata_json=json.dumps({"job_id": job_id, "artifact_id": artifact_id, "size_bytes": size})))
+    db.commit()
+    db.refresh(artifact)
+    return serialize_artifact(artifact)
+
+
 @app.post("/api/admin/jobs/{job_id}/retry")
 def admin_retry_job(job_id: str, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
     job = db.get(Job, job_id)
@@ -436,6 +614,22 @@ def admin_retry_job(job_id: str, admin: User = Depends(require_admin), db: Sessi
     return serialize_job(job)
 
 
+@app.post("/api/admin/jobs/{job_id}/cancel")
+def admin_cancel_job(job_id: str, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    job = db.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.state in {JobState.COMPLETED.value, JobState.FAILED.value, JobState.CANCELLED.value}:
+        raise HTTPException(status_code=409, detail="Job is already terminal")
+    job.state = JobState.CANCELLED.value
+    job.error_code = "OPERATOR_CANCELLED"
+    job.error_message = "Cancelled by an operator"
+    finalize(db, job, job.reserved_credits)
+    db.add(JobEvent(job_id=job.id, state=job.state, message=job.error_message, metadata_json=json.dumps({"operator_id": admin.id})))
+    db.commit()
+    return serialize_job(job)
+
+
 @app.post("/api/jobs/{job_id}/cancel")
 def job_cancel(job_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     job = db.scalar(select(Job).where(Job.id == job_id, Job.user_id == user.id))
@@ -455,7 +649,7 @@ def job_cancel(job_id: str, user: User = Depends(current_user), db: Session = De
 
 
 @app.post("/api/voices")
-def voice_create(name: str = Form(...), declaration: str = Form(...), authorized: bool = Form(...), upload: UploadFile = File(...), user: User = Depends(current_user), db: Session = Depends(get_db)):
+def voice_create(name: str = Form(...), declaration: str = Form(...), authorized: bool = Form(...), upload: UploadFile = File(...), user: User = Depends(current_user), db: Session = Depends(get_db), _limit: None = Depends(rate_limited("voice-create", 10))):
     profile = create_voice_profile(db, user, name.strip(), declaration.strip(), authorized, upload)
     return {"id": profile.id, "name": profile.name, "status": profile.status, "consent_id": profile.consent_id, "created_at": profile.created_at.isoformat()}
 
@@ -487,5 +681,21 @@ def voice_revoke(voice_id: str, user: User = Depends(current_user), db: Session 
         consent.revoked_at = now()
     object_store().delete(profile.reference_object_key)
     db.add(AuditEvent(user_id=user.id, event_type="voice.consent.revoked", metadata_json=json.dumps({"voice_profile_id": profile.id, "consent_id": profile.consent_id})))
+    db.commit()
+    return {"id": profile.id, "status": profile.status, "deleted": True}
+
+
+@app.post("/api/admin/voices/{voice_id}/revoke")
+def admin_voice_revoke(voice_id: str, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    profile = db.scalar(select(VoiceProfile).where(VoiceProfile.id == voice_id, VoiceProfile.deleted_at.is_(None)))
+    if not profile:
+        raise HTTPException(status_code=404, detail="Voice profile not found")
+    profile.status = "revoked"
+    profile.deleted_at = now()
+    consent = db.get(VoiceConsent, profile.consent_id)
+    if consent:
+        consent.revoked_at = now()
+    object_store().delete(profile.reference_object_key)
+    db.add(AuditEvent(user_id=admin.id, event_type="voice.consent.revoked_by_operator", metadata_json=json.dumps({"voice_profile_id": profile.id, "owner_id": profile.user_id})))
     db.commit()
     return {"id": profile.id, "status": profile.status, "deleted": True}

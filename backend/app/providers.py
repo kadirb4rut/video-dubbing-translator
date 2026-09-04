@@ -26,13 +26,17 @@ class TranslationProvider(Protocol):
 class VoiceProvider(Protocol):
     name: str
 
-    def synthesize(self, text: str, *, reference_voice: Path, language: str, output_path: Path) -> Path: ...
+    def synthesize(self, text: str, *, reference_voice: Path | None, language: str, output_path: Path) -> Path: ...
 
 
-class StemSeparator(Protocol):
+class StemSeparationProvider(Protocol):
     name: str
 
     def separate(self, audio_path: Path, *, stems: int, output_dir: Path) -> dict[str, Path]: ...
+
+
+# Compatibility alias for callers that used the shorter pre-production name.
+StemSeparator = StemSeparationProvider
 
 
 class NoiseRemovalProvider(Protocol):
@@ -47,6 +51,12 @@ class LipSyncProvider(Protocol):
     def sync(self, video_path: Path, audio_path: Path, *, output_path: Path) -> Path: ...
 
 
+class SpeakerDiarizationProvider(Protocol):
+    name: str
+
+    def diarize(self, audio_path: Path) -> Sequence[dict]: ...
+
+
 def provider_registry() -> dict[str, str]:
     """Production provider names are configuration, so model swaps do not change job orchestration."""
     return {
@@ -55,5 +65,6 @@ def provider_registry() -> dict[str, str]:
         "voice": "chatterbox-multilingual-v3",
         "stem_separation": "demucs",
         "noise_removal": "deepfilternet",
-        "lip_sync": "latentsync-optional",
+        "speaker_diarization": "single-speaker-default; external diarization adapter not enabled",
+        "lip_sync": "disabled-until-commercial-provider-is-configured",
     }

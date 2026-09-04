@@ -30,6 +30,13 @@ class LocalQueue:
     def delete(self, message: JobMessage) -> None:
         _local_queue.task_done()
 
+    def change_visibility(self, message: JobMessage, timeout: int) -> None:
+        # The in-process queue has no visibility lease to extend.
+        return None
+
+    def stats(self) -> dict[str, int]:
+        return {"visible": _local_queue.qsize(), "in_flight": 0}
+
 
 class SQSQueue:
     def __init__(self):
@@ -48,7 +55,7 @@ class SQSQueue:
         self.client.send_message(**params)
 
     def receive(self, timeout: float = 0.25) -> JobMessage | None:
-        response = self.client.receive_message(QueueUrl=self.url, MaxNumberOfMessages=1, WaitTimeSeconds=min(20, max(0, int(timeout))), VisibilityTimeout=900)
+        response = self.client.receive_message(QueueUrl=self.url, MaxNumberOfMessages=1, WaitTimeSeconds=min(20, max(0, int(timeout))), VisibilityTimeout=settings.sqs_visibility_timeout_seconds)
         messages = response.get("Messages", [])
         if not messages:
             return None
@@ -58,6 +65,14 @@ class SQSQueue:
     def delete(self, message: JobMessage) -> None:
         if message.receipt_handle:
             self.client.delete_message(QueueUrl=self.url, ReceiptHandle=message.receipt_handle)
+
+    def change_visibility(self, message: JobMessage, timeout: int) -> None:
+        if message.receipt_handle:
+            self.client.change_message_visibility(QueueUrl=self.url, ReceiptHandle=message.receipt_handle, VisibilityTimeout=timeout)
+
+    def stats(self) -> dict[str, int]:
+        attributes = self.client.get_queue_attributes(QueueUrl=self.url, AttributeNames=["ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible"])["Attributes"]
+        return {"visible": int(attributes.get("ApproximateNumberOfMessages", 0)), "in_flight": int(attributes.get("ApproximateNumberOfMessagesNotVisible", 0))}
 
 
 def job_queue():

@@ -1,0 +1,52 @@
+name: GPU provider benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      media_fixture:
+        description: "Path to a legal media fixture available on the runner"
+        required: true
+        type: string
+      voice_reference:
+        description: "Path to an authorized voice reference available on the runner"
+        required: false
+        type: string
+
+jobs:
+  benchmark:
+    # This workflow is intentionally manual and requires an organization-managed
+    # runner with the GPU/model caches approved for the deployment.
+    runs-on: [self-hosted, gpu]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r backend/requirements.worker-gpu.txt
+      - name: Run provider benchmark
+        env:
+          PYTHONPATH: backend
+        run: >-
+          python scripts/benchmarks/benchmark_providers.py
+          "${{ inputs.media_fixture }}"
+          ${{ inputs.voice_reference && format('--voice-reference "{0}"', inputs.voice_reference) || '' }}
+          --output provider-benchmark.json
+      - name: Run complete dubbing benchmark
+        if: ${{ inputs.voice_reference != '' }}
+        env:
+          PYTHONPATH: backend
+        run: >-
+          python scripts/benchmarks/benchmark_dubbing.py
+          "${{ inputs.media_fixture }}"
+          --reference-voice "${{ inputs.voice_reference }}"
+          --output dubbed-benchmark.mp4
+          --json dubbed-benchmark.json
+      - name: Upload machine-readable results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: provider-benchmark
+          path: |
+            provider-benchmark.json
+            dubbed-benchmark.json
+            dubbed-benchmark.mp4

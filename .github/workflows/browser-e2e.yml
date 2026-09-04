@@ -1,0 +1,41 @@
+name: Browser acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      frontend_url:
+        description: "Deployed or externally started frontend URL"
+        required: true
+        type: string
+      gpu_enabled:
+        description: "Run real media/provider acceptance tests (requires an authorized GPU worker)"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  browser-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm run test:e2e
+        working-directory: frontend
+        env:
+          E2E_FRONTEND_URL: ${{ inputs.frontend_url }}
+          E2E_GPU_ENABLED: ${{ inputs.gpu_enabled }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-e2e-report
+          path: |
+            frontend/playwright-report
+            frontend/test-results

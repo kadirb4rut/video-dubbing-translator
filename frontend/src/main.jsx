@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { AuthView, RealAppShell } from './real-shell';
+import { apiFetch } from './api';
 
 const languages = ['Spanish', 'French', 'German', 'Portuguese', 'Japanese', 'Turkish'];
 const toolItems = [
@@ -47,7 +49,7 @@ function PublicSite({ onStart }) {
     <nav className="public-nav page-width">
       <button className="brand-button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}><WaveMark /><span>Lingo<span>Wave</span></span></button>
       <div className="nav-links"><a href="#product">Product</a><a href="#tools">Tools</a><a href="#pricing">Pricing</a><a href="#safety">Safety</a></div>
-      <div className="nav-actions"><button className="link-button" onClick={onStart}>Log in</button><Button onClick={onStart}>Start creating</Button></div>
+      <div className="nav-actions"><button className="link-button" onClick={onStart}>Log in</button><Button variant="dark" onClick={onStart}>Start creating</Button></div>
     </nav>
     <main>
       <section className="hero page-width" id="product">
@@ -56,7 +58,7 @@ function PublicSite({ onStart }) {
         <div className="wave-ribbons" aria-hidden="true"><span /><span /><span /><span /></div>
       </section>
       <section className="tool-strip page-width" id="tools">{[['video','Video Translator','Translate and dub videos while preserving your voice, tone, and background sound.'],['voice','Voice Studio','Clone, enhance, and guide your voice for consistent results across languages.'],['stems','Stem Splitter','Separate voice, music, and effects into clean stems for total control.'],['noise','Noise Remover','Remove background noise and room tone for crisp, studio-quality audio.']].map(([icon,title,copy]) => <div className="tool-item" key={title}><div className={`tool-icon ${icon}`}><Icon name={icon} size={25} /></div><div><h3>{title}</h3><p>{copy}</p></div></div>)}</section>
-      <section className="preserve-section page-width"><div><h2>Keep the soul<br />of your sound.</h2><p>LingoWave translates and dubs your videos while preserving the performance, voice, and background sound that make your content yours.</p><div className="check-list"><span><Icon name="check" size={16} />Preserve the original voice and emotion</span><span><Icon name="check" size={16} />Keep music, ambience, and effects intact</span><span><Icon name="check" size={16} />Natural lip sync and timing in every language</span></div></div><div className="sound-art"><div className="sound-wave" /><div className="sound-bars">{Array.from({ length: 18 }, (_, i) => <i key={i} style={{ height: `${22 + ((i * 17) % 54)}%` }} />)}</div></div></section>
+      <section className="preserve-section page-width"><div><h2>Keep the soul<br />of your sound.</h2><p>LingoWave translates and dubs your videos while preserving the performance, voice, and background sound that make your content yours.</p><div className="check-list"><span><Icon name="check" size={16} />Preserve the original voice and emotion</span><span><Icon name="check" size={16} />Keep music, ambience, and effects intact</span><span><Icon name="check" size={16} />Keep translated timing aligned to the source</span></div></div><div className="sound-art"><div className="sound-wave" /><div className="sound-bars">{Array.from({ length: 18 }, (_, i) => <i key={i} style={{ height: `${22 + ((i * 17) % 54)}%` }} />)}</div></div></section>
       <section className="pricing-section page-width" id="pricing"><div className="pricing-copy"><h2>Simple, transparent pricing</h2><p>Choose the plan that fits your workflow.</p><div className="plan-row">{[['Creator','$19'],['Pro','$49'],['Studio','$129']].map(([name,price], i) => <div className={`plan ${i === 1 ? 'featured' : ''}`} key={name}>{i === 1 && <span className="popular">Most popular</span>}<h3>{name}</h3><strong>{price}<small>/mo</small></strong><p>Billed monthly</p><button onClick={onStart}>Get started</button></div>)}</div></div><div className="faq" id="safety"><h2>FAQ</h2>{['How does voice preservation work?','Which video formats are supported?','How accurate are the translations?','Is my content safe and private?'].map(q => <button className="faq-row" key={q}>{q}<span>⌄</span></button>)}<button className="text-action">View all FAQs <Icon name="arrow" size={17} /></button></div></section>
     </main>
   </div>;
@@ -68,6 +70,20 @@ function HeroPreview() {
 
 function Toggle({ checked, onChange, label, premium = false }) { return <label className="toggle-row"><span>{label}{premium && <em>Premium</em>}</span><input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} /><i /></label>; }
 
-function App() { const [view, setView] = useState('public'); const [user, setUser] = useState(null); return view === 'public' ? <PublicSite onStart={() => setView('auth')} /> : view === 'auth' ? <AuthView onBack={() => setView('public')} onAuthenticated={result => { setUser(result.user); setView('app'); }} /> : <RealAppShell initialUser={user} onExit={() => { setUser(null); setView('public'); }} />; }
+function App() {
+  const [view, setView] = useState('public');
+  const [user, setUser] = useState(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    apiFetch('/api/auth/me')
+      .then(result => { setUser(result.user); setView('app'); })
+      .catch(() => {})
+      .finally(() => setCheckingSession(false));
+  }, []);
+
+  if (checkingSession) return <div className="auth-page"><div className="auth-card"><button className="brand-button">Lingo<span>Wave</span></button><p>Restoring your workspace…</p></div></div>;
+  return view === 'public' ? <PublicSite onStart={() => setView('auth')} /> : view === 'auth' ? <AuthView onBack={() => setView('public')} onAuthenticated={result => { setUser(result.user); setView('app'); }} /> : <RealAppShell initialUser={user} onExit={() => { setUser(null); setView('public'); }} />;
+}
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><App /></React.StrictMode>);

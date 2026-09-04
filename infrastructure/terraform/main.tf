@@ -32,6 +32,16 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "media" {
     }
   }
 }
+resource "aws_s3_bucket_cors_configuration" "media" {
+  bucket = aws_s3_bucket.media.id
+  cors_rule {
+    allowed_methods = ["GET", "HEAD", "PUT"]
+    allowed_origins = [var.frontend_origin]
+    allowed_headers = ["*"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 900
+  }
+}
 resource "aws_s3_bucket_lifecycle_configuration" "media" {
   bucket = aws_s3_bucket.media.id
   rule {
@@ -52,7 +62,33 @@ resource "aws_s3_bucket_lifecycle_configuration" "media" {
       }
     }
     expiration {
-      days = 30
+      days = var.media_retention_days
+    }
+  }
+  rule {
+    id     = "expire-source-media"
+    status = "Enabled"
+    filter {
+      tag {
+        key   = "lingowave-category"
+        value = "media"
+      }
+    }
+    expiration {
+      days = var.media_retention_days
+    }
+  }
+  rule {
+    id     = "expire-voice-references"
+    status = "Enabled"
+    filter {
+      tag {
+        key   = "lingowave-category"
+        value = "voices"
+      }
+    }
+    expiration {
+      days = var.media_retention_days
     }
   }
 }
@@ -63,7 +99,7 @@ resource "aws_sqs_queue" "dlq" {
 }
 resource "aws_sqs_queue" "jobs" {
   name                       = "${var.name}-jobs"
-  visibility_timeout_seconds = 900
+  visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
   redrive_policy             = jsonencode({ deadLetterTargetArn = aws_sqs_queue.dlq.arn, maxReceiveCount = 3 })
 }
 
@@ -95,16 +131,45 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
   role       = aws_iam_role.ecs_task_execution.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
+resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
+  count = length(concat(values(var.worker_secrets), values(var.api_secrets))) > 0 ? 1 : 0
+  role  = aws_iam_role.ecs_task_execution.id
+  policy = jsonencode({ Version = "2012-10-17", Statement = [{
+    Effect   = "Allow"
+    Action   = ["secretsmanager:GetSecretValue"]
+    Resource = distinct(concat(values(var.worker_secrets), values(var.api_secrets)))
+  }] })
+}
 resource "aws_iam_role" "ecs_task_worker" {
   name               = "${var.name}-ecs-task"
   assume_role_policy = jsonencode({ Version = "2012-10-17", Statement = [{ Effect = "Allow", Principal = { Service = "ecs-tasks.amazonaws.com" }, Action = "sts:AssumeRole" }] })
 }
 resource "aws_iam_role_policy" "ecs_task_worker" {
   role = aws_iam_role.ecs_task_worker.id
-  policy = jsonencode({ Version = "2012-10-17", Statement = [
-    { Effect = "Allow", Action = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes", "sqs:ChangeMessageVisibility"], Resource = aws_sqs_queue.jobs.arn },
+  policy = jsonencode({ Version = "2012-10-17", Statement = concat([
+    { Effect = "Allow", Action = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes", "sqs:ChangeMessageVisibility", "sqs:SendMessage"], Resource = aws_sqs_queue.jobs.arn },
     { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:PutObjectTagging", "s3:DeleteObject"], Resource = "${aws_s3_bucket.media.arn}/*" }
-  ] })
+  ], var.translation_provider == "aws-translate" ? [{ Effect = "Allow", Action = ["translate:TranslateText"], Resource = "*" }] : []) })
+}
+
+resource "aws_iam_role" "ecs_task_api" {
+  count              = var.api_image != "" ? 1 : 0
+  name               = "${var.name}-ecs-api-task"
+  assume_role_policy = jsonencode({ Version = "2012-10-17", Statement = [{ Effect = "Allow", Principal = { Service = "ecs-tasks.amazonaws.com" }, Action = "sts:AssumeRole" }] })
+}
+
+resource "aws_iam_role_policy" "ecs_task_api" {
+  count = var.api_image != "" ? 1 : 0
+  role  = aws_iam_role.ecs_task_api[0].id
+  policy = jsonencode({ Version = "2012-10-17", Statement = concat([
+    { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:PutObjectTagging", "s3:DeleteObject"], Resource = "${aws_s3_bucket.media.arn}/*" },
+    { Effect = "Allow", Action = ["sqs:SendMessage", "sqs:GetQueueAttributes"], Resource = aws_sqs_queue.jobs.arn }
+  ], var.mail_provider == "ses" ? [{ Effect = "Allow", Action = ["ses:SendEmail"], Resource = "*" }] : []) })
+}
+
+resource "aws_cloudwatch_log_group" "worker" {
+  name              = "/ecs/${var.name}/worker"
+  retention_in_days = 30
 }
 
 resource "aws_launch_template" "gpu_worker" {
@@ -114,15 +179,22 @@ resource "aws_launch_template" "gpu_worker" {
   iam_instance_profile {
     name = aws_iam_instance_profile.worker.name
   }
-  vpc_security_group_ids = [var.worker_security_group_id]
-  user_data              = base64encode("#!/bin/bash\necho ECS_CLUSTER=${aws_ecs_cluster.workers.name} >> /etc/ecs/ecs.config\n")
+  vpc_security_group_ids = [local.effective_worker_security_group_id]
+  user_data = base64encode(<<-EOT
+    #!/bin/bash
+    set -eu
+    echo ECS_CLUSTER=${aws_ecs_cluster.workers.name} >> /etc/ecs/ecs.config
+    # Reuse model downloads across ECS task replacements while this GPU host lives.
+    install -d -m 1777 /var/lib/lingowave/model-cache
+  EOT
+  )
 }
 resource "aws_autoscaling_group" "gpu_worker" {
   name                = "${var.name}-gpu-workers"
   min_size            = 0
   max_size            = 10
   desired_capacity    = 0
-  vpc_zone_identifier = var.worker_subnet_ids
+  vpc_zone_identifier = local.effective_worker_subnet_ids
   launch_template {
     id      = aws_launch_template.gpu_worker.id
     version = "$Latest"
@@ -131,6 +203,21 @@ resource "aws_autoscaling_group" "gpu_worker" {
     key                 = "Name"
     value               = "${var.name}-gpu-worker"
     propagate_at_launch = true
+  }
+  tag {
+    key                 = "AmazonECSManaged"
+    value               = "true"
+    propagate_at_launch = false
+  }
+  lifecycle {
+    precondition {
+      condition     = length(local.effective_worker_subnet_ids) > 0
+      error_message = "Provide worker_subnet_ids when create_network is false."
+    }
+    precondition {
+      condition     = local.effective_worker_security_group_id != ""
+      error_message = "Provide worker_security_group_id when create_network is false."
+    }
   }
 }
 resource "aws_ecs_capacity_provider" "gpu" {
@@ -153,12 +240,53 @@ resource "aws_ecs_cluster_capacity_providers" "workers" {
 resource "aws_ecs_task_definition" "worker" {
   family                   = "${var.name}-worker"
   requires_compatibilities = ["EC2"]
-  network_mode             = "awsvpc"
-  cpu                      = "4096"
-  memory                   = "15360"
-  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
-  task_role_arn            = aws_iam_role.ecs_task_worker.arn
-  container_definitions    = jsonencode([{ name = "worker", image = var.worker_image, essential = true, command = ["python", "-m", "app.worker"], resourceRequirements = [{ type = "GPU", value = "1" }], environment = [{ name = "SQS_QUEUE_URL", value = aws_sqs_queue.jobs.url }, { name = "S3_BUCKET", value = aws_s3_bucket.media.bucket }, { name = "STORAGE_BACKEND", value = "s3" }] }])
+  # GPU workers run on ECS/EC2 hosts. Host networking lets the task use the
+  # host's public-subnet egress without an unsupported public IP on an EC2
+  # task ENI. The worker exposes no inbound ports; the host security group
+  # remains egress-only.
+  network_mode       = "host"
+  cpu                = "4096"
+  memory             = "15360"
+  execution_role_arn = aws_iam_role.ecs_task_execution.arn
+  task_role_arn      = aws_iam_role.ecs_task_worker.arn
+  container_definitions = jsonencode([{
+    name      = "worker"
+    image     = var.worker_image
+    essential = true
+    command   = ["python", "-m", "app.worker"]
+    resourceRequirements = [{
+      type  = "GPU"
+      value = "1"
+    }]
+    environment = [
+      { name = "SQS_QUEUE_URL", value = aws_sqs_queue.jobs.url },
+      { name = "SQS_VISIBILITY_TIMEOUT_SECONDS", value = tostring(var.sqs_visibility_timeout_seconds) },
+      { name = "S3_BUCKET", value = aws_s3_bucket.media.bucket },
+      { name = "STORAGE_BACKEND", value = "s3" },
+      { name = "AWS_REGION", value = var.aws_region },
+      { name = "TRANSLATION_PROVIDER", value = var.translation_provider },
+      { name = "WORKER_TYPE", value = "aws-gpu" },
+      { name = "XDG_CACHE_HOME", value = "/home/lingowave/.cache" },
+    ]
+    secrets = [for name, value_from in var.worker_secrets : { name = name, valueFrom = value_from }]
+    mountPoints = [{
+      sourceVolume  = "model-cache"
+      containerPath = "/home/lingowave/.cache"
+      readOnly      = false
+    }]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = aws_cloudwatch_log_group.worker.name
+        "awslogs-region"        = var.aws_region
+        "awslogs-stream-prefix" = "worker"
+      }
+    }
+  }])
+  volume {
+    name      = "model-cache"
+    host_path = "/var/lib/lingowave/model-cache"
+  }
 }
 resource "aws_ecs_service" "worker" {
   name            = "${var.name}-worker"
@@ -169,12 +297,141 @@ resource "aws_ecs_service" "worker" {
     capacity_provider = aws_ecs_capacity_provider.gpu.name
     weight            = 1
   }
+  depends_on = [aws_ecs_cluster_capacity_providers.workers]
+}
+
+resource "aws_cloudwatch_log_group" "api" {
+  count             = var.api_image != "" ? 1 : 0
+  name              = "/ecs/${var.name}/api"
+  retention_in_days = 30
+}
+
+resource "aws_ecs_cluster" "api" {
+  count = var.api_image != "" ? 1 : 0
+  name  = "${var.name}-api"
+}
+
+resource "aws_lb" "api" {
+  count              = var.api_image != "" ? 1 : 0
+  name               = substr("${var.name}-api", 0, 32)
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [local.effective_load_balancer_security_group_id]
+  subnets            = local.effective_api_subnet_ids
+}
+
+resource "aws_lb_target_group" "api" {
+  count       = var.api_image != "" ? 1 : 0
+  name        = substr("${var.name}-api", 0, 32)
+  port        = 8000
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = local.effective_vpc_id
+
+  health_check {
+    enabled             = true
+    path                = "/health"
+    protocol            = "HTTP"
+    matcher             = "200"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+  }
+}
+
+resource "aws_lb_listener" "api" {
+  count             = var.api_image != "" ? 1 : 0
+  load_balancer_arn = aws_lb.api[0].arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type = var.api_certificate_arn != "" ? "redirect" : "forward"
+    dynamic "redirect" {
+      for_each = var.api_certificate_arn != "" ? [1] : []
+      content {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+    dynamic "forward" {
+      for_each = var.api_certificate_arn == "" ? [1] : []
+      content {
+        target_group {
+          arn = aws_lb_target_group.api[0].arn
+        }
+      }
+    }
+  }
+}
+
+resource "aws_lb_listener" "api_tls" {
+  count             = var.api_image != "" && var.api_certificate_arn != "" ? 1 : 0
+  load_balancer_arn = aws_lb.api[0].arn
+  port              = 443
+  protocol          = "HTTPS"
+  certificate_arn   = var.api_certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.api[0].arn
+  }
+}
+
+resource "aws_ecs_task_definition" "api" {
+  count                    = var.api_image != "" ? 1 : 0
+  family                   = "${var.name}-api"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = "1024"
+  memory                   = "2048"
+  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task_api[0].arn
+  container_definitions    = jsonencode([{ name = "api", image = var.api_image, essential = true, command = ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"], portMappings = [{ containerPort = 8000, protocol = "tcp" }], environment = [{ name = "S3_BUCKET", value = aws_s3_bucket.media.bucket }, { name = "STORAGE_BACKEND", value = "s3" }, { name = "AWS_REGION", value = var.aws_region }, { name = "S3_PRESIGN_ENDPOINT_URL", value = "https://s3.${var.aws_region}.amazonaws.com" }, { name = "SQS_QUEUE_URL", value = aws_sqs_queue.jobs.url }, { name = "FRONTEND_ORIGIN", value = var.frontend_origin }, { name = "COOKIE_SECURE", value = "true" }, { name = "SQS_VISIBILITY_TIMEOUT_SECONDS", value = tostring(var.sqs_visibility_timeout_seconds) }, { name = "MAIL_PROVIDER", value = var.mail_provider }, { name = "MAIL_FROM", value = var.mail_from }], secrets = [for name, value_from in var.api_secrets : { name = name, valueFrom = value_from }], logConfiguration = { logDriver = "awslogs", options = { "awslogs-group" = aws_cloudwatch_log_group.api[0].name, "awslogs-region" = var.aws_region, "awslogs-stream-prefix" = "api" } } }])
+
+  lifecycle {
+    precondition {
+      condition     = contains(keys(var.api_secrets), "DATABASE_URL")
+      error_message = "api_secrets must include DATABASE_URL when api_image is set."
+    }
+    precondition {
+      condition     = var.api_certificate_arn != "" || var.frontend_enabled
+      error_message = "Provide api_certificate_arn or enable the shared CloudFront HTTPS frontend distribution when api_image is set."
+    }
+    precondition {
+      condition     = length(local.effective_api_subnet_ids) >= 2
+      error_message = "The API service and load balancer require at least two API subnets."
+    }
+    precondition {
+      condition     = local.effective_api_security_group_id != "" && local.effective_load_balancer_security_group_id != ""
+      error_message = "API and load balancer security groups must be supplied or created by Terraform."
+    }
+  }
+}
+
+resource "aws_ecs_service" "api" {
+  count           = var.api_image != "" ? 1 : 0
+  name            = "${var.name}-api"
+  cluster         = aws_ecs_cluster.api[0].id
+  task_definition = aws_ecs_task_definition.api[0].arn
+  desired_count   = var.api_desired_count
+  launch_type     = "FARGATE"
+
   network_configuration {
-    subnets          = var.worker_subnet_ids
-    security_groups  = [var.worker_security_group_id]
+    subnets          = local.effective_api_subnet_ids
+    security_groups  = [local.effective_api_security_group_id]
     assign_public_ip = true
   }
-  depends_on = [aws_ecs_cluster_capacity_providers.workers]
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.api[0].arn
+    container_name   = "api"
+    container_port   = 8000
+  }
+
+  depends_on = [aws_lb_listener.api, aws_lb_listener.api_tls]
 }
 resource "aws_appautoscaling_target" "worker" {
   max_capacity       = 10
@@ -183,33 +440,89 @@ resource "aws_appautoscaling_target" "worker" {
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }
-resource "aws_appautoscaling_policy" "worker_queue" {
-  name               = "${var.name}-queue-depth"
-  policy_type        = "TargetTrackingScaling"
+resource "aws_appautoscaling_policy" "worker_scale_out" {
+  name               = "${var.name}-queue-scale-out"
+  policy_type        = "StepScaling"
   resource_id        = aws_appautoscaling_target.worker.resource_id
   scalable_dimension = aws_appautoscaling_target.worker.scalable_dimension
   service_namespace  = aws_appautoscaling_target.worker.service_namespace
-  target_tracking_scaling_policy_configuration {
-    target_value       = 1
-    scale_in_cooldown  = 300
-    scale_out_cooldown = 60
-    customized_metric_specification {
-      namespace   = "AWS/SQS"
-      metric_name = "ApproximateNumberOfMessagesVisible"
-      statistic   = "Average"
-      unit        = "Count"
-      dimensions {
-        name  = "QueueName"
-        value = aws_sqs_queue.jobs.name
-      }
+  step_scaling_policy_configuration {
+    adjustment_type         = "ChangeInCapacity"
+    cooldown                = 60
+    metric_aggregation_type = "Maximum"
+    step_adjustment {
+      metric_interval_lower_bound = 0
+      metric_interval_upper_bound = 4
+      scaling_adjustment          = 1
     }
+    step_adjustment {
+      metric_interval_lower_bound = 4
+      scaling_adjustment          = 2
+    }
+  }
+}
+
+resource "aws_appautoscaling_policy" "worker_scale_in" {
+  name               = "${var.name}-queue-scale-in"
+  policy_type        = "StepScaling"
+  resource_id        = aws_appautoscaling_target.worker.resource_id
+  scalable_dimension = aws_appautoscaling_target.worker.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.worker.service_namespace
+  step_scaling_policy_configuration {
+    adjustment_type         = "ChangeInCapacity"
+    cooldown                = 300
+    metric_aggregation_type = "Maximum"
+    step_adjustment {
+      metric_interval_upper_bound = 0
+      scaling_adjustment          = -10
+    }
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "worker_queue_nonempty" {
+  alarm_name          = "${var.name}-queue-nonempty"
+  alarm_description   = "Scale ECS worker tasks out when jobs are visible in SQS."
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  statistic           = "Maximum"
+  period              = 60
+  evaluation_periods  = 2
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  threshold           = 1
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_appautoscaling_policy.worker_scale_out.arn]
+  dimensions = {
+    QueueName = aws_sqs_queue.jobs.name
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "worker_queue_empty" {
+  alarm_name          = "${var.name}-queue-empty"
+  alarm_description   = "Scale ECS worker tasks in after the queue has been empty."
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  statistic           = "Maximum"
+  period              = 60
+  evaluation_periods  = 15
+  comparison_operator = "LessThanThreshold"
+  threshold           = 1
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_appautoscaling_policy.worker_scale_in.arn]
+  dimensions = {
+    QueueName = aws_sqs_queue.jobs.name
   }
 }
 
 resource "aws_db_subnet_group" "postgres" {
   count      = var.enable_rds ? 1 : 0
   name       = "${var.name}-postgres"
-  subnet_ids = var.database_subnet_ids
+  subnet_ids = local.effective_database_subnet_ids
+  lifecycle {
+    precondition {
+      condition     = length(local.effective_database_subnet_ids) > 0
+      error_message = "Provide database_subnet_ids when RDS is enabled and create_network is false."
+    }
+  }
 }
 resource "aws_db_instance" "postgres" {
   count                     = var.enable_rds ? 1 : 0
@@ -222,8 +535,17 @@ resource "aws_db_instance" "postgres" {
   username                  = var.database_username
   password                  = var.database_password
   db_subnet_group_name      = aws_db_subnet_group.postgres[0].name
-  vpc_security_group_ids    = [var.database_security_group_id]
+  vpc_security_group_ids    = [local.effective_database_security_group_id]
   storage_encrypted         = true
   skip_final_snapshot       = false
   final_snapshot_identifier = "${var.name}-final"
+  lifecycle {
+    # The generated password is stored in Secrets Manager and should not be
+    # rotated implicitly by routine Terraform plans.
+    ignore_changes = [password]
+    precondition {
+      condition     = local.effective_database_security_group_id != ""
+      error_message = "Provide database_security_group_id when RDS is enabled and create_network is false."
+    }
+  }
 }

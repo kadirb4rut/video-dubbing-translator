@@ -6,11 +6,11 @@ The existing `Video_Translator.py` and local `web_gui.py` remain available for l
 
 ## Provider boundary
 
-The API submits an immutable job spec. Workers resolve configured implementations through the provider protocols in `backend/app/providers.py` and the real adapters in `backend/app/providers_real.py`: Whisper transcription, configured translation, Chatterbox Multilingual voice synthesis, Demucs stems, DeepFilterNet enhancement, and optional lip sync.
+The API submits an immutable job spec. Workers resolve configured implementations through the provider protocols in `backend/app/providers.py` and the real adapters in `backend/app/providers_real.py`: Whisper transcription, configured translation, Chatterbox Multilingual V3 voice synthesis, Demucs stems, and DeepFilterNet enhancement. Dubbing places generated clips inside their available timing windows, applies at most the configured `DUBBING_MAX_SPEEDUP`, pads shorter clips, and fails loudly when safe timing cannot be maintained. DeepFilterNet is the production/default noise path; a constrained development environment may opt into the explicit FFmpeg `afftdn` fallback with `NOISE_REMOVAL_FALLBACK=ffmpeg-afftdn`, which does not claim ML enhancement. Chatterbox's built-in provenance watermark is preserved; the application has no watermark-removal path. Lip sync is deliberately exposed as an unavailable capability until a commercially cleared, configured provider is installed; requests are rejected before credit reservation.
 
 ## Billing boundary
 
-Credits are an auditable ledger, not a mutable balance supplied by the browser. A job reserves the server-side estimate, finalizes only after output creation, and releases the reservation on provider or infrastructure failure. Payment-provider integration is intentionally outside this milestone; plan and entitlement state remains an internal abstraction.
+Credits are an auditable ledger, not a mutable balance supplied by the browser. A job reserves the server-side estimate, finalizes only after output creation, and releases the reservation on provider or infrastructure failure. Stripe hosted Checkout handles subscriptions and one-time credit packs, while the customer portal handles subscription management. Raw-body webhook verification, provider-event idempotency, and ledger reference idempotency protect the payment boundary; checkout stays disabled until deployment secrets and price IDs are supplied.
 
 ## Commercial readiness checklist
 
@@ -18,8 +18,9 @@ Credits are an auditable ledger, not a mutable balance supplied by the browser. 
 - Audit Whisper/WhisperX, Demucs code and checkpoints, noise-removal checkpoints, LatentSync, FFmpeg distribution, fonts, and icon assets.
 - Store consent records and deletion events for reference voices.
 - Enforce upload MIME/size validation and safe subprocess argument arrays.
-- Add rate limits, abuse reporting, public-figure protections, and private signed downloads before launch.
+- Keep database-backed rate limits, abuse reporting, public-figure review policy, and private signed downloads enabled before launch; automated identity verification is intentionally outside the current credential boundary.
+- Keep worker telemetry honest: output duration, model time, provider/model version, retry count, input/output bytes, and wall-clock time are recorded. Estimated and actual compute cost remain null until a measured GPU profile matches the worker; expiring worker leases provide the active-worker count without inferring it from queue depth.
 
 ## Verification boundary
 
-The local API, ledger, media inspection, job lifecycle, artifact delivery, consent records, and tool shell are covered by automated tests and browser smoke checks. Provider execution still requires the worker images, model weights, a configured translation service, and representative GPU capacity; until those are provisioned, benchmark output remains explicitly skipped and development cost profiles remain unmeasured.
+The local API, ledger, media inspection, job lifecycle, artifact delivery, consent records, rate-limit persistence, billing webhook accounting, and tool shell are covered by automated tests and browser smoke checks. The current checkout has measured Chatterbox CPU, Whisper, and Demucs provider runs, plus API-level transcription and four-stem acceptance against real model outputs. Real API/worker dubbing and standalone voice acceptance also completed in the strongest local multi-runtime harness using real Whisper, Demucs, Chatterbox, FFmpeg, secure consented references, and a segment-preserving translation contract test; they produced and downloaded validated media, but are not cloud deployment evidence. The available local runtime is still missing native `libdf`, so DeepFilterNet remains blocked there; the worker reports that dependency failure by default, while the explicit `NOISE_REMOVAL_FALLBACK=ffmpeg-afftdn` path is available for constrained development and is not ML evidence. Cloud production acceptance still requires eligible GPU capacity, and development cost profiles remain unmeasured until a real GPU profile is recorded.

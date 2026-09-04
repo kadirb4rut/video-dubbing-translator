@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any
-
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -27,6 +25,7 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(120), default="")
     role: Mapped[str] = mapped_column(String(32), default="user")
     plan_key: Mapped[str] = mapped_column(String(32), default="free")
+    stripe_customer_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -163,6 +162,56 @@ class CreditReservation(Base):
     finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+    __table_args__ = (UniqueConstraint("provider_subscription_id", name="uq_subscription_provider_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(32), default="stripe")
+    provider_customer_id: Mapped[str] = mapped_column(String(255), index=True)
+    provider_subscription_id: Mapped[str] = mapped_column(String(255))
+    price_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    plan_key: Mapped[str] = mapped_column(String(32), default="free")
+    status: Mapped[str] = mapped_column(String(32), default="incomplete")
+    current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancel_at_period_end: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class CreditPurchase(Base):
+    __tablename__ = "credit_purchases"
+    __table_args__ = (UniqueConstraint("provider_checkout_session_id", name="uq_purchase_checkout_session"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(32), default="stripe")
+    provider_checkout_session_id: Mapped[str] = mapped_column(String(255))
+    provider_payment_intent_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    pack_key: Mapped[str] = mapped_column(String(64))
+    credits: Mapped[int] = mapped_column(Integer)
+    amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), default="pending")
+    refunded_credits: Mapped[int] = mapped_column(Integer, default=0)
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class BillingEvent(Base):
+    __tablename__ = "billing_events"
+    __table_args__ = (UniqueConstraint("provider_event_id", name="uq_billing_provider_event"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    provider: Mapped[str] = mapped_column(String(32), default="stripe")
+    provider_event_id: Mapped[str] = mapped_column(String(255))
+    event_type: Mapped[str] = mapped_column(String(120))
+    object_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class VoiceProfile(Base):
     __tablename__ = "voice_profiles"
 
@@ -194,10 +243,14 @@ class UsageRecord(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), unique=True)
     input_duration_seconds: Mapped[float | None] = mapped_column(nullable=True)
+    output_duration_seconds: Mapped[float | None] = mapped_column(nullable=True)
+    input_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     wall_clock_seconds: Mapped[float | None] = mapped_column(nullable=True)
     model_seconds: Mapped[float | None] = mapped_column(nullable=True)
     worker_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
     gpu_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    model_version: Mapped[str | None] = mapped_column(String(160), nullable=True)
     estimated_cost_usd: Mapped[float | None] = mapped_column(nullable=True)
     actual_cost_usd: Mapped[float | None] = mapped_column(nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -240,6 +293,18 @@ class PasswordResetToken(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class RateLimitBucket(Base):
+    __tablename__ = "rate_limit_buckets"
+    __table_args__ = (UniqueConstraint("bucket", "key", "window_start", name="uq_rate_limit_bucket_window"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    bucket: Mapped[str] = mapped_column(String(80), index=True)
+    key: Mapped[str] = mapped_column(String(320), index=True)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    request_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class ModelVersion(Base):
     __tablename__ = "model_versions"
 
@@ -269,3 +334,14 @@ class GpuCostProfile(Base):
     measured: Mapped[bool] = mapped_column(default=False)
     metadata_json: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class WorkerLease(Base):
+    __tablename__ = "worker_leases"
+
+    id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    worker_type: Mapped[str] = mapped_column(String(80))
+    gpu_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)

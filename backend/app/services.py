@@ -13,9 +13,9 @@ from sqlalchemy.orm import Session
 from .billing import plan
 from .config import cost_profiles, settings
 from .domain import JobState
-from .ledger import balance, grant, release, reserve
+from .ledger import balance, release, reserve
 from .media import inspect_media, validate_upload
-from .models import AuditEvent, CreditLedgerEntry, Job, JobArtifact, JobEvent, MediaAsset, Project, User, VoiceConsent, VoiceProfile, now
+from .models import AuditEvent, Job, JobArtifact, JobEvent, MediaAsset, Project, User, VoiceConsent, VoiceProfile, now
 from .queueing import JobMessage, job_queue
 from .storage import object_key, object_store
 
@@ -33,6 +33,8 @@ def _credit_rate(operation: str) -> float:
 def estimate_for_duration(duration_seconds: float, operation: str, *, lip_sync: bool = False, quality: str = "balanced") -> int:
     if duration_seconds <= 0:
         raise HTTPException(status_code=422, detail="Media duration must be positive")
+    if lip_sync and operation == "dubbing":
+        raise HTTPException(status_code=503, detail="Lip sync is not enabled in this deployment")
     multiplier = {"draft": 0.75, "balanced": 1.0, "studio": 1.25}.get(quality, 1.0)
     minutes = duration_seconds / 60
     total = minutes * _credit_rate(operation) * multiplier
@@ -49,6 +51,13 @@ def add_job_event(db: Session, job: Job, state: str, message: str, metadata: dic
 
 def asset_for_user(db: Session, user: User, asset_id: str) -> MediaAsset:
     asset = db.scalar(select(MediaAsset).where(MediaAsset.id == asset_id, MediaAsset.user_id == user.id, MediaAsset.deleted_at.is_(None), MediaAsset.status == "ready"))
+    if not asset:
+        raise HTTPException(status_code=404, detail="Media asset not found")
+    return asset
+
+
+def pending_asset_for_user(db: Session, user: User, asset_id: str) -> MediaAsset:
+    asset = db.scalar(select(MediaAsset).where(MediaAsset.id == asset_id, MediaAsset.user_id == user.id, MediaAsset.deleted_at.is_(None)))
     if not asset:
         raise HTTPException(status_code=404, detail="Media asset not found")
     return asset
@@ -103,7 +112,7 @@ def presign_asset(db: Session, user: User, filename: str, content_type: str, siz
     db.commit()
     db.refresh(asset)
     try:
-        url = presigned_put(key, content_type=content_type)
+        url = presigned_put(key, content_type=content_type, size_bytes=size_bytes)
     except Exception as exc:
         db.delete(asset)
         db.commit()
@@ -112,16 +121,21 @@ def presign_asset(db: Session, user: User, filename: str, content_type: str, siz
 
 
 def complete_presigned_asset(db: Session, user: User, asset_id: str) -> MediaAsset:
-    asset = asset_for_user(db, user, asset_id)
+    asset = pending_asset_for_user(db, user, asset_id)
     if asset.status != "pending":
         return asset
     store = object_store()
     try:
+        head = getattr(store, "head", None)
+        if head:
+            remote = head(asset.object_key)
+            if int(remote.get("ContentLength", -1)) != asset.size_bytes:
+                raise ValueError("Uploaded object size does not match the presigned request")
         with tempfile.NamedTemporaryFile(suffix=Path(asset.original_filename).suffix, delete=False) as temp:
             temp_path = Path(temp.name)
         try:
             store.download(asset.object_key, temp_path)
-            if temp_path.stat().st_size != asset.size_bytes:
+            if not head and temp_path.stat().st_size != asset.size_bytes:
                 raise ValueError("Uploaded object size does not match the presigned request")
             metadata = inspect_media(temp_path)
         finally:
@@ -152,6 +166,14 @@ def create_job(db: Session, user: User, payload: dict, header_idempotency_key: s
     if active_jobs >= min(settings.max_jobs_per_user, plan(user.plan_key).max_concurrent_jobs):
         raise HTTPException(status_code=429, detail="Concurrent job limit reached")
     operation = payload.get("operation", "dubbing")
+    if operation in {"dubbing", "subtitle_translation"} and not payload.get("target_language"):
+        raise HTTPException(status_code=422, detail="target_language is required for this operation")
+    if payload.get("lip_sync") and operation == "dubbing":
+        raise HTTPException(status_code=503, detail="Lip sync is not enabled in this deployment")
+    if operation == "dubbing" and payload.get("preserve_voice", True) and not payload.get("voice_profile_id"):
+        raise HTTPException(status_code=422, detail="A consented voice profile is required when preserve_voice is enabled")
+    if operation == "tts" and not payload.get("voice_profile_id"):
+        raise HTTPException(status_code=422, detail="A consented voice profile is required for voice synthesis")
     asset = None
     if payload.get("media_asset_id"):
         asset = asset_for_user(db, user, payload["media_asset_id"])
@@ -227,8 +249,14 @@ def serialize_asset(asset: MediaAsset) -> dict:
     return {"id": asset.id, "filename": asset.original_filename, "mime_type": asset.mime_type, "size_bytes": asset.size_bytes, "duration_seconds": asset.duration_seconds, "width": asset.width, "height": asset.height, "fps": asset.fps, "media_kind": asset.media_kind, "status": asset.status, "created_at": asset.created_at.isoformat()}
 
 
-def serialize_job(job: Job) -> dict:
-    return {"id": job.id, "operation": job.operation, "state": job.state, "estimate_credits": job.estimate_credits, "reserved_credits": job.reserved_credits, "actual_credits": job.actual_credits, "output_object_key": job.output_object_key, "error_code": job.error_code, "error_message": job.error_message, "created_at": job.created_at.isoformat(), "updated_at": job.updated_at.isoformat(), "completed_at": job.completed_at.isoformat() if job.completed_at else None}
+def serialize_job(job: Job, *, include_internal_error: bool = False) -> dict:
+    public_error = {
+        "PROVIDER_FAILURE": "A configured media provider could not complete this job. Please retry or contact support.",
+        "WORKER_FAILURE": "The media worker could not complete this job. Please retry.",
+        "WORKER_LEASE_EXHAUSTED": "The media worker stopped responding. Please retry.",
+        "QUEUE_UNAVAILABLE": "The job queue is temporarily unavailable. Please retry shortly.",
+    }.get(job.error_code, job.error_message)
+    return {"id": job.id, "project_id": job.project_id, "operation": job.operation, "state": job.state, "estimate_credits": job.estimate_credits, "reserved_credits": job.reserved_credits, "actual_credits": job.actual_credits, "output_object_key": job.output_object_key, "error_code": job.error_code, "error_message": job.error_message if include_internal_error else public_error, "created_at": job.created_at.isoformat(), "updated_at": job.updated_at.isoformat(), "completed_at": job.completed_at.isoformat() if job.completed_at else None}
 
 
 def serialize_artifact(artifact: JobArtifact) -> dict:

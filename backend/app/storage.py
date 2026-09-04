@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import mimetypes
 import secrets
 from pathlib import Path
 from typing import BinaryIO, Protocol
@@ -60,6 +59,9 @@ class S3ObjectStore:
             raise RuntimeError("S3_BUCKET is required for S3 storage")
         self.bucket = settings.s3_bucket
         self.client = boto3.client("s3", region_name=settings.s3_region, endpoint_url=settings.s3_endpoint_url)
+        self.presign_client = self.client if not settings.s3_presign_endpoint_url else boto3.client(
+            "s3", region_name=settings.s3_region, endpoint_url=settings.s3_presign_endpoint_url
+        )
 
     def path(self, object_key: str) -> Path:
         raise RuntimeError("S3 objects do not have local paths")
@@ -75,9 +77,13 @@ class S3ObjectStore:
                     raise ValueError("File exceeds the configured upload limit")
                 temp.write(chunk)
             temp.flush()
-            category = object_key.split("/")[2] if object_key.startswith("users/") and len(object_key.split("/")) > 2 else "unknown"
-            self.client.upload_file(temp.name, self.bucket, object_key, ExtraArgs={"ContentType": content_type, "ServerSideEncryption": "AES256", "Tagging": f"lingowave-category={category}"})
+            self.client.upload_file(temp.name, self.bucket, object_key, ExtraArgs={"ContentType": content_type, "ServerSideEncryption": "AES256", "Tagging": f"lingowave-category={self._category(object_key)}"})
             return size
+
+    @staticmethod
+    def _category(object_key: str) -> str:
+        parts = object_key.split("/")
+        return parts[2] if object_key.startswith("users/") and len(parts) > 2 else "unknown"
 
     def delete(self, object_key: str) -> None:
         self.client.delete_object(Bucket=self.bucket, Key=object_key)
@@ -87,10 +93,15 @@ class S3ObjectStore:
         self.client.download_file(self.bucket, object_key, str(destination))
 
     def presigned_get(self, object_key: str, expires: int = 900) -> str:
-        return self.client.generate_presigned_url("get_object", Params={"Bucket": self.bucket, "Key": object_key}, ExpiresIn=expires)
+        client = getattr(self, "presign_client", self.client)
+        return client.generate_presigned_url("get_object", Params={"Bucket": self.bucket, "Key": object_key}, ExpiresIn=expires)
 
-    def presigned_put(self, object_key: str, *, content_type: str, expires: int = 900) -> str:
-        return self.client.generate_presigned_url("put_object", Params={"Bucket": self.bucket, "Key": object_key, "ContentType": content_type, "ServerSideEncryption": "AES256"}, ExpiresIn=expires, HttpMethod="PUT")
+    def presigned_put(self, object_key: str, *, content_type: str, size_bytes: int | None = None, expires: int = 900) -> str:
+        client = getattr(self, "presign_client", self.client)
+        params = {"Bucket": self.bucket, "Key": object_key, "ContentType": content_type, "ServerSideEncryption": "AES256", "Tagging": f"lingowave-category={self._category(object_key)}"}
+        if size_bytes is not None:
+            params["ContentLength"] = size_bytes
+        return client.generate_presigned_url("put_object", Params=params, ExpiresIn=expires, HttpMethod="PUT")
 
     def head(self, object_key: str) -> dict:
         return self.client.head_object(Bucket=self.bucket, Key=object_key)

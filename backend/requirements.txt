@@ -9,3 +9,4 @@ python-multipart>=0.0.9,<1
 pwdlib[argon2]>=0.2,<1
 boto3>=1.35,<2
 httpx>=0.27,<1
+stripe>=12,<14

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -26,7 +28,7 @@ class JobCreateRequest(BaseModel):
     quality: str = Field(default="balanced", pattern="^(draft|balanced|studio)$")
     voice_profile_id: str | None = None
     text: str | None = Field(default=None, max_length=20_000)
-    stems: int = Field(default=4, ge=2, le=4)
+    stems: Literal[2, 4] = 4
     idempotency_key: str | None = Field(default=None, max_length=128)
 
 
@@ -57,6 +59,11 @@ class PasswordResetConfirmRequest(BaseModel):
     password: str = Field(min_length=12, max_length=256)
 
 
+class CheckoutRequest(BaseModel):
+    kind: Literal["subscription", "credits"]
+    key: str = Field(min_length=1, max_length=64)
+
+
 class AbuseReportRequest(BaseModel):
     event_type: str = Field(default="abuse_report", max_length=64)
     target_type: str | None = Field(default=None, max_length=32)
@@ -75,15 +82,19 @@ class MediaPresignRequest(BaseModel):
     size_bytes: int = Field(gt=0)
 
 
+class ArtifactTextUpdateRequest(BaseModel):
+    text: str = Field(max_length=2_000_000)
+
+
 class GpuProfileRequest(BaseModel):
     provider: str = Field(max_length=80)
     gpu_type: str = Field(max_length=80)
     region: str = Field(max_length=40)
     pricing_mode: str = Field(max_length=24)
-    hourly_price_usd: float | None = None
-    startup_seconds: float | None = None
-    model_load_seconds: float | None = None
-    processed_minutes_per_hour: float | None = None
+    hourly_price_usd: float | None = Field(default=None, ge=0)
+    startup_seconds: float | None = Field(default=None, ge=0)
+    model_load_seconds: float | None = Field(default=None, ge=0)
+    processed_minutes_per_hour: float | None = Field(default=None, ge=0)
     measured: bool = False
     metadata: dict = Field(default_factory=dict)
 

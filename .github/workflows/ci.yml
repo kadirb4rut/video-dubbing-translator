@@ -12,8 +12,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: pip install -r backend/requirements.txt
+      - run: pip install ruff bandit
+      - run: ruff check backend/app backend/tests scripts
+      - run: bandit -q -r backend/app --severity-level medium
       - run: PYTHONPATH=backend pytest -q backend/tests
+      - run: python -m compileall -q backend/app backend/tests scripts
+      - run: DATABASE_URL=sqlite:////tmp/lingowave-ci.db PYTHONPATH=. alembic upgrade head
+        working-directory: backend
   frontend:
     runs-on: ubuntu-latest
     steps:
@@ -27,6 +34,12 @@ jobs:
         working-directory: frontend
       - run: npm run build
         working-directory: frontend
+      - run: if grep -R 'localhost:8000' dist/assets; then echo 'Production bundle must use same-origin API routing.'; exit 1; fi
+        working-directory: frontend
+      - run: docker compose config
+        working-directory: .
+      - run: docker build --file backend/Dockerfile --tag lingowave-api:ci .
+      - run: docker build --file backend/Dockerfile.worker --build-arg WORKER_REQUIREMENTS=requirements.worker-cpu.txt --tag lingowave-worker-cpu:ci .
   infrastructure:
     runs-on: ubuntu-latest
     steps:

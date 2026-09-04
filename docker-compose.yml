@@ -45,7 +45,7 @@ services:
     depends_on:
       - localstack
     entrypoint: ["/bin/sh", "-c"]
-    command: ["until aws --endpoint-url http://localstack:4566 sqs create-queue --queue-name lingowave-jobs >/dev/null 2>&1; do sleep 1; done"]
+    command: ["until aws --endpoint-url http://localstack:4566 sqs create-queue --queue-name lingowave-jobs-dlq >/dev/null 2>&1 && aws --endpoint-url http://localstack:4566 sqs create-queue --queue-name lingowave-jobs --attributes 'RedrivePolicy={\"deadLetterTargetArn\":\"arn:aws:sqs:eu-central-1:000000000000:lingowave-jobs-dlq\",\"maxReceiveCount\":\"3\"}' >/dev/null 2>&1; do sleep 1; done"]
   api:
     build:
       context: .
@@ -56,8 +56,10 @@ services:
       STORAGE_BACKEND: s3
       S3_BUCKET: lingowave
       S3_ENDPOINT_URL: http://minio:9000
+      S3_PRESIGN_ENDPOINT_URL: http://localhost:9000
       SQS_QUEUE_URL: http://localstack:4566/000000000000/lingowave-jobs
       SQS_ENDPOINT_URL: http://localstack:4566
+      SQS_VISIBILITY_TIMEOUT_SECONDS: 3600
       AWS_ACCESS_KEY_ID: lingowave
       AWS_SECRET_ACCESS_KEY: lingowave-local-only
       AWS_REGION: eu-central-1
@@ -75,6 +77,8 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile.worker
+      args:
+        WORKER_REQUIREMENTS: requirements.worker-gpu.txt
     environment:
       DATABASE_URL: postgresql+psycopg://lingowave:lingowave-local-only@postgres:5432/lingowave
       STORAGE_BACKEND: s3
@@ -82,9 +86,12 @@ services:
       S3_ENDPOINT_URL: http://minio:9000
       SQS_QUEUE_URL: http://localstack:4566/000000000000/lingowave-jobs
       SQS_ENDPOINT_URL: http://localstack:4566
+      SQS_VISIBILITY_TIMEOUT_SECONDS: 3600
       AWS_ACCESS_KEY_ID: lingowave
       AWS_SECRET_ACCESS_KEY: lingowave-local-only
       AWS_REGION: eu-central-1
+      CHATTERBOX_DEVICE: cpu
+      WORKER_TYPE: local-ml
     depends_on:
       api:
         condition: service_started

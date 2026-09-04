@@ -27,9 +27,13 @@ third_party/LatentSync/
 # Frontend dependencies and build output
 frontend/node_modules/
 frontend/dist/
+frontend/playwright-report/
+frontend/test-results/
 backend/.pytest_cache/
 data/
 infrastructure/terraform/.terraform/
+infrastructure/terraform/terraform.tfstate
+infrastructure/terraform/terraform.tfstate.*
 
 # Large downloaded model weights
 vocal-remover/models/*.pth

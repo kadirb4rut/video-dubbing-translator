@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import mimetypes
-import os
 import subprocess
 from pathlib import Path
 
@@ -59,10 +58,22 @@ def inspect_media(path: Path) -> dict:
     }
 
 
-def validate_output(path: Path, expected_kind: str, *, minimum_duration_seconds: float = 0.01) -> dict:
+def validate_output(
+    path: Path,
+    expected_kind: str,
+    *,
+    minimum_duration_seconds: float = 0.01,
+    expected_duration_seconds: float | None = None,
+    duration_tolerance_seconds: float = 1.5,
+) -> dict:
     metadata = inspect_media(path)
     if metadata["media_kind"] != expected_kind:
         raise ValueError(f"Expected {expected_kind} output, got {metadata['media_kind']}")
     if metadata["duration_seconds"] < minimum_duration_seconds:
         raise ValueError("Output media has no usable duration")
+    if expected_duration_seconds is not None and abs(metadata["duration_seconds"] - expected_duration_seconds) > duration_tolerance_seconds:
+        raise ValueError(
+            f"Output duration {metadata['duration_seconds']:.2f}s is outside the expected "
+            f"{expected_duration_seconds:.2f}s ± {duration_tolerance_seconds:.2f}s"
+        )
     return metadata

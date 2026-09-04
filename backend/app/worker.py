@@ -2,26 +2,49 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
+import socket
 import subprocess
 import tempfile
+import threading
 import time
+import uuid
 import zipfile
 from contextlib import contextmanager
 from datetime import timedelta
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .db import SessionLocal
+from .config import settings
 from .domain import JobState
 from .ledger import finalize, release
-from .media import validate_output
-from .models import Job, JobArtifact, JobEvent, JobStageMetric, MediaAsset, UsageRecord, VoiceProfile, now
-from .providers_real import ChatterboxMultilingualVoiceProvider, DeepFilterNetNoiseProvider, DemucsStemSeparationProvider, ProviderUnavailable, WhisperTranscriptionProvider, translation_provider, write_srt, write_txt, write_vtt
+from .media import inspect_media, validate_output
+from .mail import mail_provider
+from .models import GpuCostProfile, Job, JobArtifact, JobEvent, JobStageMetric, MediaAsset, UsageRecord, User, VoiceProfile, WorkerLease, now
+from .providers_real import ChatterboxMultilingualVoiceProvider, DeepFilterNetNoiseProvider, DemucsStemSeparationProvider, ProviderUnavailable, WhisperTranscriptionProvider, translation_provider, validate_segments, write_srt, write_txt, write_vtt
 from .queueing import JobMessage, job_queue
 from .storage import object_key, object_store
+
+
+logger = logging.getLogger("lingowave.worker")
+
+
+RECOVERABLE_WORKER_STATES = (
+    JobState.PROVISIONING.value,
+    JobState.DOWNLOADING.value,
+    JobState.SEPARATING_AUDIO.value,
+    JobState.TRANSCRIBING.value,
+    JobState.TRANSLATING.value,
+    JobState.SYNTHESIZING.value,
+    JobState.MIXING.value,
+    JobState.LIP_SYNCING.value,
+    JobState.UPLOADING.value,
+)
+MAX_DUBBING_SPEEDUP = float(os.getenv("DUBBING_MAX_SPEEDUP", "1.6"))
 
 
 class JobWorker:
@@ -30,6 +53,43 @@ class JobWorker:
         self.worker_type = os.getenv("WORKER_TYPE", "cpu-audio")
         self.gpu_type = os.getenv("GPU_TYPE") or None
         self.max_retries = int(os.getenv("JOB_MAX_RETRIES", "3"))
+        self.lease_seconds = int(os.getenv("WORKER_LEASE_SECONDS", "900"))
+        self.worker_id = os.getenv("WORKER_ID") or f"{socket.gethostname()}-{uuid.uuid4().hex[:12]}"
+        self._requeued_job_ids: set[str] = set()
+        self._active_message: JobMessage | None = None
+
+    def _touch_lease(self, db: Session) -> None:
+        lease = db.get(WorkerLease, self.worker_id)
+        if not lease:
+            lease = WorkerLease(id=self.worker_id, worker_type=self.worker_type, gpu_type=self.gpu_type, started_at=now())
+            db.add(lease)
+        lease.worker_type = self.worker_type
+        lease.gpu_type = self.gpu_type
+        lease.heartbeat_at = now()
+        lease.expires_at = now() + timedelta(seconds=self.lease_seconds)
+
+    def _heartbeat(self, db: Session) -> None:
+        self._touch_lease(db)
+        db.commit()
+
+    def _start_lease_heartbeat(self) -> tuple[threading.Event, threading.Thread]:
+        stop = threading.Event()
+        interval = max(5, min(60, self.lease_seconds // 3, max(5, settings.sqs_visibility_timeout_seconds // 3)))
+        active_message = self._active_message
+
+        def loop() -> None:
+            while not stop.wait(interval):
+                try:
+                    with SessionLocal() as heartbeat_db:
+                        self._heartbeat(heartbeat_db)
+                    if active_message and active_message.receipt_handle:
+                        self.queue.change_visibility(active_message, settings.sqs_visibility_timeout_seconds)
+                except Exception:
+                    logger.exception("worker lease or queue visibility heartbeat failed", extra={"worker_id": self.worker_id})
+
+        thread = threading.Thread(target=loop, name=f"lingowave-lease-{self.worker_id}", daemon=True)
+        thread.start()
+        return stop, thread
 
     def _claim(self, db: Session, message: JobMessage | None = None) -> Job | None:
         if message:
@@ -46,7 +106,7 @@ class JobWorker:
 
     def _recover_stale(self, db: Session) -> None:
         cutoff = now() - timedelta(minutes=int(os.getenv("JOB_STALE_MINUTES", "30")))
-        stale = db.scalars(select(Job).where(Job.state == JobState.PROVISIONING.value, Job.updated_at < cutoff)).all()
+        stale = db.scalars(select(Job).where(Job.state.in_(RECOVERABLE_WORKER_STATES), Job.updated_at < cutoff)).all()
         for job in stale:
             if (job.retry_count or 0) < self.max_retries:
                 job.state = JobState.QUEUED.value
@@ -64,8 +124,30 @@ class JobWorker:
     def _event(self, db: Session, job: Job, state: str, message: str, metadata: dict | None = None) -> None:
         job.state = state
         job.updated_at = now()
+        self._touch_lease(db)
         db.add(JobEvent(job_id=job.id, state=state, message=message, metadata_json=json.dumps(metadata or {})))
         db.commit()
+
+    def _ack_if_settled(self, message: JobMessage | None, job_id: str) -> None:
+        """Delete a queue message only after processing settled or requeued the job.
+
+        Leaving an active message unacknowledged lets SQS redeliver it after the
+        visibility timeout if the worker dies between claim and completion. The
+        stale-lease reconciler handles the case where the redelivery sees the
+        job still in an active state.
+        """
+        if not message:
+            return
+        with SessionLocal() as db:
+            job = db.get(Job, job_id)
+            terminal = {JobState.COMPLETED.value, JobState.FAILED.value, JobState.CANCELLED.value}
+            if not job or job.state in terminal or job_id in self._requeued_job_ids:
+                self.queue.delete(message)
+                self._requeued_job_ids.discard(job_id)
+            elif message.receipt_handle is None:
+                # LocalQueue removes an item on receive, so put an active job
+                # back when processing exits unexpectedly before it settles.
+                self.queue.send(message)
 
     @contextmanager
     def _stage(self, db: Session, job: Job, state: str, message: str, metadata: dict | None = None):
@@ -105,9 +187,10 @@ class JobWorker:
             job.output_object_key = key
         return artifact
 
-    def _transcribe(self, audio: Path, output_dir: Path, language: str | None) -> tuple[list[dict], dict[str, Path]]:
-        segments = list(WhisperTranscriptionProvider().transcribe(audio, language=language))
-        return segments, {"srt": write_srt(segments, output_dir / "transcript.srt"), "vtt": write_vtt(segments, output_dir / "transcript.vtt"), "txt": write_txt(segments, output_dir / "transcript.txt")}
+    def _transcribe(self, audio: Path, output_dir: Path, language: str | None) -> tuple[list[dict], dict[str, Path], str | None]:
+        provider = WhisperTranscriptionProvider()
+        segments = list(provider.transcribe(audio, language=language))
+        return segments, {"srt": write_srt(segments, output_dir / "transcript.srt"), "vtt": write_vtt(segments, output_dir / "transcript.vtt"), "txt": write_txt(segments, output_dir / "transcript.txt")}, provider.detected_language
 
     def _stems(self, audio: Path, output: Path, stem_count: int) -> tuple[Path, dict[str, Path]]:
         stems = DemucsStemSeparationProvider().separate(audio, stems=stem_count, output_dir=output.parent / "demucs")
@@ -151,13 +234,18 @@ class JobWorker:
         background = None
         if options.get("keep_background", True):
             with self._stage(db, job, JobState.SEPARATING_AUDIO.value, "Separating background audio with Demucs"):
-                background = DemucsStemSeparationProvider().separate(audio, stems=2, output_dir=work / "background")["no_vocals"]
+                background = DemucsStemSeparationProvider().separate(audio, stems=2, output_dir=work / "background")["instrumental"]
         with self._stage(db, job, JobState.TRANSCRIBING.value, "Transcribing source speech"):
-            segments = list(WhisperTranscriptionProvider().transcribe(audio, language=source_language))
+            transcriber = WhisperTranscriptionProvider()
+            segments = validate_segments(list(transcriber.transcribe(audio, language=source_language)))
+            if transcriber.detected_language:
+                source_language = source_language or transcriber.detected_language
+                db.add(JobEvent(job_id=job.id, state=JobState.TRANSCRIBING.value, message="Source language detected", metadata_json=json.dumps({"language": transcriber.detected_language})))
         with self._stage(db, job, JobState.TRANSLATING.value, "Translating subtitle segments"):
-            segments = list(translation_provider().translate(segments, source=source_language or "auto", target=target_language))
+            segments = validate_segments(list(translation_provider().translate(segments, source=source_language or "auto", target=target_language)))
+        source_duration = inspect_media(source)["duration_seconds"]
         with self._stage(db, job, JobState.SYNTHESIZING.value, "Synthesizing translated speech with Chatterbox Multilingual"):
-            reference = self._reference(db, job, work)
+            reference = self._reference(db, job, work) if options.get("preserve_voice", True) else None
             clips: list[Path] = []
             for index, segment in enumerate(segments):
                 clip = work / f"segment-{index:04d}.wav"
@@ -169,29 +257,91 @@ class JobWorker:
         filters: list[str] = []
         for index, clip in enumerate(clips):
             inputs.extend(["-i", str(clip)])
-            delay = max(0, round(float(segments[index]["start"]) * 1000))
-            filters.append(f"[{index}:a]adelay={delay}|{delay},apad[a{index}]")
+            start = max(0.0, float(segments[index]["start"]))
+            next_start = float(segments[index + 1]["start"]) if index + 1 < len(segments) else source_duration
+            window_seconds = max(0.05, min(source_duration, max(start + 0.05, next_start)) - start)
+            clip_duration = inspect_media(clip)["duration_seconds"]
+            speedup = clip_duration / window_seconds
+            if speedup > MAX_DUBBING_SPEEDUP:
+                raise ProviderUnavailable(
+                    f"Translated segment {index + 1} is too long for its timing window; "
+                    f"required speed-up {speedup:.2f}x exceeds the configured {MAX_DUBBING_SPEEDUP:.2f}x limit"
+                )
+            audio_chain: list[str] = []
+            if speedup > 1.01:
+                audio_chain.append(f"atempo={speedup:.6f}")
+            delay = round(start * 1000)
+            audio_chain.extend(["apad", f"atrim=duration={window_seconds:.3f}", "asetpts=PTS-STARTPTS", f"adelay={delay}|{delay}"])
+            filters.append(f"[{index}:a]" + ",".join(audio_chain) + f"[a{index}]")
         mix_inputs = "".join(f"[a{index}]" for index in range(len(clips)))
         filters.append(f"{mix_inputs}amix=inputs={len(clips)}:duration=longest:normalize=0[dub]")
         dubbed_audio = work / "dubbed.wav"
         with self._stage(db, job, JobState.MIXING.value, "Mixing translated speech"):
-            self._ffmpeg([*inputs, "-filter_complex", ";".join(filters), "-map", "[dub]", "-ar", "48000", str(dubbed_audio)])
+            self._ffmpeg([*inputs, "-filter_complex", ";".join(filters), "-map", "[dub]", "-ar", "48000", "-t", f"{source_duration:.3f}", str(dubbed_audio)])
             if background:
                 mixed_audio = work / "mixed.wav"
-                self._ffmpeg(["-i", str(background), "-i", str(dubbed_audio), "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=first:normalize=0[mix]", "-map", "[mix]", "-ar", "48000", str(mixed_audio)])
+                self._ffmpeg(["-i", str(background), "-i", str(dubbed_audio), "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=first:normalize=0[mix]", "-map", "[mix]", "-ar", "48000", "-t", f"{source_duration:.3f}", str(mixed_audio)])
                 dubbed_audio = mixed_audio
-            self._ffmpeg(["-i", str(source), "-i", str(dubbed_audio), "-map", "0:v?", "-map", "1:a", "-c:v", "copy", "-shortest", str(output)])
-        validate_output(output, "video")
+            self._ffmpeg(["-i", str(source), "-i", str(dubbed_audio), "-map", "0:v?", "-map", "1:a", "-c:v", "copy", "-t", f"{source_duration:.3f}", str(output)])
+        validate_output(output, "video", expected_duration_seconds=source_duration)
         return output
 
-    def _record_usage(self, db: Session, job: Job, duration: float | None, started: float) -> None:
+    def _model_version(self, operation: str) -> str:
+        return {
+            "dubbing": "whisper+demucs+chatterbox-multilingual-v3",
+            "transcription": "whisper",
+            "subtitle_translation": "whisper+configured-translation-api",
+            "stems": "demucs",
+            "noise": "deepfilternet",
+            "tts": "chatterbox-multilingual-v3",
+        }.get(operation, "unknown")
+
+    def _measured_costs(self, db: Session, duration: float | None, wall_clock_seconds: float) -> tuple[float | None, float | None]:
+        if not self.gpu_type:
+            return None, None
+        profile = db.scalar(
+            select(GpuCostProfile)
+            .where(GpuCostProfile.gpu_type == self.gpu_type, GpuCostProfile.region == settings.s3_region, GpuCostProfile.measured.is_(True))
+            .order_by(GpuCostProfile.created_at.desc())
+        )
+        if not profile or profile.hourly_price_usd is None or profile.hourly_price_usd <= 0:
+            return None, None
+        actual = (wall_clock_seconds / 3600) * profile.hourly_price_usd
+        if duration and profile.processed_minutes_per_hour and profile.processed_minutes_per_hour > 0:
+            processing_seconds = (duration / 60) / profile.processed_minutes_per_hour * 3600
+            startup_seconds = (profile.startup_seconds or 0) + (profile.model_load_seconds or 0)
+            estimated = ((processing_seconds + startup_seconds) / 3600) * profile.hourly_price_usd
+        else:
+            estimated = actual
+        return round(estimated, 6), round(actual, 6)
+
+    def _record_usage(self, db: Session, job: Job, duration: float | None, output_duration: float | None, started: float, *, input_bytes: int | None, output_bytes: int) -> None:
         record = db.scalar(select(UsageRecord).where(UsageRecord.job_id == job.id))
-        values = {"user_id": job.user_id, "job_id": job.id, "input_duration_seconds": duration, "wall_clock_seconds": time.monotonic() - started, "worker_type": self.worker_type, "gpu_type": self.gpu_type, "retry_count": max(0, (job.retry_count or 1) - 1)}
+        attempt_wall_clock = time.monotonic() - started
+        total_wall_clock = (record.wall_clock_seconds if record else 0) + attempt_wall_clock
+        estimated_cost, actual_cost = self._measured_costs(db, duration, total_wall_clock)
+        model_seconds = db.scalar(
+            select(func.coalesce(func.sum(JobStageMetric.wall_clock_seconds), 0))
+            .where(
+                JobStageMetric.job_id == job.id,
+                JobStageMetric.stage.in_({JobState.SEPARATING_AUDIO.value, JobState.TRANSCRIBING.value, JobState.TRANSLATING.value, JobState.SYNTHESIZING.value, JobState.MIXING.value}),
+            )
+        ) or 0
+        values = {"user_id": job.user_id, "job_id": job.id, "input_duration_seconds": duration, "output_duration_seconds": output_duration, "input_bytes": input_bytes, "output_bytes": output_bytes, "wall_clock_seconds": total_wall_clock, "model_seconds": float(model_seconds), "worker_type": self.worker_type, "gpu_type": self.gpu_type, "model_version": self._model_version(job.operation), "estimated_cost_usd": estimated_cost, "actual_cost_usd": actual_cost, "retry_count": max(0, (job.retry_count or 1) - 1)}
         if record:
             for key, value in values.items():
                 setattr(record, key, value)
         else:
             db.add(UsageRecord(**values))
+
+    def _notify_job(self, db: Session, job: Job, state: str) -> None:
+        user = db.get(User, job.user_id)
+        if not user:
+            return
+        try:
+            mail_provider().send_job_update(user.email, job_id=job.id, operation=job.operation, state=state)
+        except Exception:
+            logger.exception("job notification failed", extra={"job_id": job.id, "state": state})
 
     def process(self, job_id: str) -> None:
         started = time.monotonic()
@@ -201,23 +351,33 @@ class JobWorker:
             db.close()
             return
         asset = db.get(MediaAsset, job.media_asset_id) if job.media_asset_id else None
+        heartbeat_stop, heartbeat_thread = self._start_lease_heartbeat()
         try:
             with tempfile.TemporaryDirectory(prefix=f"lingowave-{job.id}-") as temp:
                 work = Path(temp)
                 options = json.loads(job.options_json)
                 operation = job.operation
                 artifacts: list[tuple[Path, str, str]] = []
+                output_bytes = 0
+                output_duration: float | None = None
                 source = audio = None
                 if asset:
                     with self._stage(db, job, JobState.DOWNLOADING.value, "Downloading source media"):
                         source = self._download(asset, work)
-                    audio = self._extract_audio(source, work / "source.wav")
+                    # Keep the derived audio path distinct from the original
+                    # filename. An uploaded audio asset may itself be named
+                    # source.wav; using that same path would make ffmpeg fail
+                    # with an input/output collision.
+                    audio = self._extract_audio(source, work / "extracted-audio.wav")
                 if operation in {"transcription", "subtitle_translation"}:
                     with self._stage(db, job, JobState.TRANSCRIBING.value, "Transcribing source audio"):
-                        segments, outputs = self._transcribe(audio, work, options.get("source_language"))
+                        segments, outputs, detected_language = self._transcribe(audio, work, options.get("source_language"))
+                        if detected_language:
+                            db.add(JobEvent(job_id=job.id, state=JobState.TRANSCRIBING.value, message="Source language detected", metadata_json=json.dumps({"language": detected_language})))
                     if operation == "subtitle_translation":
                         with self._stage(db, job, JobState.TRANSLATING.value, "Translating subtitle segments"):
-                            segments = list(translation_provider().translate(segments, source=options.get("source_language") or "auto", target=options.get("target_language") or "en"))
+                            translation_source = options.get("source_language") or detected_language or "auto"
+                            segments = validate_segments(list(translation_provider().translate(segments, source=translation_source, target=options.get("target_language") or "en")))
                             outputs = {"srt": write_srt(segments, work / "translated.srt"), "vtt": write_vtt(segments, work / "translated.vtt"), "txt": write_txt(segments, work / "translated.txt")}
                     artifacts.extend((path, name, {"srt": "application/x-subrip", "vtt": "text/vtt", "txt": "text/plain"}[name]) for name, path in outputs.items())
                 elif operation == "stems":
@@ -242,13 +402,20 @@ class JobWorker:
                     raise ProviderUnavailable(f"Unsupported operation: {operation}")
                 with self._stage(db, job, JobState.UPLOADING.value, "Uploading completed artifacts"):
                     for path, artifact_name, content_type in artifacts:
+                        output_bytes += path.stat().st_size
                         self._upload_artifact(db, job, path, artifact_name=artifact_name, content_type=content_type)
+                    if artifacts:
+                        try:
+                            output_duration = inspect_media(artifacts[0][0]).get("duration_seconds")
+                        except (ValueError, RuntimeError, OSError):
+                            output_duration = None
                     db.commit()
             finalize(db, job, job.reserved_credits)
             job.completed_at = now()
             self._event(db, job, JobState.COMPLETED.value, "Job completed", {"artifact_count": len(artifacts)})
-            self._record_usage(db, job, asset.duration_seconds if asset else None, started)
+            self._record_usage(db, job, asset.duration_seconds if asset else None, output_duration, started, input_bytes=asset.size_bytes if asset else None, output_bytes=output_bytes)
             db.commit()
+            self._notify_job(db, job, JobState.COMPLETED.value)
         except Exception as exc:
             db.rollback()
             job = db.get(Job, job_id)
@@ -259,34 +426,45 @@ class JobWorker:
                     job.error_code = "PROVIDER_FAILURE" if isinstance(exc, ProviderUnavailable) else "WORKER_FAILURE"
                     job.error_message = str(exc)[:2000]
                     db.add(JobEvent(job_id=job.id, state=job.state, message=job.error_message, metadata_json=json.dumps({"error_type": type(exc).__name__, "attempt": job.retry_count})))
-                    self._record_usage(db, job, asset.duration_seconds if asset else None, started)
+                    self._record_usage(db, job, asset.duration_seconds if asset else None, None, started, input_bytes=asset.size_bytes if asset else None, output_bytes=0)
                     db.commit()
+                    self._notify_job(db, job, JobState.FAILED.value)
                 else:
                     job.state = JobState.QUEUED.value
                     job.error_code = "RETRYING"
                     job.error_message = str(exc)[:2000]
                     db.add(JobEvent(job_id=job.id, state=job.state, message="Job returned to queue after worker failure", metadata_json=json.dumps({"error_type": type(exc).__name__, "attempt": job.retry_count})))
+                    self._record_usage(db, job, asset.duration_seconds if asset else None, None, started, input_bytes=asset.size_bytes if asset else None, output_bytes=0)
                     db.commit()
                     self.queue.send(JobMessage(job.id, job.operation))
+                    self._requeued_job_ids.add(job.id)
         finally:
+            heartbeat_stop.set()
+            heartbeat_thread.join(timeout=2)
             db.close()
 
     def run_once(self) -> bool:
         db = SessionLocal()
         try:
+            self._heartbeat(db)
             self._recover_stale(db)
             message = self.queue.receive(timeout=0.05)
             job = self._claim(db, message)
             if message and not job:
-                self.queue.delete(message)
+                current = db.get(Job, message.job_id)
+                if not current or current.state in {JobState.COMPLETED.value, JobState.FAILED.value, JobState.CANCELLED.value}:
+                    self.queue.delete(message)
             if not job:
                 return False
-            if message:
-                self.queue.delete(message)
             job_id = job.id
         finally:
             db.close()
-        self.process(job_id)
+        try:
+            self._active_message = message
+            self.process(job_id)
+        finally:
+            self._ack_if_settled(message, job_id)
+            self._active_message = None
         return True
 
     def run(self, poll_seconds: float = 1.0) -> None:

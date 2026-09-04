@@ -1,29 +1,66 @@
 from __future__ import annotations
 
-from collections import defaultdict, deque
-from threading import Lock
-from time import monotonic
+from datetime import datetime, timedelta
 
-from fastapi import HTTPException, Request
+from fastapi import Depends, HTTPException, Request
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from .config import settings
+from .db import get_db
+from .models import RateLimitBucket, now
 
-_buckets: dict[str, deque[float]] = defaultdict(deque)
-_lock = Lock()
+
+def _window_start() -> datetime:
+    return now().replace(second=0, microsecond=0)
+
+
+def _consume(db: Session, *, bucket: str, key: str, limit: int) -> None:
+    window_start = _window_start()
+
+    # The unique window key makes the insert race-safe on PostgreSQL. If two
+    # replicas create the same new bucket concurrently, retry after the loser
+    # rolls back and then lock/increment the row that won the race.
+    for attempt in range(2):
+        try:
+            row = db.scalar(
+                select(RateLimitBucket)
+                .where(
+                    RateLimitBucket.bucket == bucket,
+                    RateLimitBucket.key == key,
+                    RateLimitBucket.window_start == window_start,
+                )
+                .with_for_update()
+            )
+            if row is None:
+                row = RateLimitBucket(bucket=bucket, key=key, window_start=window_start, request_count=0)
+                db.add(row)
+                db.flush()
+            if row.request_count >= limit:
+                db.rollback()
+                raise HTTPException(status_code=429, detail="Rate limit exceeded; try again shortly", headers={"Retry-After": "60"})
+            row.request_count += 1
+            # Operational buckets are not user data. Prune old windows during
+            # normal traffic so the table cannot grow without bound.
+            db.execute(
+                delete(RateLimitBucket)
+                .where(RateLimitBucket.window_start < window_start - timedelta(minutes=2))
+                .execution_options(synchronize_session=False)
+            )
+            db.commit()
+            return
+        except IntegrityError:
+            db.rollback()
+            if attempt == 1:
+                raise HTTPException(status_code=429, detail="Rate limit temporarily unavailable; try again shortly", headers={"Retry-After": "5"}) from None
 
 
 def rate_limited(bucket: str, limit: int | None = None):
     max_requests = limit or settings.rate_limit_per_minute
 
-    def dependency(request: Request) -> None:
-        key = f"{bucket}:{request.client.host if request.client else 'unknown'}"
-        now = monotonic()
-        with _lock:
-            entries = _buckets[key]
-            while entries and now - entries[0] >= 60:
-                entries.popleft()
-            if len(entries) >= max_requests:
-                raise HTTPException(status_code=429, detail="Rate limit exceeded; try again shortly")
-            entries.append(now)
+    def dependency(request: Request, db: Session = Depends(get_db)) -> None:
+        client_host = request.client.host if request.client else "unknown"
+        _consume(db, bucket=bucket, key=client_host, limit=max_requests)
 
     return dependency

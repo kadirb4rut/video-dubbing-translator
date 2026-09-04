@@ -1,7 +1,9 @@
 FROM python:3.12-slim
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libsndfile1 && rm -rf /var/lib/apt/lists/*
+ENV HOME=/home/lingowave
+ENV XDG_CACHE_HOME=/home/lingowave/.cache
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libsndfile1 cargo && rm -rf /var/lib/apt/lists/*
 COPY backend/requirements.txt backend/requirements.worker-cpu.txt backend/requirements.worker-gpu.txt ./
 ARG WORKER_REQUIREMENTS=requirements.worker-cpu.txt
 RUN pip install --no-cache-dir -r ${WORKER_REQUIREMENTS}
@@ -9,4 +11,8 @@ COPY backend/app ./app
 COPY backend/alembic ./alembic
 COPY backend/alembic.ini ./alembic.ini
 COPY config ./config
+RUN addgroup --system lingowave && adduser --system --ingroup lingowave lingowave \
+    && mkdir -p /app/data /home/lingowave/.cache \
+    && chown -R lingowave:lingowave /app /home/lingowave
+USER lingowave
 CMD ["python", "-m", "app.worker"]
