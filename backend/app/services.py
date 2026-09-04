@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import tempfile
 from pathlib import Path
 
@@ -35,6 +36,12 @@ def _credit_rate(operation: str) -> float:
     profile = cost_profiles().get(operation)
     if not profile:
         raise HTTPException(status_code=503, detail=f"No configured cost profile for {operation}")
+    if (
+        not profile.get("measured", False)
+        and not settings.database_url.startswith("sqlite")
+        and os.getenv("ALLOW_UNMEASURED_PRICING", "false").lower() not in {"1", "true", "yes", "on"}
+    ):
+        raise HTTPException(status_code=503, detail=f"Measured credit profile for {operation} is required before production processing is enabled")
     rate = profile.get("credits_per_minute", profile.get("credits_per_media_minute"))
     if not isinstance(rate, (int, float)) or rate <= 0:
         raise HTTPException(status_code=503, detail=f"Cost profile for {operation} is not usable")
