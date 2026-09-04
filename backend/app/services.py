@@ -15,7 +15,18 @@ from .config import cost_profiles, settings
 from .domain import JobState
 from .ledger import balance, release, reserve
 from .media import inspect_media, validate_upload
-from .models import AuditEvent, Job, JobArtifact, JobEvent, MediaAsset, Project, User, VoiceConsent, VoiceProfile, now
+from .models import (
+    AuditEvent,
+    Job,
+    JobArtifact,
+    JobEvent,
+    MediaAsset,
+    Project,
+    User,
+    VoiceConsent,
+    VoiceProfile,
+    now,
+)
 from .queueing import JobMessage, job_queue
 from .storage import object_key, object_store
 

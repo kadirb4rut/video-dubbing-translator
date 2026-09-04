@@ -1,0 +1,4 @@
+[tool.ruff.lint]
+# FastAPI dependency injection is intentionally declared in function signatures;
+# B008 would reject the framework's normal route declaration pattern.
+ignore = ["B008"]

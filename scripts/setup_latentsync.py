@@ -4,7 +4,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-
 BASE_DIR = Path(__file__).resolve().parents[1]
 LATENTSYNC_DIR = BASE_DIR / "third_party" / "LatentSync"
 REPO_URL = "https://github.com/bytedance/LatentSync.git"

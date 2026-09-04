@@ -7,7 +7,6 @@ from pathlib import Path
 
 from .config import settings
 
-
 ALLOWED_MIME_PREFIXES = ("video/", "audio/")
 
 

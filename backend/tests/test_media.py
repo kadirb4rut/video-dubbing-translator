@@ -4,9 +4,13 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from app.media import inspect_media, validate_upload
-from app.providers_real import AwsTranslateProvider, DeepFilterNetNoiseProvider, FixtureTranslationProvider, ProviderUnavailable
+from app.providers_real import (
+    AwsTranslateProvider,
+    DeepFilterNetNoiseProvider,
+    FixtureTranslationProvider,
+    ProviderUnavailable,
+)
 from app.worker import MAX_DUBBING_SPEEDUP
 
 

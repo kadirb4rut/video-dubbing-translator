@@ -21,8 +21,15 @@ BACKEND = ROOT / "backend"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
-from app.media import inspect_media, validate_output  # noqa: E402
-from app.providers_real import ChatterboxMultilingualVoiceProvider, DemucsStemSeparationProvider, ProviderUnavailable, WhisperTranscriptionProvider, translation_provider, validate_segments  # noqa: E402
+from app.media import inspect_media, validate_output
+from app.providers_real import (
+    ChatterboxMultilingualVoiceProvider,
+    DemucsStemSeparationProvider,
+    ProviderUnavailable,
+    WhisperTranscriptionProvider,
+    translation_provider,
+    validate_segments,
+)
 
 
 def runtime_metadata() -> dict:
@@ -75,8 +82,9 @@ def synthesize_voice(text: str, *, reference_voice: Path, language: str, output_
     code = (
         "from pathlib import Path; "
         "from app.providers_real import ChatterboxMultilingualVoiceProvider; "
-        "ChatterboxMultilingualVoiceProvider(device='cpu').synthesize(%r, reference_voice=Path(%r), language=%r, output_path=Path(%r))"
-        % (text, str(reference_voice), language, str(output_path))
+        f"ChatterboxMultilingualVoiceProvider(device='cpu').synthesize({text!r}, "
+        f"reference_voice=Path({str(reference_voice)!r}), language={language!r}, "
+        f"output_path=Path({str(output_path)!r}))"
     )
     environment = dict(os.environ, PYTHONPATH=str(BACKEND), CHATTERBOX_DEVICE=os.getenv("CHATTERBOX_DEVICE", "cpu"))
     subprocess.run([python_path, "-c", code], cwd=str(ROOT), env=environment, check=True, timeout=3600)
@@ -178,7 +186,7 @@ def main() -> None:
 
         result["status"] = "completed"
         result["output_metadata"] = output_meta
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - benchmark must record unexpected provider failures
         result["status"] = "blocked" if isinstance(exc, (ImportError, ProviderUnavailable)) else "failed"
         result["error"] = {"type": type(exc).__name__, "message": str(exc)}
 

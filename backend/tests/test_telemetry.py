@@ -3,14 +3,13 @@ from __future__ import annotations
 import time
 from datetime import timedelta
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
-
 from app.config import settings
 from app.db import Base
-from app.models import GpuCostProfile, Job, JobEvent, User, UsageRecord, now
+from app.models import GpuCostProfile, Job, JobEvent, UsageRecord, User, now
 from app.queueing import JobMessage, SQSQueue
 from app.worker import JobWorker
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 
 def test_usage_telemetry_uses_measured_gpu_profile_and_accumulates_retries():

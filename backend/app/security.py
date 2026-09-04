@@ -13,7 +13,6 @@ from .config import settings
 from .db import get_db
 from .models import SessionToken, User, now
 
-
 password_hash = PasswordHash.recommended()
 
 

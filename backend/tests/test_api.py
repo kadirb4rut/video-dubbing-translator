@@ -5,13 +5,11 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from app.main import app
+from app.models import Job, JobArtifact, User
+from app.worker import JobWorker
 from conftest import TEST_ROOT
-
-from fastapi.testclient import TestClient  # noqa: E402
-
-from app.main import app  # noqa: E402
-from app.models import Job, JobArtifact, User  # noqa: E402
-from app.worker import JobWorker  # noqa: E402
+from fastapi.testclient import TestClient
 
 
 def fixture_audio() -> Path:
@@ -244,9 +242,10 @@ def test_text_artifact_can_be_previewed_and_saved_by_owner():
     with TestClient(app) as client:
         signup = client.post("/api/auth/signup", json={"email": "editor@example.com", "password": "a-strong-password-123", "display_name": "Editor"})
         assert signup.status_code == 200
+        from io import BytesIO
+
         from app.db import SessionLocal
         from app.storage import object_store
-        from io import BytesIO
 
         with SessionLocal() as db:
             user = db.query(User).filter_by(email="editor@example.com").one()

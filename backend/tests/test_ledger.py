@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import Session
-
+from app.billing import (
+    VerifiedCreditGrant,
+    apply_verified_credit_grant,
+    process_stripe_event,
+)
+from app.config import settings
 from app.db import Base
-from app.billing import VerifiedCreditGrant, apply_verified_credit_grant, process_stripe_event
 from app.ledger import balance, finalize, grant, release, reserve
 from app.models import BillingEvent, CreditPurchase, Job, Subscription, User
-from app.config import settings
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
 
 
 def test_reservation_finalize_and_release_are_ledgered():

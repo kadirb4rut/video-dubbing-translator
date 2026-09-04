@@ -18,17 +18,39 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .db import SessionLocal
 from .config import settings
+from .db import SessionLocal
 from .domain import JobState
 from .ledger import finalize, release
-from .media import inspect_media, validate_output
 from .mail import mail_provider
-from .models import GpuCostProfile, Job, JobArtifact, JobEvent, JobStageMetric, MediaAsset, UsageRecord, User, VoiceProfile, WorkerLease, now
-from .providers_real import ChatterboxMultilingualVoiceProvider, DeepFilterNetNoiseProvider, DemucsStemSeparationProvider, ProviderUnavailable, WhisperTranscriptionProvider, translation_provider, validate_segments, write_srt, write_txt, write_vtt
+from .media import inspect_media, validate_output
+from .models import (
+    GpuCostProfile,
+    Job,
+    JobArtifact,
+    JobEvent,
+    JobStageMetric,
+    MediaAsset,
+    UsageRecord,
+    User,
+    VoiceProfile,
+    WorkerLease,
+    now,
+)
+from .providers_real import (
+    ChatterboxMultilingualVoiceProvider,
+    DeepFilterNetNoiseProvider,
+    DemucsStemSeparationProvider,
+    ProviderUnavailable,
+    WhisperTranscriptionProvider,
+    translation_provider,
+    validate_segments,
+    write_srt,
+    write_txt,
+    write_vtt,
+)
 from .queueing import JobMessage, job_queue
 from .storage import object_key, object_store
-
 
 logger = logging.getLogger("lingowave.worker")
 
@@ -416,7 +438,7 @@ class JobWorker:
             self._record_usage(db, job, asset.duration_seconds if asset else None, output_duration, started, input_bytes=asset.size_bytes if asset else None, output_bytes=output_bytes)
             db.commit()
             self._notify_job(db, job, JobState.COMPLETED.value)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - every worker failure must settle the job safely
             db.rollback()
             job = db.get(Job, job_id)
             if job and job.state != JobState.CANCELLED.value:

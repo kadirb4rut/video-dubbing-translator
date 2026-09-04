@@ -9,12 +9,11 @@ from __future__ import annotations
 import argparse
 from datetime import timedelta
 
-from sqlalchemy import select
-
 from app.config import settings
 from app.db import SessionLocal
 from app.models import Job, JobArtifact, MediaAsset, VoiceConsent, VoiceProfile, now
 from app.storage import object_store
+from sqlalchemy import select
 
 
 def main() -> None:

@@ -1,10 +1,9 @@
-from fastapi import HTTPException
-from starlette.requests import Request
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
-
 from app.db import Base
 from app.rate_limit import _client_key, _consume
+from fastapi import HTTPException
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+from starlette.requests import Request
 
 
 def test_rate_limit_uses_viewer_ip_from_forwarded_chain():

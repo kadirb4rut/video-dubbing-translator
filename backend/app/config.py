@@ -5,7 +5,6 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-
 _CONFIG_MODULE = Path(__file__).resolve()
 BASE_DIR = next(
     (parent for parent in _CONFIG_MODULE.parents if (parent / "config").is_dir()),

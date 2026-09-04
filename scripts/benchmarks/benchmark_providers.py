@@ -19,7 +19,13 @@ BACKEND = ROOT / "backend"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
-from app.providers_real import ChatterboxMultilingualVoiceProvider, DeepFilterNetNoiseProvider, DemucsStemSeparationProvider, ProviderUnavailable, WhisperTranscriptionProvider  # noqa: E402
+from app.providers_real import (
+    ChatterboxMultilingualVoiceProvider,
+    DeepFilterNetNoiseProvider,
+    DemucsStemSeparationProvider,
+    ProviderUnavailable,
+    WhisperTranscriptionProvider,
+)
 
 
 def summarize_result(value):
@@ -71,7 +77,7 @@ def run_stage(name: str, callback) -> dict:
         return {"status": "completed", "wall_clock_seconds": round(time.monotonic() - started, 4), "result": summarize_result(result)}
     except (ImportError, ProviderUnavailable, OSError, RuntimeError) as exc:
         return {"status": "skipped", "wall_clock_seconds": round(time.monotonic() - started, 4), "reason": str(exc)}
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - benchmark must report unexpected provider failures
         return {"status": "failed", "wall_clock_seconds": round(time.monotonic() - started, 4), "reason": f"{type(exc).__name__}: {exc}"}
 
 

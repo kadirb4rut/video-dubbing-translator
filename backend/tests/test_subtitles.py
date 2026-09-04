@@ -3,8 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
-from app.providers_real import ProviderUnavailable, validate_segments, write_srt, write_txt, write_vtt
+from app.providers_real import (
+    ProviderUnavailable,
+    validate_segments,
+    write_srt,
+    write_txt,
+    write_vtt,
+)
 
 
 def test_subtitle_exports_keep_segment_order(tmp_path: Path):

@@ -1,9 +1,14 @@
 import pytest
-from fastapi import HTTPException
-
-from app.domain import CostProfile, JobState, estimate_credits, should_recredit, transition
+from app.domain import (
+    CostProfile,
+    JobState,
+    estimate_credits,
+    should_recredit,
+    transition,
+)
 from app.models import Job, now
 from app.services import estimate_for_duration, serialize_job
+from fastapi import HTTPException
 
 
 def test_estimate_credits_uses_measured_profile_and_optional_lip_sync():

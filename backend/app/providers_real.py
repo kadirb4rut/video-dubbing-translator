@@ -6,8 +6,9 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
+from typing import ClassVar
 
 from .config import settings
 from .media import validate_output
@@ -43,7 +44,7 @@ def _require(module: str):
 
 class WhisperTranscriptionProvider:
     name = "whisper"
-    _models: dict[str, object] = {}
+    _models: ClassVar[dict[str, object]] = {}
 
     def __init__(self, model_name: str | None = None):
         self.model_name = model_name or settings.whisper_model
@@ -111,7 +112,7 @@ class AwsTranslateProvider:
 
 class ChatterboxMultilingualVoiceProvider:
     name = "chatterbox-multilingual-v3"
-    _models: dict[tuple[str, str], object] = {}
+    _models: ClassVar[dict[tuple[str, str], object]] = {}
 
     def __init__(self, device: str | None = None):
         self.device = device or settings.chatterbox_device
@@ -121,8 +122,8 @@ class ChatterboxMultilingualVoiceProvider:
             raise ProviderUnavailable("Reference voice file is missing")
         _require("torch")
         try:
-            from chatterbox.mtl_tts import ChatterboxMultilingualTTS
             import torchaudio
+            from chatterbox.mtl_tts import ChatterboxMultilingualTTS
         except ImportError as exc:
             raise ProviderUnavailable("Chatterbox Multilingual and torchaudio are not installed") from exc
         key = (self.device, "v3")
@@ -251,7 +252,7 @@ class FixtureTranslationProvider:
 
     name = "fixture-translation"
     development_only = True
-    _phrases = {
+    _phrases: ClassVar[dict[tuple[str, str, str], str]] = {
         ("hello world", "en", "es"): "hola mundo",
         ("hello", "en", "es"): "hola",
         ("this is a test", "en", "es"): "esto es una prueba",

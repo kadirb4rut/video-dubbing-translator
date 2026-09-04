@@ -5,7 +5,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 BASE_DIR = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = BASE_DIR / "vocal-remover" / "final_video" / "final"
 LATENTSYNC_DIR = BASE_DIR / "third_party" / "LatentSync"

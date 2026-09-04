@@ -1,31 +1,101 @@
 from __future__ import annotations
 
-import json
 import hashlib
-from contextlib import asynccontextmanager
-from io import BytesIO
+import json
 import secrets
+from contextlib import asynccontextmanager
 from datetime import timedelta
+from io import BytesIO
 
-from fastapi import Depends, File, Form, Header, HTTPException, Request, FastAPI, UploadFile
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .billing import BillingNotConfigured, PLANS, StripeBillingProvider, billing_provider, plan, process_stripe_event
+from .billing import (
+    PLANS,
+    BillingNotConfigured,
+    StripeBillingProvider,
+    billing_provider,
+    plan,
+    process_stripe_event,
+)
 from .config import settings
 from .db import create_tables, get_db
 from .domain import JobState
 from .ledger import adjust, balance, finalize, grant, ledger_rows, reserve
 from .mail import mail_provider
-from .models import AbuseEvent, AuditEvent, CreditPurchase, GpuCostProfile, Job, JobArtifact, JobEvent, MediaAsset, ModelVersion, PasswordResetToken, Project, SessionToken, Subscription, UsageRecord, User, VoiceConsent, VoiceProfile, WorkerLease, now
-from .rate_limit import rate_limited
+from .models import (
+    AbuseEvent,
+    AuditEvent,
+    CreditPurchase,
+    GpuCostProfile,
+    Job,
+    JobArtifact,
+    JobEvent,
+    MediaAsset,
+    ModelVersion,
+    PasswordResetToken,
+    Project,
+    SessionToken,
+    Subscription,
+    UsageRecord,
+    User,
+    VoiceConsent,
+    VoiceProfile,
+    WorkerLease,
+    now,
+)
 from .providers import provider_registry
 from .queueing import job_queue
-from .schemas import AccountUpdateRequest, AbuseReportRequest, ArtifactTextUpdateRequest, CheckoutRequest, EstimateRequest, GpuProfileRequest, JobCreateRequest, LoginRequest, MediaPresignRequest, ModelVersionRequest, PasswordResetConfirmRequest, PasswordResetRequest, ProjectRequest, SignupRequest, VoiceSynthesisRequest
-from .security import current_user, hash_password, new_session, require_admin, revoke_session, verify_password
-from .services import asset_for_user, complete_presigned_asset, create_job, create_voice_profile, estimate_for_duration, presign_asset, serialize_artifact, serialize_asset, serialize_job, upload_asset
+from .rate_limit import rate_limited
+from .schemas import (
+    AbuseReportRequest,
+    AccountUpdateRequest,
+    ArtifactTextUpdateRequest,
+    CheckoutRequest,
+    EstimateRequest,
+    GpuProfileRequest,
+    JobCreateRequest,
+    LoginRequest,
+    MediaPresignRequest,
+    ModelVersionRequest,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
+    ProjectRequest,
+    SignupRequest,
+    VoiceSynthesisRequest,
+)
+from .security import (
+    current_user,
+    hash_password,
+    new_session,
+    require_admin,
+    revoke_session,
+    verify_password,
+)
+from .services import (
+    asset_for_user,
+    complete_presigned_asset,
+    create_job,
+    create_voice_profile,
+    estimate_for_duration,
+    presign_asset,
+    serialize_artifact,
+    serialize_asset,
+    serialize_job,
+    upload_asset,
+)
 from .storage import object_store
 
 
@@ -365,7 +435,7 @@ def admin_metrics(admin: User = Depends(require_admin), db: Session = Depends(ge
     model_cost_rows = db.execute(select(UsageRecord.model_version, func.sum(UsageRecord.estimated_cost_usd), func.sum(UsageRecord.actual_cost_usd)).group_by(UsageRecord.model_version)).all()
     try:
         queue = job_queue().stats()
-    except Exception:
+    except Exception:  # noqa: BLE001 - metrics must fail closed when queue telemetry is unavailable
         queue = {"visible": None, "in_flight": None}
     total_processed_minutes = float(processed_seconds) / 60
     active_workers = db.scalar(select(func.count(WorkerLease.id)).where(WorkerLease.expires_at > now())) or 0
