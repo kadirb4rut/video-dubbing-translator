@@ -2,7 +2,7 @@
 
 ## API and UI
 
-1. Create a Python environment and install `backend/requirements.txt`.
+1. Create a Python environment and install `backend/requirements-dev.txt` for the API plus test tooling. Production API and worker images install only their runtime/provider requirement files.
 2. From the repository root, run `PYTHONPATH=backend uvicorn app.main:app --reload --port 8000`.
 3. In a second shell, run `cd frontend && npm install && npm run dev`.
 4. Run `PYTHONPATH=backend python -m app.worker` in a third shell. Add `--once` for a single poll. The local queue is in-process, so the worker also polls queued rows from SQLite; use SQS for a multi-process deployment.

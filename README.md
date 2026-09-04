@@ -35,7 +35,7 @@ For the local development workflow, including CPU worker and real-provider envir
 cp .env.example .env
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r backend/requirements.txt
+pip install -r backend/requirements-dev.txt
 (cd backend && PYTHONPATH=. alembic upgrade head)
 PYTHONPATH=backend uvicorn app.main:app --reload --port 8000
 ```
@@ -211,7 +211,8 @@ Then restart the GUI and enable `Apply LatentSync after dubbing`.
 ├── Video_Translator.py              # Core dubbing pipeline
 ├── web_gui.py                       # Browser-based local GUI
 ├── video_translator_gui.py          # Legacy desktop GUI
-├── requirements.txt                 # Main Python dependencies
+├── requirements.txt                 # Runtime API dependencies
+├── requirements-dev.txt             # Local/test dependencies
 ├── scripts/
 │   ├── download_model.py            # Downloads the vocal-remover model
 │   ├── run_pipeline.py              # Runs dubbing and optional LatentSync

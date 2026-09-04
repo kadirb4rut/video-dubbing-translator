@@ -13,9 +13,9 @@ jobs:
         with:
           python-version: '3.12'
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - run: pip install -r backend/requirements.txt
+      - run: pip install -r backend/requirements-dev.txt
       - run: pip install ruff bandit pip-audit
-      - run: pip-audit -r backend/requirements.txt --progress-spinner off
+      - run: pip-audit -r backend/requirements-dev.txt --progress-spinner off
       - run: ruff check backend/app backend/tests scripts
       - run: bandit -q -r backend/app --severity-level medium
       - run: PYTHONPATH=backend pytest -q backend/tests
