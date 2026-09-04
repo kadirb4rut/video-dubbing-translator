@@ -1,0 +1,19 @@
+aws_region = "eu-north-1"
+name       = "lingowave-staging"
+
+# Fill these with immutable image digests from the staging registry before apply.
+worker_image = ""
+api_image    = ""
+
+create_network       = true
+frontend_enabled     = false
+enable_rds           = false
+worker_desired_count = 0
+api_desired_count    = 0
+mail_provider        = "dev"
+translation_provider = "aws-translate"
+
+# For a real staging stack, pass DATABASE_URL through Secrets Manager maps and
+# supply database_password with TF_VAR_database_password when enable_rds=true.
+worker_secrets = {}
+api_secrets    = {}

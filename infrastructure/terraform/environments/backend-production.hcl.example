@@ -1,0 +1,5 @@
+bucket         = "replace-with-the-shared-terraform-state-bucket"
+key            = "lingowave/terraform.tfstate"
+region         = "eu-north-1"
+dynamodb_table = "replace-with-the-terraform-lock-table"
+encrypt        = true

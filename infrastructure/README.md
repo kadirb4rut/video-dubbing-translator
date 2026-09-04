@@ -10,6 +10,12 @@ React/Vite web → FastAPI API → PostgreSQL (ledger + jobs)
 
 The worker image is split from the API image. Queue depth and oldest-message age drive the worker autoscaling policy. When the queue is empty, the desired GPU capacity returns to zero. ECS tasks mount `/var/lib/lingowave/model-cache` at `/home/lingowave/.cache`, so model downloads are reused across task replacements while a GPU host remains alive; scale-to-zero intentionally discards that host-local cache, and cold-start time must remain visible in benchmarks.
 
+Staging and production use separate Terraform variable files and separate S3
+state keys under `terraform/environments/`. Initialize one explicitly with
+`terraform init -reconfigure -backend-config=environments/backend-<environment>.hcl`
+and apply with the matching `-var-file`. The production backend key preserves
+the existing live state location; staging uses `lingowave/staging/terraform.tfstate`.
+
 Required production controls before enabling public traffic:
 
 - PostgreSQL-backed credit ledger with reserve/finalize/release transactions.

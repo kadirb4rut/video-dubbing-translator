@@ -34,6 +34,9 @@ data/
 infrastructure/terraform/.terraform/
 infrastructure/terraform/terraform.tfstate
 infrastructure/terraform/terraform.tfstate.*
+infrastructure/terraform/environments/*.tfvars
+infrastructure/terraform/environments/*.hcl
+!infrastructure/terraform/environments/*.example
 
 # Local environment files (keep the documented example tracked)
 .env

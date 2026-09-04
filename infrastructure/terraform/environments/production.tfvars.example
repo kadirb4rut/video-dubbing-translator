@@ -1,0 +1,26 @@
+aws_region = "eu-north-1"
+name       = "lingowave"
+
+# Fill these with immutable ECR image digests before apply.
+worker_image = ""
+api_image    = ""
+
+create_network       = true
+frontend_enabled     = true
+frontend_dist_dir    = "../frontend/dist"
+frontend_origin      = "https://replace-with-the-frontend-origin"
+api_desired_count    = 1
+worker_desired_count = 0
+worker_instance_type = "g4dn.xlarge"
+enable_rds           = true
+translation_provider = "aws-translate"
+
+# Set these only after a verified sender/domain and Stripe catalog exist.
+mail_provider = "ses"
+mail_from     = "replace-with-a-verified-sender"
+ses_identity_arn = "replace-with-the-verified-ses-identity-arn"
+
+# Keep secret values out of tfvars. Supply these maps with real Secrets Manager
+# ARNs and pass the RDS password through TF_VAR_database_password at apply time.
+worker_secrets = {}
+api_secrets    = {}
