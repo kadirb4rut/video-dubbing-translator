@@ -35,6 +35,11 @@ infrastructure/terraform/.terraform/
 infrastructure/terraform/terraform.tfstate
 infrastructure/terraform/terraform.tfstate.*
 
+# Local environment files (keep the documented example tracked)
+.env
+.env.*
+!.env.example
+
 # Large downloaded model weights
 vocal-remover/models/*.pth
 vocal-remover/models/*.pt
