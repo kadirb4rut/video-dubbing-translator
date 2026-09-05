@@ -245,6 +245,39 @@ resource "aws_iam_role_policy" "github_actions_ecr" {
   })
 }
 
+resource "aws_iam_role_policy" "github_actions_ecs_acceptance" {
+  count = var.github_actions_ecs_deploy ? 1 : 0
+  role  = aws_iam_role.github_actions_ecr.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecs:DescribeServices",
+          "ecs:DescribeTaskDefinition",
+          "ecs:RegisterTaskDefinition",
+          "ecs:UpdateService",
+        ]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = [aws_iam_role.ecs_task_execution.arn, aws_iam_role.ecs_task_worker.arn]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:DescribeLogStreams",
+          "logs:FilterLogEvents",
+        ]
+        Resource = "${aws_cloudwatch_log_group.worker.arn}:*"
+      },
+    ]
+  })
+}
+
 resource "aws_cloudwatch_log_group" "worker" {
   name              = "/ecs/${var.name}/worker"
   retention_in_days = 30

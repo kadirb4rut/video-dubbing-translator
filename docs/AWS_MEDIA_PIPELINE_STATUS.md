@@ -20,14 +20,14 @@ The exact voice model is `openbmb/VoxCPM2`, revision `32279effe8c19989596f05d353
 
 ## Validation status
 
-The real VoxCPM2 provider smoke test and the real short CPU API→S3→SQS→worker→output E2E are run after the immutable worker image for this migration is published. This report is updated with the measured evidence immediately after that run. No synthetic timings are presented as real model evidence.
+The immutable CPU image was published successfully. The first real acceptance attempt stopped before deployment because the existing GitHub OIDC role is intentionally ECR-only and lacks ECS deployment permission (`ecs:DescribeServices` denied). No CPU task was started and no AWS compute was consumed by that failed attempt. The Terraform change below prepares an opt-in least-privilege acceptance policy; the real provider/E2E run remains pending until it is applied.
 
 | Gate | Status | Evidence |
 |---|---|---|
 | VoxCPM2 provider import/contract | PASS | Backend tests and worker image check |
 | Exact model revision | PASS | Runtime/config/manifest pin |
-| Real CPU VoxCPM2 inference | PENDING | New CPU worker image validation |
-| Real full CPU dubbing E2E | PENDING | Public API, S3, SQS, worker, output/download |
+| Real CPU VoxCPM2 inference | PENDING | Deployment permission must be enabled |
+| Real full CPU dubbing E2E | BLOCKED | OIDC role denied `ecs:DescribeServices` before task start |
 | GPU quota | PENDING | Existing `CASE_OPENED` request preserved |
 | CPU/GPU scale-to-zero | PASS/PENDING | Recheck after E2E cleanup |
 
@@ -127,4 +127,4 @@ NOT PERFORMED — USER WILL REVIEW BEFORE PRODUCTION
     terraform fmt -check -recursive infrastructure/terraform
     terraform -chdir=infrastructure/terraform validate
 
-GPU approval remains a later performance step. It must not block CPU validation, and the request must remain open.
+GPU approval remains a later performance step. It must not block CPU validation, and the request must remain open. To authorize only the manual acceptance workflow, set `github_actions_ecs_deploy = true` for the Terraform apply, run the workflow once, then set it back to `false` and apply again. This does not change billing, quota, worker desired counts, or the $25 budget guardrail.

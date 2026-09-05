@@ -11,6 +11,11 @@ variable "github_repository" {
   type        = string
   default     = "kadirb4rut/video-dubbing-translator"
 }
+variable "github_actions_ecs_deploy" {
+  description = "Grant the GitHub OIDC role least-privilege ECS permissions for the manual CPU acceptance workflow. Keep false unless that workflow is explicitly being run."
+  type        = bool
+  default     = false
+}
 variable "create_network" {
   description = "Create a minimal VPC, public worker subnets, database subnets, and security groups. Set false to use existing network IDs."
   type        = bool
