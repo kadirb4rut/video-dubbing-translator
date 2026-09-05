@@ -114,7 +114,7 @@ variable "voxcpm_cpu_dtype" {
   }
 }
 variable "api_secrets" {
-  description = "Map of ECS API environment variable names to Secrets Manager secret or secret-version ARNs. DATABASE_URL is required when api_image is set."
+  description = "Map of ECS API environment variable names to Secrets Manager secret or secret-version ARNs. DATABASE_URL is required when api_image is set; Google OAuth uses GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI when enabled."
   type        = map(string)
   default     = {}
 }

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import secrets
 from contextlib import asynccontextmanager
-from datetime import timedelta
+from datetime import timedelta, timezone
 from io import BytesIO
+from urllib.parse import urlencode
 
 from fastapi import (
     Depends,
@@ -20,6 +22,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .billing import (
@@ -33,11 +36,19 @@ from .billing import (
 from .config import settings
 from .db import create_tables, get_db
 from .domain import JobState
+from .google_auth import (
+    GoogleAuthError,
+    GoogleIdentity,
+    authorization_url,
+    exchange_code,
+    google_auth_configured,
+)
 from .ledger import adjust, balance, finalize, grant, ledger_rows, reserve
 from .mail import mail_provider
 from .models import (
     AbuseEvent,
     AuditEvent,
+    AuthIdentity,
     CreditPurchase,
     GpuCostProfile,
     Job,
@@ -46,6 +57,7 @@ from .models import (
     JobStageMetric,
     MediaAsset,
     ModelVersion,
+    OAuthLoginState,
     PasswordResetToken,
     Project,
     SessionToken,
@@ -99,6 +111,8 @@ from .services import (
 )
 from .storage import object_store
 
+GOOGLE_OAUTH_STATE_COOKIE = "lingowave_google_oauth_state"
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -118,6 +132,133 @@ def user_payload(user: User) -> dict:
 def set_session(response, token: str):
     response.set_cookie(settings.session_cookie_name, token, max_age=settings.session_ttl_days * 86400, httponly=True, secure=settings.cookie_secure, samesite="lax")
     return response
+
+
+def _oauth_value_hash(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _oauth_failure(reason: str) -> RedirectResponse:
+    location = f"{settings.frontend_origin.rstrip('/')}/?{urlencode({'auth_error': reason})}"
+    response = RedirectResponse(url=location, status_code=303)
+    response.delete_cookie(GOOGLE_OAUTH_STATE_COOKIE, path="/api/auth/google")
+    return response
+
+
+def _oauth_state_expired(row: OAuthLoginState) -> bool:
+    expires_at = row.expires_at.replace(tzinfo=timezone.utc) if row.expires_at.tzinfo is None else row.expires_at
+    return expires_at <= now()
+
+
+def _user_for_google_identity(db: Session, identity: GoogleIdentity) -> User:
+    subject = identity.subject.strip()
+    email = identity.email.strip().lower()
+    if not identity.email_verified or not subject or not email:
+        raise GoogleAuthError("Google identity is not verified")
+
+    linked = db.scalar(select(AuthIdentity).where(AuthIdentity.provider == "google", AuthIdentity.provider_subject == subject))
+    if linked:
+        user = db.get(User, linked.user_id)
+        if not user or not user.is_active or user.deleted_at:
+            raise GoogleAuthError("Linked LingoWave account is unavailable")
+        return user
+
+    user = db.scalar(select(User).where(User.email == email))
+    if user:
+        if not user.is_active or user.deleted_at:
+            raise GoogleAuthError("LingoWave account is unavailable")
+    else:
+        user = User(email=email, password_hash=hash_password(secrets.token_urlsafe(48)), display_name=identity.display_name)
+        db.add(user)
+        db.flush()
+        grant(db, user.id, plan(user.plan_key).monthly_credits, reference_key=f"signup:{user.id}", metadata={"plan": user.plan_key, "provider": "google"})
+
+    db.add(AuthIdentity(provider="google", provider_subject=subject, provider_email=email, user_id=user.id))
+    return user
+
+
+@app.get("/api/auth/google/config")
+def google_config() -> dict:
+    return {"enabled": google_auth_configured(settings)}
+
+
+@app.get("/api/auth/google/start")
+def google_start(db: Session = Depends(get_db)):
+    if not google_auth_configured(settings):
+        raise HTTPException(status_code=503, detail="Google authentication is not configured")
+    state = secrets.token_urlsafe(32)
+    nonce = secrets.token_urlsafe(32)
+    db.add(
+        OAuthLoginState(
+            provider="google",
+            state_hash=_oauth_value_hash(state),
+            nonce_hash=_oauth_value_hash(nonce),
+            redirect_uri=settings.google_redirect_uri,
+            expires_at=now() + timedelta(seconds=settings.google_state_ttl_seconds),
+        )
+    )
+    db.commit()
+    response = RedirectResponse(authorization_url(settings, state=state, nonce=nonce), status_code=303)
+    response.set_cookie(
+        GOOGLE_OAUTH_STATE_COOKIE,
+        state,
+        max_age=settings.google_state_ttl_seconds,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        path="/api/auth/google",
+    )
+    return response
+
+
+@app.get("/api/auth/google/callback")
+def google_callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    db: Session = Depends(get_db),
+):
+    browser_state = request.cookies.get(GOOGLE_OAUTH_STATE_COOKIE)
+    if error:
+        if state:
+            pending = db.scalar(select(OAuthLoginState).where(OAuthLoginState.provider == "google", OAuthLoginState.state_hash == _oauth_value_hash(state), OAuthLoginState.consumed_at.is_(None)).with_for_update())
+            if pending and browser_state and hmac.compare_digest(_oauth_value_hash(browser_state), pending.state_hash):
+                pending.consumed_at = now()
+                db.commit()
+        return _oauth_failure("google_cancelled" if error == "access_denied" else "google_provider_error")
+    if not code or not state:
+        return _oauth_failure("google_invalid_callback")
+
+    pending = db.scalar(select(OAuthLoginState).where(OAuthLoginState.provider == "google", OAuthLoginState.state_hash == _oauth_value_hash(state), OAuthLoginState.consumed_at.is_(None)).with_for_update())
+    if (
+        not pending
+        or not browser_state
+        or not hmac.compare_digest(_oauth_value_hash(browser_state), pending.state_hash)
+        or _oauth_state_expired(pending)
+        or pending.redirect_uri != settings.google_redirect_uri
+    ):
+        return _oauth_failure("google_invalid_state")
+    pending.consumed_at = now()
+    db.commit()
+
+    try:
+        identity = exchange_code(settings, code=code)
+        if not hmac.compare_digest(_oauth_value_hash(identity.nonce), pending.nonce_hash):
+            raise GoogleAuthError("Google nonce validation failed")
+        user = _user_for_google_identity(db, identity)
+        db.commit()
+        db.refresh(user)
+    except GoogleAuthError:
+        db.rollback()
+        return _oauth_failure("google_identity_invalid")
+    except IntegrityError:
+        db.rollback()
+        return _oauth_failure("google_identity_conflict")
+
+    response = RedirectResponse(url=f"{settings.frontend_origin.rstrip('/')}/", status_code=303)
+    response.delete_cookie(GOOGLE_OAUTH_STATE_COOKIE, path="/api/auth/google")
+    return set_session(response, new_session(db, user))
 
 
 @app.get("/health")

@@ -35,6 +35,10 @@ class Settings:
     max_jobs_per_user: int = int(os.getenv("MAX_JOBS_PER_USER", "2"))
     cost_profile_path: Path = Path(os.getenv("COST_PROFILE_PATH", str(BASE_DIR / "config" / "cost_profiles.json")))
     frontend_origin: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
+    google_client_id: str | None = os.getenv("GOOGLE_CLIENT_ID") or None
+    google_client_secret: str | None = os.getenv("GOOGLE_CLIENT_SECRET") or None
+    google_redirect_uri: str | None = os.getenv("GOOGLE_REDIRECT_URI") or None
+    google_state_ttl_seconds: int = int(os.getenv("GOOGLE_STATE_TTL_SECONDS", "600"))
     translation_api_url: str | None = os.getenv("TRANSLATION_API_URL") or None
     translation_api_key: str | None = os.getenv("TRANSLATION_API_KEY") or None
     # Google/deep-translator is the fast default. Hy-MT2 is loaded lazily only

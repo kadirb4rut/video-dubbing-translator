@@ -71,7 +71,7 @@ function HeroPreview() {
 function Toggle({ checked, onChange, label, premium = false }) { return <label className="toggle-row"><span>{label}{premium && <em>Premium</em>}</span><input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} /><i /></label>; }
 
 function App() {
-  const [view, setView] = useState('public');
+  const [view, setView] = useState(() => new URLSearchParams(window.location.search).has('auth_error') ? 'auth' : 'public');
   const [user, setUser] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
 

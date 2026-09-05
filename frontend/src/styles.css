@@ -43,6 +43,12 @@ a { color:inherit; text-decoration:none; }
 .auth-card input { width: 100%; box-sizing: border-box; border: 1px solid #dce4de; border-radius: 10px; padding: 13px 14px; font: inherit; color: #18312d; background: #fbfcfa; }
 .auth-card input:focus { outline: 2px solid rgba(57, 166, 111, .24); border-color: #46ae78; }
 .auth-card .button { justify-content: center; margin-top: 6px; }
+.auth-divider { display:flex; align-items:center; gap:12px; margin:22px 0 14px; color:#8a9490; font-size:12px; text-transform:uppercase; letter-spacing:.12em; }
+.auth-divider::before, .auth-divider::after { content:''; height:1px; flex:1; background:#e2e8e3; }
+.google-button { width:100%; min-height:48px; display:flex; align-items:center; justify-content:center; gap:10px; border:1px solid #cfd8d2; border-radius:10px; background:#fff; color:#25332f; font-weight:700; transition:border-color .2s, box-shadow .2s, transform .2s; }
+.google-button:hover { border-color:#9daaa2; box-shadow:0 8px 18px rgba(26,45,42,.08); transform:translateY(-1px); }
+.google-button:disabled { opacity:.62; cursor:wait; transform:none; }
+.google-mark { width:18px; height:18px; flex:0 0 18px; }
 .auth-switch { border: 0; background: transparent; color: #297f5a; padding: 18px 0 0; cursor: pointer; font: inherit; }
 .auth-error { color: #a3443b; font-size: 13px; }
 .glyph { width: 18px; display: inline-grid; place-items: center; font-size: 18px; line-height: 1; }

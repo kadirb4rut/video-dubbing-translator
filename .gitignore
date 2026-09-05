@@ -30,6 +30,7 @@ frontend/dist/
 frontend/playwright-report/
 frontend/test-results/
 Lingowave_Proje_Durum_Raporu.docx
+~$*.docx
 artifacts/
 graphify-out/
 backend/.pytest_cache/

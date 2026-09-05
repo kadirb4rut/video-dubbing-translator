@@ -20,6 +20,10 @@ function Glyph({ type }) {
   return <span className="glyph" aria-hidden="true">{symbols[type] || '·'}</span>;
 }
 
+function GoogleIcon() {
+  return <svg className="google-mark" viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.205c0-.638-.057-1.252-.164-1.841H9v3.482h4.844a4.14 4.14 0 0 1-1.796 2.715v2.258h2.909c1.703-1.568 2.683-3.88 2.683-6.614Z" /><path fill="#34A853" d="M9 18c2.43 0 4.468-.805 5.957-2.181l-2.909-2.258c-.806.54-1.835.86-3.048.86-2.344 0-4.33-1.584-5.04-3.714H.953v2.331A9 9 0 0 0 9 18Z" /><path fill="#FBBC05" d="M3.96 10.707A5.41 5.41 0 0 1 3.675 9c0-.593.102-1.17.285-1.707V4.962H.953A9 9 0 0 0 0 9c0 1.453.348 2.827.953 4.038l3.007-2.331Z" /><path fill="#EA4335" d="M9 3.579c1.322 0 2.508.454 3.442 1.345l2.582-2.582C13.464.89 11.426 0 9 0A9 9 0 0 0 .953 4.962L3.96 7.293C4.67 5.163 6.656 3.579 9 3.579Z" /></svg>;
+}
+
 function AuthView({ onBack, onAuthenticated }) {
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
@@ -31,6 +35,17 @@ function AuthView({ onBack, onAuthenticated }) {
   const [resetRequested, setResetRequested] = useState(false);
   const [resetToken, setResetToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [googleEnabled, setGoogleEnabled] = useState(null);
+  const [googleBusy, setGoogleBusy] = useState(false);
+  useEffect(() => {
+    const authError = new URLSearchParams(window.location.search).get('auth_error');
+    if (authError) {
+      const messages = { google_cancelled: 'Google sign-in was cancelled.', google_invalid_callback: 'Google sign-in could not be completed.', google_invalid_state: 'Google sign-in expired. Please try again.', google_identity_invalid: 'Google identity verification failed. Please try again.', google_identity_conflict: 'This Google account could not be linked safely.' };
+      setError(messages[authError] || 'Google sign-in could not be completed.');
+      window.history.replaceState({}, '', `${window.location.pathname}${window.location.hash}`);
+    }
+    apiFetch('/api/auth/google/config').then(result => setGoogleEnabled(Boolean(result.enabled))).catch(() => setGoogleEnabled(false));
+  }, []);
   const submit = async (event) => {
     event.preventDefault(); setError(''); setBusy(true);
     try {
@@ -46,7 +61,14 @@ function AuthView({ onBack, onAuthenticated }) {
       }
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   };
-  return <div className="auth-page"><div className="auth-card"><button className="brand-button" onClick={onBack}>Lingo<span>Wave</span></button><h1>{resetMode ? 'Reset access.' : mode === 'login' ? 'Welcome back.' : 'Start creating.'}</h1><p>{resetMode ? resetRequested ? 'Enter the one-time token from your email.' : 'Request a secure password reset.' : mode === 'login' ? 'Sign in to continue your workspace.' : 'Create an account with 30 starter credits.'}</p><form onSubmit={submit}>{!resetMode && mode === 'signup' && <input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Your name" /> }{(!resetMode || !resetRequested) && <input required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email address" />}{resetMode && resetRequested && <><input required value={resetToken} onChange={e => setResetToken(e.target.value)} placeholder="Password reset token" /><input required minLength="12" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="New password · 12 characters minimum" /></>}{!resetMode && <input required minLength="12" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password · 12 characters minimum" />}{error && <div className="auth-error">{error}</div>}{resetToken && resetRequested && <code className="reset-token">{resetToken}</code>}<button className="button primary" disabled={busy}>{busy ? 'Working…' : resetMode ? resetRequested ? 'Set new password' : 'Request reset' : mode === 'login' ? 'Log in' : 'Create account'} <span>→</span></button></form>{!resetMode && mode === 'login' && <button className="auth-switch" onClick={() => { setResetMode(true); setResetRequested(false); setResetToken(''); }}>Forgot your password?</button>}{resetMode && resetRequested && <button className="auth-switch" onClick={() => { setResetRequested(false); setResetToken(''); setNewPassword(''); }}>Request another token</button>}<button className="auth-switch" onClick={() => { setResetMode(false); setResetRequested(false); setResetToken(''); setNewPassword(''); setMode(mode === 'login' ? 'signup' : 'login'); }}>{resetMode ? 'Back to sign in' : mode === 'login' ? 'Need an account? Create one' : 'Already have an account? Log in'}</button></div></div>;
+  const continueWithGoogle = () => {
+    if (!googleEnabled) {
+      setError(googleEnabled === false ? 'Google sign-in is not configured on this deployment yet.' : 'Checking Google sign-in availability…');
+      return;
+    }
+    setError(''); setGoogleBusy(true); window.location.assign(`${apiUrl}/api/auth/google/start`);
+  };
+  return <div className="auth-page"><div className="auth-card"><button className="brand-button" onClick={onBack}>Lingo<span>Wave</span></button><h1>{resetMode ? 'Reset access.' : mode === 'login' ? 'Welcome back.' : 'Start creating.'}</h1><p>{resetMode ? resetRequested ? 'Enter the one-time token from your email.' : 'Request a secure password reset.' : mode === 'login' ? 'Sign in to continue your workspace.' : 'Create an account with 30 starter credits.'}</p><form onSubmit={submit}>{!resetMode && mode === 'signup' && <input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Your name" /> }{(!resetMode || !resetRequested) && <input required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email address" />}{resetMode && resetRequested && <><input required value={resetToken} onChange={e => setResetToken(e.target.value)} placeholder="Password reset token" /><input required minLength="12" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="New password · 12 characters minimum" /></>}{!resetMode && <input required minLength="12" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password · 12 characters minimum" />}{error && <div className="auth-error" role="alert">{error}</div>}{resetToken && resetRequested && <code className="reset-token">{resetToken}</code>}<button className="button primary" disabled={busy}>{busy ? 'Working…' : resetMode ? resetRequested ? 'Set new password' : 'Request reset' : mode === 'login' ? 'Log in' : 'Create account'} <span>→</span></button></form>{!resetMode && <><div className="auth-divider" role="separator"><span>or</span></div><button type="button" className="google-button" onClick={continueWithGoogle} disabled={busy || googleBusy}>{googleBusy ? 'Connecting…' : <><GoogleIcon />Continue with Google</>}</button></>}{!resetMode && mode === 'login' && <button className="auth-switch" onClick={() => { setResetMode(true); setResetRequested(false); setResetToken(''); }}>Forgot your password?</button>}{resetMode && resetRequested && <button className="auth-switch" onClick={() => { setResetRequested(false); setResetToken(''); setNewPassword(''); }}>Request another token</button>}<button className="auth-switch" onClick={() => { setResetMode(false); setResetRequested(false); setResetToken(''); setNewPassword(''); setMode(mode === 'login' ? 'signup' : 'login'); }}>{resetMode ? 'Back to sign in' : mode === 'login' ? 'Need an account? Create one' : 'Already have an account? Log in'}</button></div></div>;
 }
 
 function Toast({ message }) { return message ? <div className="toast">✓ {message}</div> : null; }

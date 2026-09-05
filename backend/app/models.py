@@ -51,6 +51,37 @@ class SessionToken(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class AuthIdentity(Base):
+    __tablename__ = "auth_identities"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_subject", name="uq_auth_identity_provider_subject"),
+        UniqueConstraint("provider", "provider_email", name="uq_auth_identity_provider_email"),
+        Index("ix_auth_identities_user_id", "user_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    provider: Mapped[str] = mapped_column(String(32))
+    provider_subject: Mapped[str] = mapped_column(String(255))
+    provider_email: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class OAuthLoginState(Base):
+    __tablename__ = "oauth_login_states"
+    __table_args__ = (Index("ix_oauth_login_states_provider_expires", "provider", "expires_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    provider: Mapped[str] = mapped_column(String(32))
+    state_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    nonce_hash: Mapped[str] = mapped_column(String(64))
+    redirect_uri: Mapped[str] = mapped_column(String(2048))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Project(Base):
     __tablename__ = "projects"
 
