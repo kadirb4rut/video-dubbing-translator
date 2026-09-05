@@ -3,8 +3,8 @@
 Date: 2026-09-05  
 Environment: \`eu-north-1\`  
 Public application: \`https://d3ncg3eqih0ccj.cloudfront.net\`  
-Current code commit: pending hybrid-translation commit (Google primary + Hy-MT2 refinement)
-Current status-document commit: \`46efe43\`
+Current code commit: \`eb8519b\` (Google primary + Hy-MT2 duration-triggered refinement)
+Current status-document commit: \`eb8519b\`
 Live application commit: \`a0cfc97\` (older deployed API; latest CPU worker rollout is still pending)
 Current API task revision: \`20\`
 Current GPU worker task revision: \`15\`
