@@ -306,6 +306,7 @@ class JobWorker:
         try:
             with self._stage(db, job, JobState.TRANSLATING.value, "Translating subtitle segments", translation_metadata):
                 segments = validate_segments(self._translate(translator, segments, source=source_language or "auto", target=target_language, options=options, duration_aware=True))
+                self._model_load_seconds += float(getattr(translator, "last_model_load_seconds", 0.0) or 0.0)
                 translation_metadata.update(getattr(translator, "last_metrics", {}))
         except Exception:
             release_provider = getattr(translator, "release", None)
@@ -595,6 +596,7 @@ class JobWorker:
                             translator = translation_provider()
                             try:
                                 segments = validate_segments(self._translate(translator, segments, source=translation_source, target=options.get("target_language") or "en", options=options, duration_aware=False))
+                                self._model_load_seconds += float(getattr(translator, "last_model_load_seconds", 0.0) or 0.0)
                             finally:
                                 release_provider = getattr(translator, "release", None)
                                 if callable(release_provider):

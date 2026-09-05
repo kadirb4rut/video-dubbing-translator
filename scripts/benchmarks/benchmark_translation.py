@@ -59,6 +59,13 @@ def main() -> None:
         "requested_batch_size": int(os.getenv("TRANSLATION_BATCH_SIZE", "4")),
         "corpus": str(args.corpus),
     }
+    input_duration_seconds = max((float(item["end"]) for item in segments), default=0.0)
+    try:
+        hourly_price_usd = float(os.getenv("COMPUTE_HOURLY_PRICE_USD", ""))
+    except ValueError:
+        hourly_price_usd = None
+    result["input_duration_seconds"] = input_duration_seconds
+    result["hourly_price_usd"] = hourly_price_usd
     try:
         translated = validate_segments(
             list(
@@ -91,6 +98,10 @@ def main() -> None:
                 "translations": [{"id": item.get("id"), "source": source["text"], "target": item["text"]} for source, item in zip(segments, translated, strict=True)],
             }
         )
+        if hourly_price_usd is not None:
+            compute_cost = wall / 3600 * hourly_price_usd
+            result["estimated_compute_cost_usd"] = round(compute_cost, 6)
+            result["estimated_compute_cost_per_input_minute_usd"] = round(compute_cost / (input_duration_seconds / 60), 6) if input_duration_seconds > 0 else None
     except (ProviderUnavailable, RuntimeError, OSError) as exc:
         result.update({"status": "failed", "error": f"{type(exc).__name__}: {exc}", "wall_clock_seconds": round(time.monotonic() - started, 4), "peak_ram_mb": peak_ram_mb()})
         raise

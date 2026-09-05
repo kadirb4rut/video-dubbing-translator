@@ -376,6 +376,7 @@ class HyMT2TranslationProvider:
             "batch_count": len(batches),
             "input_chars": sum(len(segment["text"]) for segment in validated),
             "output_chars": sum(len(segment["text"]) for segment in translated),
+            "model_load_seconds": round(self.last_model_load_seconds, 4),
             "retry_count": retries,
             "malformed_response_count": malformed,
             "single_segment_fallback_count": single_segment_fallbacks,
