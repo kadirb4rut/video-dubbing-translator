@@ -4,7 +4,7 @@ Date: 2026-09-05
 Environment: \`eu-north-1\`  
 Public application: \`https://d3ncg3eqih0ccj.cloudfront.net\`  
 Current code commit: \`eb8519b\` (Google primary + Hy-MT2 duration-triggered refinement)
-Current status-document commit: \`eb8519b\`
+Current status-document commit: \`ea34cd2\`
 Live application commit: \`a0cfc97\` (older deployed API; latest CPU worker rollout is still pending)
 Current API task revision: \`20\`
 Current GPU worker task revision: \`15\`
@@ -16,7 +16,7 @@ The production-style asynchronous media architecture is deployed and the API is 
 
 The pending GPU quota request remains untouched: the EC2 service quota \`Running On-Demand G and VT instances\` is still \`0\` and the one-instance increase request is \`CASE_OPENED\`. GPU execution is therefore still a later performance-upgrade path. The CPU validation path was enabled without removing the GPU architecture. Google Translate through \`deep-translator\` is now the fast primary provider; Hy-MT2-1.8B is a lazy, duration-triggered refinement provider, and AWS Translate remains an explicit optional comparison/primary mode. A real Google CPU translation smoke passed; the full API → S3 → SQS → CPU worker → Google → Chatterbox → mux → S3 → download run remains PARTIAL because the account's current AWS console state prevents the needed live CPU worker rollout. No expensive GPU compute is running.
 
-The backend tests, lint checks, and Terraform checks pass for \`01412e5\`. The CI workflow is green through backend/infrastructure/frontend checks; the latest image publish is still running. The last completed immutable API/GPU/CPU image set is \`03b673e\` and its manifests were verified. The worker keeps a provider abstraction so the same job contract can later run on GPU.
+The backend tests, lint checks, and Terraform checks pass for \`ea34cd2\`. The latest CI workflow is green through backend/infrastructure/frontend checks, including the CPU worker image build; the latest production image publish is still running. The last completed immutable API/GPU/CPU image set is \`03b673e\` and its manifests were verified. The worker keeps a provider abstraction so the same job contract can later run on GPU.
 
 ## 2 Architecture before this goal
 
