@@ -6,6 +6,11 @@ variable "name" {
   type    = string
   default = "lingowave"
 }
+variable "github_repository" {
+  description = "GitHub owner/repository allowed to assume the image-publish role through OIDC."
+  type        = string
+  default     = "kadirb4rut/video-dubbing-translator"
+}
 variable "create_network" {
   description = "Create a minimal VPC, public worker subnets, database subnets, and security groups. Set false to use existing network IDs."
   type        = bool

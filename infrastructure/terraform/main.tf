@@ -13,6 +13,10 @@ data "aws_ami" "ecs_gpu" {
   }
 }
 
+data "aws_ecr_repository" "worker" {
+  name = "${var.name}-worker"
+}
+
 resource "aws_s3_bucket" "media" {
   bucket        = "${var.name}-${data.aws_caller_identity.current.account_id}-media"
   force_destroy = false
@@ -165,6 +169,68 @@ resource "aws_iam_role_policy" "ecs_task_api" {
     { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:PutObjectTagging", "s3:DeleteObject"], Resource = "${aws_s3_bucket.media.arn}/*" },
     { Effect = "Allow", Action = ["sqs:SendMessage", "sqs:GetQueueAttributes"], Resource = aws_sqs_queue.jobs.arn }
   ], var.mail_provider == "ses" ? [{ Effect = "Allow", Action = ["ses:SendEmail"], Resource = var.ses_identity_arn != "" ? var.ses_identity_arn : "*" }] : []) })
+}
+
+resource "aws_iam_openid_connect_provider" "github_actions" {
+  url             = "https://token.actions.githubusercontent.com"
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
+}
+
+data "aws_iam_policy_document" "github_actions_assume_role" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github_actions.arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+    condition {
+      test     = "StringLike"
+      variable = "token.actions.githubusercontent.com:sub"
+      values = [
+        "repo:${var.github_repository}:ref:refs/heads/*",
+        "repo:${var.github_repository}:pull_request",
+      ]
+    }
+  }
+}
+
+resource "aws_iam_role" "github_actions_ecr" {
+  name               = "${var.name}-github-actions-ecr"
+  assume_role_policy = data.aws_iam_policy_document.github_actions_assume_role.json
+}
+
+resource "aws_iam_role_policy" "github_actions_ecr" {
+  role = aws_iam_role.github_actions_ecr.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["ecr:GetAuthorizationToken"]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:CompleteLayerUpload",
+          "ecr:DescribeImages",
+          "ecr:DescribeRepositories",
+          "ecr:InitiateLayerUpload",
+          "ecr:PutImage",
+          "ecr:UploadLayerPart",
+        ]
+        Resource = data.aws_ecr_repository.worker.arn
+      },
+    ]
+  })
 }
 
 resource "aws_cloudwatch_log_group" "worker" {

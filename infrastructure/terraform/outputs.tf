@@ -45,3 +45,7 @@ output "api_cluster_name" {
 output "api_service_name" {
   value = var.api_image != "" ? aws_ecs_service.api[0].name : null
 }
+
+output "github_actions_ecr_role_arn" {
+  value = aws_iam_role.github_actions_ecr.arn
+}
