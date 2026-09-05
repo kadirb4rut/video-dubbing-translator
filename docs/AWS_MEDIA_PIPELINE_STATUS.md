@@ -3,18 +3,19 @@
 Date: 2026-09-05  
 Environment: \`eu-north-1\`  
 Public application: \`https://d3ncg3eqih0ccj.cloudfront.net\`  
-Current application commit: \`a0cfc97\` (Hy-MT2 provider; image publish/deployment validation in progress)
+Current repository commit: \`01412e5\` (Hy-MT2 load-time telemetry and benchmark cost fields)
+Live application commit: \`a0cfc97\` (older deployed API; latest CPU worker rollout is still pending)
 Current API task revision: \`20\`
 Current GPU worker task revision: \`15\`
 Current CPU validation worker task revision: \`6\` (desired/running/pending \`0/0/0\`)
 
 ## 1 Executive summary
 
-The production-style asynchronous media architecture is deployed and the API is healthy. The current API task is live at revision \`20\`; the GPU worker task definition remains present and the worker service remains at desired/running/pending \`0/0/0\`. The source-of-truth commit for the current code is \`03b673e\`; its immutable images published successfully, while the live CPU service still needs the short validation rollout.
+The production-style asynchronous media architecture is deployed and the API is healthy. The current API task is live at revision \`20\`; the GPU worker task definition remains present and the worker service remains at desired/running/pending \`0/0/0\`. The repository source of truth is \`01412e5\`; the last immutable image set known to be published successfully is \`03b673e\`, while the latest CPU worker rollout still needs live AWS access.
 
 The pending GPU quota request remains untouched: the EC2 service quota \`Running On-Demand G and VT instances\` is still \`0\` and the one-instance increase request is \`CASE_OPENED\`. GPU execution is therefore still a later performance-upgrade path. The CPU validation path was enabled without removing the GPU architecture. Hy-MT2-1.8B is now the self-hosted default translation adapter, with AWS Translate retained as an explicit optional comparison/fallback. A real isolated CPU Hy-MT2 inference completed successfully; the full API → S3 → SQS → CPU worker → Hy-MT2 → TTS → mux → S3 → download run remains PARTIAL because the account's current AWS console state prevents the needed live CPU worker rollout. No expensive GPU compute is running.
 
-The backend tests, lint checks, and image-publish workflow for commit \`03b673e\` passed. API, GPU worker, and CPU worker images were published and their manifests verified. The worker keeps a provider abstraction so the same job contract can later run on GPU.
+The backend tests, lint checks, and Terraform checks pass for \`01412e5\`. The CI workflow is green through backend/infrastructure/frontend checks; the latest image publish is still running. The last completed immutable API/GPU/CPU image set is \`03b673e\` and its manifests were verified. The worker keeps a provider abstraction so the same job contract can later run on GPU.
 
 ## 2 Architecture before this goal
 
@@ -131,7 +132,7 @@ The default provider is `TRANSLATION_PROVIDER=hymt2` with `TRANSLATION_MODEL=ten
 
 For dubbing, the adapter sends bounded contextual batches containing source/target language, ordered segment IDs, text, surrounding transcript context, glossary entries, register/style, and a concise-spoken-duration instruction. Responses must contain exactly one `<SEG_id>` marker per input in the original order. Missing, duplicate, reordered, empty, or commentary-surrounded output is rejected; one bounded repair inference is allowed. Unsupported language codes fail explicitly. After TTS, output duration is measured per segment; a segment over the configured 20% tolerance receives at most one Hy-MT2 duration rewrite before the existing 1.6x speed-adjustment ceiling is applied.
 
-The reproducible corpus is `scripts/benchmarks/fixtures/hymt2-dubbing.json` (20 segments covering names, numbers, URLs, idioms, technical terms, context, glossary, and duration-aware speech). `scripts/benchmarks/benchmark_translation.py` records model/runtime/device/dtype, cold load, wall/CPU time, peak RAM, segment/character throughput, batch count, retries, output text, and later cost-per-minute estimates. It deliberately calls the configured real provider; the corpus is not a translation mock. The first real smoke result is recorded in `artifacts/translation-benchmark-smoke.json`; the full 20-segment CPU run was not started because the measured one-segment runtime would exceed the controlled validation window. The current repository tests cover provider selection, language validation, deterministic mapping, batch bounds, malformed output rejection, bounded plain-output fallback, and AWS adapter compatibility.
+The reproducible corpus is `scripts/benchmarks/fixtures/hymt2-dubbing.json` (20 segments covering names, numbers, URLs, idioms, technical terms, context, glossary, and duration-aware speech). `scripts/benchmarks/benchmark_translation.py` records model/runtime/device/dtype, cold model load, wall/CPU time, peak RAM, segment/character throughput, batch count, retries, output text, and cost-per-minute estimates when `COMPUTE_HOURLY_PRICE_USD` is provided. It deliberately calls the configured real provider; the corpus is not a translation mock. The first real smoke result is recorded in `artifacts/translation-benchmark-smoke.json`; the full 20-segment CPU run was not started because the measured one-segment runtime would exceed the controlled validation window. The current repository tests cover provider selection, language validation, deterministic mapping, batch bounds, malformed output rejection, bounded plain-output fallback, and AWS adapter compatibility.
 
 ## 8 Selected model/checkpoint for every stage
 
@@ -279,7 +280,7 @@ The full plan also showed local frontend asset drift because the local \`fronten
 ## 15 Test and security results
 
 - Backend tests: \`52 passed\` locally, with one existing FastAPI/Starlette deprecation warning; Hy-MT2 selection, mapping, language, batch, malformed-response, and bounded plain-output fallback tests are included.
-- GitHub CI and image publishing: backend, frontend, infrastructure, migration, dependency audit, Ruff, Bandit, compile, Docker, API, GPU worker, and CPU worker checks passed for \`03b673e\`; the first unpinned-Hugging-Face run failed on B615 and the revision pin fixed it.
+- GitHub CI: backend, frontend, infrastructure, migration, dependency audit, Ruff, Bandit, compile, and Docker checks are green for \`01412e5\`; the latest image publishing workflow is still running. The last completed immutable image set is \`03b673e\`; the first unpinned-Hugging-Face run failed on B615 and the revision pin fixed it.
 - Ruff: passed locally and in CI.
 - Bandit medium-and-higher severity scan: passed.
 - pip-audit: passed in GitHub CI.
