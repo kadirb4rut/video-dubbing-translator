@@ -249,6 +249,7 @@ The full plan also showed local frontend asset drift because the local \`fronten
 - Terraform formatting and validation: passed.
 - Clean SQLite Alembic upgrade through migration \`0011_usage_language_models\`: passed.
 - Public \`/health\`: HTTP 200; database, storage, and queue report configured.
+- Live signup plus authenticated \`/api/auth/me\` round-trip: HTTP 200 with the same user ID, confirming the API task can write/read through the RDS secret.
 - No long-lived GitHub AWS keys are used; image publishing uses OIDC.
 - S3 media remains private and encrypted.
 - No credentials or secret values are committed or printed in this report.
