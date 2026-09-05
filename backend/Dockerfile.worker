@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libsndfi
 COPY backend/requirements.txt backend/requirements.worker-common.txt backend/requirements.worker-cpu.txt backend/requirements.worker-cpu-full.txt backend/requirements.worker-gpu.txt ./
 ARG WORKER_REQUIREMENTS=requirements.worker-cpu.txt
 ARG INSTALL_CHATTERBOX=false
-RUN python -m pip install --no-cache-dir --upgrade "pip>=26.2" "setuptools>=83" \
+RUN python -m pip install --no-cache-dir --upgrade "pip>=26.2" "setuptools==80.9.0" \
     && python -m pip install --no-cache-dir -r ${WORKER_REQUIREMENTS} \
     && if [ "${INSTALL_CHATTERBOX}" = "true" ]; then \
          python -m pip install --no-cache-dir --no-deps chatterbox-tts==0.1.7; \
