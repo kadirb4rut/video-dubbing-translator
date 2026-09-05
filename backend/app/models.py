@@ -271,6 +271,7 @@ class UsageRecord(Base):
     real_time_factor: Mapped[float | None] = mapped_column(nullable=True)
     peak_vram_mb: Mapped[float | None] = mapped_column(nullable=True)
     peak_ram_mb: Mapped[float | None] = mapped_column(nullable=True)
+    cpu_utilization_percent: Mapped[float | None] = mapped_column(nullable=True)
     compute_cost_per_input_minute_usd: Mapped[float | None] = mapped_column(nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

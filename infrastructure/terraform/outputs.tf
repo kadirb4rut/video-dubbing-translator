@@ -18,6 +18,10 @@ output "worker_service_name" {
   value = aws_ecs_service.worker.name
 }
 
+output "cpu_worker_service_name" {
+  value = var.cpu_worker_image != "" ? aws_ecs_service.cpu_worker[0].name : null
+}
+
 output "vpc_id" {
   value = local.effective_vpc_id
 }

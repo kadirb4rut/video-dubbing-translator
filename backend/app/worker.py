@@ -364,17 +364,18 @@ class JobWorker:
         return manifest
 
     def _measured_costs(self, db: Session, duration: float | None, wall_clock_seconds: float) -> tuple[float | None, float | None]:
-        if not self.gpu_type:
-            return None, None
-        profile = db.scalar(
-            select(GpuCostProfile)
-            .where(GpuCostProfile.gpu_type == self.gpu_type, GpuCostProfile.region == settings.s3_region, GpuCostProfile.measured.is_(True))
-            .order_by(GpuCostProfile.created_at.desc())
-        )
+        profile = None
+        if self.gpu_type:
+            profile = db.scalar(
+                select(GpuCostProfile)
+                .where(GpuCostProfile.gpu_type == self.gpu_type, GpuCostProfile.region == settings.s3_region, GpuCostProfile.measured.is_(True))
+                .order_by(GpuCostProfile.created_at.desc())
+            )
         hourly_price = profile.hourly_price_usd if profile and profile.hourly_price_usd and profile.hourly_price_usd > 0 else None
         if hourly_price is None:
             try:
-                hourly_price = float(os.getenv("GPU_HOURLY_PRICE_USD", ""))
+                env_name = "GPU_HOURLY_PRICE_USD" if self.gpu_type else "COMPUTE_HOURLY_PRICE_USD"
+                hourly_price = float(os.getenv(env_name, ""))
             except ValueError:
                 hourly_price = None
         if hourly_price is None or hourly_price <= 0:
@@ -389,6 +390,12 @@ class JobWorker:
         else:
             estimated = actual
         return round(estimated, 6), round(actual, 6)
+
+    def _cpu_utilization_percent(self, started: float) -> float | None:
+        elapsed = max(0.001, time.monotonic() - started)
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        cpu_seconds = usage.ru_utime + usage.ru_stime
+        return round((cpu_seconds / elapsed) * 100, 3)
 
     def _memory_metrics(self) -> tuple[float | None, float | None]:
         peak_vram_mb = None
@@ -430,6 +437,7 @@ class JobWorker:
         model_load_seconds: float | None = None,
         peak_vram_mb: float | None = None,
         peak_ram_mb: float | None = None,
+        cpu_utilization_percent: float | None = None,
     ) -> None:
         options = json.loads(job.options_json or "{}")
         record = db.scalar(select(UsageRecord).where(UsageRecord.job_id == job.id))
@@ -461,6 +469,7 @@ class JobWorker:
             "real_time_factor": round(total_wall_clock / duration, 6) if duration and duration > 0 else None,
             "peak_vram_mb": peak_vram_mb,
             "peak_ram_mb": peak_ram_mb,
+            "cpu_utilization_percent": cpu_utilization_percent,
             "worker_type": self.worker_type,
             "gpu_type": self.gpu_type,
             "model_version": self._model_version(job.operation),
@@ -569,7 +578,7 @@ class JobWorker:
             job.completed_at = now()
             self._event(db, job, JobState.COMPLETED.value, "Job completed", {"artifact_count": len(artifacts)})
             peak_vram_mb, peak_ram_mb = self._memory_metrics()
-            self._record_usage(db, job, asset.duration_seconds if asset else None, output_duration, started, input_bytes=asset.size_bytes if asset else None, output_bytes=output_bytes, queue_wait_seconds=queue_wait_seconds, compute_startup_seconds=compute_startup_seconds, model_load_seconds=self._model_load_seconds, peak_vram_mb=peak_vram_mb, peak_ram_mb=peak_ram_mb)
+            self._record_usage(db, job, asset.duration_seconds if asset else None, output_duration, started, input_bytes=asset.size_bytes if asset else None, output_bytes=output_bytes, queue_wait_seconds=queue_wait_seconds, compute_startup_seconds=compute_startup_seconds, model_load_seconds=self._model_load_seconds, peak_vram_mb=peak_vram_mb, peak_ram_mb=peak_ram_mb, cpu_utilization_percent=self._cpu_utilization_percent(started))
             db.commit()
             self._notify_job(db, job, JobState.COMPLETED.value)
         except Exception as exc:  # noqa: BLE001 - every worker failure must settle the job safely
@@ -583,7 +592,7 @@ class JobWorker:
                     job.error_message = str(exc)[:2000]
                     db.add(JobEvent(job_id=job.id, state=job.state, message=job.error_message, metadata_json=json.dumps({"error_type": type(exc).__name__, "attempt": job.retry_count})))
                     peak_vram_mb, peak_ram_mb = self._memory_metrics()
-                    self._record_usage(db, job, asset.duration_seconds if asset else None, None, started, input_bytes=asset.size_bytes if asset else None, output_bytes=0, queue_wait_seconds=queue_wait_seconds, compute_startup_seconds=compute_startup_seconds, model_load_seconds=self._model_load_seconds, peak_vram_mb=peak_vram_mb, peak_ram_mb=peak_ram_mb)
+                    self._record_usage(db, job, asset.duration_seconds if asset else None, None, started, input_bytes=asset.size_bytes if asset else None, output_bytes=0, queue_wait_seconds=queue_wait_seconds, compute_startup_seconds=compute_startup_seconds, model_load_seconds=self._model_load_seconds, peak_vram_mb=peak_vram_mb, peak_ram_mb=peak_ram_mb, cpu_utilization_percent=self._cpu_utilization_percent(started))
                     db.commit()
                     self._notify_job(db, job, JobState.FAILED.value)
                 else:
@@ -592,7 +601,7 @@ class JobWorker:
                     job.error_message = str(exc)[:2000]
                     db.add(JobEvent(job_id=job.id, state=job.state, message="Job returned to queue after worker failure", metadata_json=json.dumps({"error_type": type(exc).__name__, "attempt": job.retry_count})))
                     peak_vram_mb, peak_ram_mb = self._memory_metrics()
-                    self._record_usage(db, job, asset.duration_seconds if asset else None, None, started, input_bytes=asset.size_bytes if asset else None, output_bytes=0, queue_wait_seconds=queue_wait_seconds, compute_startup_seconds=compute_startup_seconds, model_load_seconds=self._model_load_seconds, peak_vram_mb=peak_vram_mb, peak_ram_mb=peak_ram_mb)
+                    self._record_usage(db, job, asset.duration_seconds if asset else None, None, started, input_bytes=asset.size_bytes if asset else None, output_bytes=0, queue_wait_seconds=queue_wait_seconds, compute_startup_seconds=compute_startup_seconds, model_load_seconds=self._model_load_seconds, peak_vram_mb=peak_vram_mb, peak_ram_mb=peak_ram_mb, cpu_utilization_percent=self._cpu_utilization_percent(started))
                     db.commit()
                     self.queue.send(JobMessage(job.id, job.operation))
                     self._requeued_job_ids.add(job.id)

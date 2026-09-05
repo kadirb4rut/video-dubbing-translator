@@ -386,6 +386,7 @@ def usage_history(user: User = Depends(current_user), db: Session = Depends(get_
             "real_time_factor": record.real_time_factor,
             "peak_vram_mb": record.peak_vram_mb,
             "peak_ram_mb": record.peak_ram_mb,
+            "cpu_utilization_percent": record.cpu_utilization_percent,
             "compute_cost_per_input_minute_usd": record.compute_cost_per_input_minute_usd,
             "estimated_cost_usd": record.estimated_cost_usd,
             "actual_cost_usd": record.actual_cost_usd,

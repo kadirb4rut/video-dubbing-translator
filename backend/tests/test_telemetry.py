@@ -43,6 +43,26 @@ def test_usage_telemetry_uses_measured_gpu_profile_and_accumulates_retries():
         assert record.actual_cost_usd > 0
 
 
+def test_cpu_worker_uses_configured_compute_price(monkeypatch):
+    monkeypatch.setenv("COMPUTE_HOURLY_PRICE_USD", "0.233")
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        user = User(email="cpu-cost@example.com", password_hash="hash")
+        db.add(user)
+        db.flush()
+        job = Job(user_id=user.id, operation="dubbing", idempotency_key="cpu-cost-job", estimate_credits=1, reserved_credits=1)
+        db.add(job)
+        db.commit()
+
+        worker = JobWorker()
+        worker.worker_type = "aws-cpu"
+        worker.gpu_type = None
+        estimated, actual = worker._measured_costs(db, 60, 120)
+
+        assert estimated == actual == 0.007767
+
+
 def test_worker_requeues_stale_job_from_any_active_stage():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)

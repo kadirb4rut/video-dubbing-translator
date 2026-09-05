@@ -289,6 +289,7 @@ def serialize_job(job: Job, *, include_internal_error: bool = False, usage: obje
             "real_time_factor": usage.real_time_factor,
             "peak_vram_mb": usage.peak_vram_mb,
             "peak_ram_mb": usage.peak_ram_mb,
+            "cpu_utilization_percent": usage.cpu_utilization_percent,
             "worker_type": usage.worker_type,
             "gpu_type": usage.gpu_type,
             "model_version": usage.model_version,

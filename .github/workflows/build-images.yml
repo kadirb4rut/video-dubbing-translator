@@ -74,9 +74,24 @@ jobs:
           sbom: false
           tags: ${{ steps.ecr.outputs.repository_uri }}:${{ steps.ecr.outputs.image_tag }}
 
+      - name: Build and push CPU worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile.worker
+          build-args: |
+            WORKER_REQUIREMENTS=requirements.worker-cpu-full.txt
+            INSTALL_CHATTERBOX=true
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ steps.ecr.outputs.repository_uri }}:${{ steps.ecr.outputs.image_tag }}-cpu
+
       - name: Verify published image manifests
         env:
           IMAGE_TAG: ${{ steps.ecr.outputs.image_tag }}
           REPOSITORY_URI: ${{ steps.ecr.outputs.repository_uri }}
         run: |
           aws ecr describe-images --repository-name lingowave-worker --image-ids imageTag="$IMAGE_TAG"
+          aws ecr describe-images --repository-name lingowave-worker --image-ids imageTag="${IMAGE_TAG}-cpu"

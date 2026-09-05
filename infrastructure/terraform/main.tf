@@ -380,6 +380,68 @@ resource "aws_ecs_service" "worker" {
   depends_on = [aws_ecs_cluster_capacity_providers.workers]
 }
 
+resource "aws_ecs_task_definition" "cpu_worker" {
+  count                    = var.cpu_worker_image != "" ? 1 : 0
+  family                   = "${var.name}-cpu-worker"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = tostring(var.cpu_worker_cpu)
+  memory                   = tostring(var.cpu_worker_memory)
+  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task_worker.arn
+  container_definitions = jsonencode([{
+    name      = "cpu-worker"
+    image     = var.cpu_worker_image
+    essential = true
+    command   = ["python", "-m", "app.worker"]
+    environment = [
+      { name = "SQS_QUEUE_URL", value = aws_sqs_queue.jobs.url },
+      { name = "SQS_VISIBILITY_TIMEOUT_SECONDS", value = tostring(var.sqs_visibility_timeout_seconds) },
+      { name = "S3_BUCKET", value = aws_s3_bucket.media.bucket },
+      { name = "STORAGE_BACKEND", value = "s3" },
+      { name = "AWS_REGION", value = var.aws_region },
+      { name = "TRANSLATION_PROVIDER", value = var.translation_provider },
+      { name = "WORKER_TYPE", value = "aws-cpu" },
+      { name = "CPU_TYPE", value = "fargate-${var.cpu_worker_cpu}-${var.cpu_worker_memory}" },
+      { name = "COMPUTE_HOURLY_PRICE_USD", value = tostring(var.cpu_worker_hourly_price_usd) },
+      { name = "CHATTERBOX_DEVICE", value = "cpu" },
+      { name = "XDG_CACHE_HOME", value = "/home/lingowave/.cache" },
+    ]
+    secrets = [for name, value_from in var.worker_secrets : { name = name, valueFrom = value_from }]
+    mountPoints = [{
+      sourceVolume  = "model-cache"
+      containerPath = "/home/lingowave/.cache"
+      readOnly      = false
+    }]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = aws_cloudwatch_log_group.worker.name
+        "awslogs-region"        = var.aws_region
+        "awslogs-stream-prefix" = "cpu-worker"
+      }
+    }
+  }])
+  volume {
+    name = "model-cache"
+  }
+}
+
+resource "aws_ecs_service" "cpu_worker" {
+  count           = var.cpu_worker_image != "" ? 1 : 0
+  name            = "${var.name}-cpu-worker"
+  cluster         = aws_ecs_cluster.workers.id
+  task_definition = aws_ecs_task_definition.cpu_worker[0].arn
+  desired_count   = var.cpu_worker_desired_count
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets          = local.effective_worker_subnet_ids
+    security_groups  = [local.effective_worker_security_group_id]
+    assign_public_ip = true
+  }
+}
+
 resource "aws_cloudwatch_log_group" "api" {
   count             = var.api_image != "" ? 1 : 0
   name              = "/ecs/${var.name}/api"

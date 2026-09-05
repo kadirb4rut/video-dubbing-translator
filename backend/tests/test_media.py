@@ -26,12 +26,19 @@ def test_api_container_contract_includes_ffmpeg_for_upload_inspection():
 def test_cpu_worker_contract_includes_deepfilter_native_runtime():
     backend_dir = Path(__file__).parents[2] / "backend"
     requirements = backend_dir / "requirements.worker-cpu.txt"
+    full_requirements = backend_dir / "requirements.worker-cpu-full.txt"
     contents = requirements.read_text(encoding="utf-8")
     common_contents = (backend_dir / "requirements.worker-common.txt").read_text(encoding="utf-8")
     assert "-r requirements.worker-common.txt" in contents
     contents = f"{contents}\n{common_contents}"
     assert "deepfilternet==0.5.6" in contents
     assert "deepfilterlib==0.5.6" in contents
+    full_contents = full_requirements.read_text(encoding="utf-8")
+    assert "transformers==5.16.1" in full_contents
+    assert "--extra-index-url https://download.pytorch.org/whl/cpu" in full_contents
+    dockerfile = (backend_dir / "Dockerfile.worker").read_text(encoding="utf-8")
+    assert "INSTALL_CHATTERBOX=true" not in dockerfile
+    assert "ARG INSTALL_CHATTERBOX=false" in dockerfile
 
 
 def test_gpu_worker_contract_scales_to_zero_and_reuses_live_host_model_cache():

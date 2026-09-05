@@ -148,6 +148,39 @@ variable "worker_desired_count" {
   type    = number
   default = 0
 }
+variable "cpu_worker_image" {
+  description = "Optional CPU worker image used for temporary or low-cost validation. Leave empty to keep the CPU service absent."
+  type        = string
+  default     = ""
+}
+variable "cpu_worker_desired_count" {
+  description = "CPU validation worker desired count; keep zero when no CPU validation is running."
+  type        = number
+  default     = 0
+  validation {
+    condition     = var.cpu_worker_desired_count >= 0
+    error_message = "cpu_worker_desired_count must be zero or greater."
+  }
+}
+variable "cpu_worker_cpu" {
+  description = "Fargate CPU units for the optional CPU validation worker."
+  type        = number
+  default     = 4096
+}
+variable "cpu_worker_memory" {
+  description = "Fargate memory in MiB for the optional CPU validation worker."
+  type        = number
+  default     = 16384
+}
+variable "cpu_worker_hourly_price_usd" {
+  description = "Approximate Fargate CPU plus memory hourly price used for CPU validation telemetry."
+  type        = number
+  default     = 0.233
+  validation {
+    condition     = var.cpu_worker_hourly_price_usd >= 0
+    error_message = "cpu_worker_hourly_price_usd must be zero or greater."
+  }
+}
 variable "enable_rds" {
   type    = bool
   default = false

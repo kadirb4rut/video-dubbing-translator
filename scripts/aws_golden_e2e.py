@@ -3,8 +3,8 @@
 
 This script intentionally uses the public application API and real media. It
 does not stub providers, enqueue directly into SQS, or accept prerecorded
-output. It is safe to prepare while the GPU quota is pending; the job itself
-should only be submitted after the GPU service can start.
+output. It can validate either the temporary CPU worker or the later GPU
+worker; the selected worker is an infrastructure concern, not a test mock.
 """
 
 from __future__ import annotations

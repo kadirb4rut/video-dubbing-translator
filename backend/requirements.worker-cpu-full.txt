@@ -1,0 +1,17 @@
+-r requirements.worker-common.txt
+# CPU-only PyTorch wheels keep the CPU validation task free of CUDA runtime
+# dependencies while retaining the same provider stack used by the GPU image.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.10.0
+torchaudio==2.10.0
+transformers==5.16.1
+diffusers==0.38.0
+tokenizers==0.23.2
+safetensors==0.8.0
+s3tokenizer==0.3.0
+resemble-perth==1.0.1
+conformer==0.3.2
+spacy-pkuseg
+pykakasi==2.3.0
+pyloudnorm
+omegaconf
