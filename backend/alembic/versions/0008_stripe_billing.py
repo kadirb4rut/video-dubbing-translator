@@ -2,6 +2,10 @@
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy import inspect
+
+from app.db import Base
+from app import models  # noqa: F401
 
 
 revision = "0008_stripe_billing"
@@ -11,57 +15,22 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("users", sa.Column("stripe_customer_id", sa.String(length=255), nullable=True))
-    op.create_index("ix_users_stripe_customer_id", "users", ["stripe_customer_id"], unique=True)
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    user_columns = {column["name"] for column in inspector.get_columns("users")}
+    if "stripe_customer_id" not in user_columns:
+        with op.batch_alter_table("users") as batch:
+            batch.add_column(sa.Column("stripe_customer_id", sa.String(length=255), nullable=True))
+    users_table = Base.metadata.tables["users"]
+    for index in users_table.indexes:
+        if index.name == "ix_users_stripe_customer_id":
+            index.create(bind=bind, checkfirst=True)
 
-    op.create_table(
-        "subscriptions",
-        sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("user_id", sa.String(length=36), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("provider", sa.String(length=32), nullable=False),
-        sa.Column("provider_customer_id", sa.String(length=255), nullable=False),
-        sa.Column("provider_subscription_id", sa.String(length=255), nullable=False),
-        sa.Column("price_id", sa.String(length=255), nullable=True),
-        sa.Column("plan_key", sa.String(length=32), nullable=False),
-        sa.Column("status", sa.String(length=32), nullable=False),
-        sa.Column("current_period_end", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("cancel_at_period_end", sa.Boolean(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.UniqueConstraint("provider_subscription_id", name="uq_subscription_provider_id"),
-    )
-    op.create_index("ix_subscriptions_user_id", "subscriptions", ["user_id"])
-    op.create_index("ix_subscriptions_provider_customer_id", "subscriptions", ["provider_customer_id"])
-
-    op.create_table(
-        "credit_purchases",
-        sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("user_id", sa.String(length=36), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("provider", sa.String(length=32), nullable=False),
-        sa.Column("provider_checkout_session_id", sa.String(length=255), nullable=False),
-        sa.Column("provider_payment_intent_id", sa.String(length=255), nullable=True),
-        sa.Column("pack_key", sa.String(length=64), nullable=False),
-        sa.Column("credits", sa.Integer(), nullable=False),
-        sa.Column("amount_minor", sa.Integer(), nullable=True),
-        sa.Column("currency", sa.String(length=12), nullable=True),
-        sa.Column("status", sa.String(length=24), nullable=False),
-        sa.Column("metadata_json", sa.Text(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.UniqueConstraint("provider_checkout_session_id", name="uq_purchase_checkout_session"),
-    )
-    op.create_index("ix_credit_purchases_user_id", "credit_purchases", ["user_id"])
-
-    op.create_table(
-        "billing_events",
-        sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("provider", sa.String(length=32), nullable=False),
-        sa.Column("provider_event_id", sa.String(length=255), nullable=False),
-        sa.Column("event_type", sa.String(length=120), nullable=False),
-        sa.Column("object_id", sa.String(length=255), nullable=True),
-        sa.Column("metadata_json", sa.Text(), nullable=False),
-        sa.Column("processed_at", sa.DateTime(timezone=True), nullable=False),
-        sa.UniqueConstraint("provider_event_id", name="uq_billing_provider_event"),
-    )
+    for table_name in ("subscriptions", "credit_purchases", "billing_events"):
+        table = Base.metadata.tables[table_name]
+        table.create(bind=bind, checkfirst=True)
+        for index in table.indexes:
+            index.create(bind=bind, checkfirst=True)
 
 
 def downgrade() -> None:
