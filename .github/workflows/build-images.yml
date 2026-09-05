@@ -10,6 +10,11 @@ on:
         description: "Immutable image tag, for example a commit SHA"
         required: true
         type: string
+      run_cpu_e2e:
+        description: "After publishing, run the real CPU API/S3/SQS/worker dubbing acceptance and restore scale-to-zero"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -95,3 +100,115 @@ jobs:
         run: |
           aws ecr describe-images --repository-name lingowave-worker --image-ids imageTag="$IMAGE_TAG"
           aws ecr describe-images --repository-name lingowave-worker --image-ids imageTag="${IMAGE_TAG}-cpu"
+
+  cpu-golden-e2e:
+    if: ${{ inputs.run_cpu_e2e == true }}
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      AWS_REGION: eu-north-1
+      ECS_CLUSTER: lingowave-workers
+      ECS_SERVICE: lingowave-cpu-worker
+      TASK_FAMILY: lingowave-cpu-worker
+      LINGOWAVE_API_URL: https://d3ncg3eqih0ccj.cloudfront.net
+      IMAGE_TAG: ${{ inputs.image_tag }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+          role-session-name: github-actions-cpu-golden-e2e
+
+      - name: Install media tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Resolve immutable CPU image
+        id: image
+        run: |
+          set -euo pipefail
+          repository_uri="$(aws ecr describe-repositories --repository-names lingowave-worker --query 'repositories[0].repositoryUri' --output text)"
+          digest="$(aws ecr describe-images --repository-name lingowave-worker --image-ids imageTag="${IMAGE_TAG}-cpu" --query 'imageDetails[0].imageDigest' --output text)"
+          test -n "$digest" -a "$digest" != "None"
+          echo "image_uri=${repository_uri}@${digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare real spoken media fixture
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/aws-golden-e2e
+          curl --fail --location --retry 3 --max-time 60 --output artifacts/aws-golden-e2e/source.flac https://raw.githubusercontent.com/openai/whisper/main/tests/jfk.flac
+          ffmpeg -hide_banner -loglevel error -y -i artifacts/aws-golden-e2e/source.flac -ac 1 -ar 22050 -c:a pcm_s16le artifacts/aws-golden-e2e/reference-voice.wav
+          ffmpeg -hide_banner -loglevel error -y -f lavfi -i color=c=black:s=640x360:r=25 -i artifacts/aws-golden-e2e/reference-voice.wav -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart artifacts/aws-golden-e2e/input.mp4
+          ffprobe -v error -show_entries format=duration,size,format_name -show_entries stream=codec_name,codec_type -of json artifacts/aws-golden-e2e/input.mp4 > artifacts/aws-golden-e2e/input-ffprobe.json
+
+      - name: Temporarily deploy VoxCPM2 CPU worker
+        id: deploy
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.image_uri }}
+        run: |
+          set -euo pipefail
+          previous_task_definition="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].taskDefinition' --output text)"
+          previous_desired_count="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].desiredCount' --output text)"
+          printf '%s\n' "$previous_task_definition" > "$RUNNER_TEMP/previous-task-definition"
+          printf '%s\n' "$previous_desired_count" > "$RUNNER_TEMP/previous-desired-count"
+          aws ecs describe-task-definition --task-definition "$TASK_FAMILY" --query taskDefinition --output json > "$RUNNER_TEMP/current-task-definition.json"
+          jq --arg image "$IMAGE_URI" '
+            del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
+            | .containerDefinitions |= map(if .name == "cpu-worker" then
+                .image = $image
+                | .environment = ((.environment // [])
+                    | map(select(.name as $name | ["TRANSLATION_PROVIDER", "TRANSLATION_REFINEMENT_PROVIDER", "TRANSLATION_REFINEMENT_MAX_PASSES", "TRANSLATION_MODEL", "TRANSLATION_MODEL_REVISION", "VOXCPM_MODEL", "VOXCPM_MODEL_REVISION", "VOXCPM_DEVICE", "VOXCPM_DTYPE"] | index($name) | not))
+                    + [
+                        {"name":"TRANSLATION_PROVIDER","value":"google-deep-translator"},
+                        {"name":"TRANSLATION_REFINEMENT_PROVIDER","value":"hymt2"},
+                        {"name":"TRANSLATION_REFINEMENT_MAX_PASSES","value":"1"},
+                        {"name":"TRANSLATION_MODEL","value":"tencent/Hy-MT2-1.8B"},
+                        {"name":"TRANSLATION_MODEL_REVISION","value":"9a341cd1b679d3efd23b46e847b01745a71ed792"},
+                        {"name":"VOXCPM_MODEL","value":"openbmb/VoxCPM2"},
+                        {"name":"VOXCPM_MODEL_REVISION","value":"32279effe8c19989596f05d353d1447f51d9e915"},
+                        {"name":"VOXCPM_DEVICE","value":"cpu"},
+                        {"name":"VOXCPM_DTYPE","value":"bfloat16"}
+                    ])
+              else . end)
+          ' "$RUNNER_TEMP/current-task-definition.json" > "$RUNNER_TEMP/voxcpm-task-definition.json"
+          task_definition="$(aws ecs register-task-definition --cli-input-json file://$RUNNER_TEMP/voxcpm-task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)"
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" --task-definition "$task_definition" --desired-count 1 --force-new-deployment --output json > artifacts/aws-golden-e2e/service-start.json
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+          aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --output json > artifacts/aws-golden-e2e/service-running.json
+
+      - name: Run real API to S3 to SQS to CPU worker dubbing
+        run: |
+          set -euo pipefail
+          email="aws-voxcpm-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.com"
+          password="$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | head -c 24)"
+          echo "::add-mask::$password"
+          python3 scripts/aws_golden_e2e.py --api-url "$LINGOWAVE_API_URL" --media artifacts/aws-golden-e2e/input.mp4 --voice artifacts/aws-golden-e2e/reference-voice.wav --email "$email" --password "$password" --target-language es --timeout-seconds 7200 --poll-seconds 15 --output-dir artifacts/aws-golden-e2e
+
+      - name: Capture worker evidence
+        if: always()
+        run: |
+          set +e
+          aws logs tail "/ecs/lingowave/worker" --since 240m --format short > artifacts/aws-golden-e2e/worker-cloudwatch.log 2>&1
+          aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --output json > artifacts/aws-golden-e2e/service-before-restore.json
+
+      - name: Restore CPU worker to zero and previous task definition
+        if: always()
+        run: |
+          set -euo pipefail
+          previous_task_definition="$(cat "$RUNNER_TEMP/previous-task-definition")"
+          previous_desired_count="$(cat "$RUNNER_TEMP/previous-desired-count")"
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" --task-definition "$previous_task_definition" --desired-count "$previous_desired_count" --force-new-deployment --output json > artifacts/aws-golden-e2e/service-restore.json
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+          aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --output json > artifacts/aws-golden-e2e/service-after-restore.json
+
+      - name: Upload E2E evidence and generated media
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aws-voxcpm-cpu-golden-e2e-${{ github.run_id }}
+          path: artifacts/aws-golden-e2e
+          if-no-files-found: warn
