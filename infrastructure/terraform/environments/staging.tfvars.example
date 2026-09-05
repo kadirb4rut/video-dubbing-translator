@@ -11,7 +11,8 @@ enable_rds           = false
 worker_desired_count = 0
 api_desired_count    = 0
 mail_provider        = "dev"
-translation_provider = "hymt2"
+translation_provider = "google-deep-translator"
+translation_refinement_provider = "hymt2"
 
 # For a real staging stack, pass DATABASE_URL through Secrets Manager maps and
 # supply database_password with TF_VAR_database_password when enable_rds=true.

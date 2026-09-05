@@ -44,12 +44,30 @@ variable "worker_secrets" {
   default     = {}
 }
 variable "translation_provider" {
-  description = "Translation adapter for production workers. Hy-MT2 is the self-hosted default; AWS Translate and configured-api remain optional alternatives."
+  description = "Primary translation adapter. Google/deep-translator is the fast default; AWS Translate, Hy-MT2, and configured-api remain explicit alternatives."
+  type        = string
+  default     = "google-deep-translator"
+  validation {
+    condition     = contains(["google-deep-translator", "google", "deep-translator", "hymt2", "configured-api", "aws-translate"], var.translation_provider)
+    error_message = "translation_provider must be google-deep-translator, hymt2, configured-api, or aws-translate."
+  }
+}
+variable "translation_refinement_provider" {
+  description = "Optional duration-aware linguistic refinement adapter. It is loaded only when the translated TTS exceeds the configured tolerance."
   type        = string
   default     = "hymt2"
   validation {
-    condition     = contains(["hymt2", "configured-api", "aws-translate"], var.translation_provider)
-    error_message = "translation_provider must be hymt2, configured-api, or aws-translate."
+    condition     = contains(["none", "disabled", "hymt2"], var.translation_refinement_provider)
+    error_message = "translation_refinement_provider must be none, disabled, or hymt2."
+  }
+}
+variable "translation_refinement_max_passes" {
+  description = "Maximum duration-refinement passes per segment. Keep at one for bounded dubbing retries."
+  type        = number
+  default     = 1
+  validation {
+    condition     = var.translation_refinement_max_passes >= 0 && var.translation_refinement_max_passes <= 1
+    error_message = "translation_refinement_max_passes must be 0 or 1."
   }
 }
 variable "translation_model" {

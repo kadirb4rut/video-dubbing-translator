@@ -12,12 +12,13 @@ from app.providers_real import (
     ChatterboxMultilingualVoiceProvider,
     DeepFilterNetNoiseProvider,
     FixtureTranslationProvider,
+    GoogleDeepTranslatorProvider,
     HyMT2TranslationProvider,
     ProviderUnavailable,
     WhisperTranscriptionProvider,
     translation_provider,
 )
-from app.worker import MAX_DUBBING_SPEEDUP
+from app.worker import MAX_DUBBING_SPEEDUP, JobWorker
 
 
 def test_api_container_contract_includes_ffmpeg_for_upload_inspection():
@@ -138,6 +139,45 @@ def test_hymt2_wraps_plain_model_output_with_deterministic_source_id(monkeypatch
 def test_hymt2_is_selectable_as_the_default_provider(monkeypatch):
     monkeypatch.setattr("app.providers_real.settings", replace(settings, translation_provider="hymt2"))
     assert isinstance(translation_provider(), HyMT2TranslationProvider)
+
+
+def test_google_deep_translator_is_the_default_primary_provider(monkeypatch):
+    monkeypatch.setattr("app.providers_real.settings", replace(settings, translation_provider="google-deep-translator"))
+    assert isinstance(translation_provider(), GoogleDeepTranslatorProvider)
+
+
+def test_google_deep_translator_preserves_source_and_timing():
+    calls = []
+
+    class FakeGoogleTranslator:
+        def translate(self, text):
+            calls.append(text)
+            return f"çeviri: {text}"
+
+    provider = GoogleDeepTranslatorProvider(translator_factory=lambda **kwargs: FakeGoogleTranslator())
+    segments = [{"id": "s01", "start": 0, "end": 1.25, "text": "Hello AWS"}]
+    translated = provider.translate_segments(segments, source="en", target="tr", context="AWS context", duration_aware=True)
+    assert calls == ["Hello AWS"]
+    assert translated == [{"id": "s01", "start": 0.0, "end": 1.25, "source_text": "Hello AWS", "text": "çeviri: Hello AWS"}]
+    assert provider.last_metrics["runtime"] == "deep-translator.GoogleTranslator"
+    assert provider.last_metrics["duration_aware"] is True
+
+
+@pytest.mark.parametrize("result", ["", None])
+def test_google_deep_translator_rejects_empty_result(result):
+    class EmptyTranslator:
+        def translate(self, text):
+            return result
+
+    provider = GoogleDeepTranslatorProvider(translator_factory=lambda **kwargs: EmptyTranslator())
+    with pytest.raises(ProviderUnavailable, match="empty text"):
+        provider.translate([{"start": 0, "end": 1, "text": "Hello"}], source="en", target="tr")
+
+
+def test_duration_refinement_trigger_is_bounded_and_selective():
+    assert not JobWorker._requires_duration_refinement(1.19, 1.0, 0.2)
+    assert JobWorker._requires_duration_refinement(1.21, 1.0, 0.2)
+    assert JobWorker._requires_duration_refinement(5.0, 1.0, 0.2)
 
 
 def test_aws_translate_provider_preserves_segment_timing():

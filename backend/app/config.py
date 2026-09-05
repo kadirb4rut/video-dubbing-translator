@@ -37,10 +37,11 @@ class Settings:
     frontend_origin: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
     translation_api_url: str | None = os.getenv("TRANSLATION_API_URL") or None
     translation_api_key: str | None = os.getenv("TRANSLATION_API_KEY") or None
-    # Hy-MT2 is the self-hosted production default. AWS Translate and an
-    # external configured API remain explicit alternatives for comparison or
-    # operational fallback.
-    translation_provider: str = os.getenv("TRANSLATION_PROVIDER", "hymt2")
+    # Google/deep-translator is the fast default. Hy-MT2 is loaded lazily only
+    # for duration-aware linguistic refinement; AWS Translate remains an
+    # explicit optional comparison/primary provider.
+    translation_provider: str = os.getenv("TRANSLATION_PROVIDER", "google-deep-translator")
+    translation_refinement_provider: str = os.getenv("TRANSLATION_REFINEMENT_PROVIDER", "hymt2")
     translation_model: str = os.getenv("TRANSLATION_MODEL", "tencent/Hy-MT2-1.8B")
     translation_model_revision: str = os.getenv("TRANSLATION_MODEL_REVISION", "9a341cd1b679d3efd23b46e847b01745a71ed792")
     translation_device: str = os.getenv("TRANSLATION_DEVICE", "auto")
@@ -49,6 +50,7 @@ class Settings:
     translation_max_chars_per_batch: int = int(os.getenv("TRANSLATION_MAX_CHARS_PER_BATCH", "4000"))
     translation_max_new_tokens: int = int(os.getenv("TRANSLATION_MAX_NEW_TOKENS", "1024"))
     translation_duration_tolerance: float = float(os.getenv("TRANSLATION_DURATION_TOLERANCE", "0.2"))
+    translation_refinement_max_passes: int = int(os.getenv("TRANSLATION_REFINEMENT_MAX_PASSES", "1"))
     translation_max_retries: int = int(os.getenv("TRANSLATION_MAX_RETRIES", "1"))
     whisper_model: str = os.getenv("WHISPER_MODEL", "small")
     chatterbox_device: str = os.getenv("CHATTERBOX_DEVICE", "cuda")

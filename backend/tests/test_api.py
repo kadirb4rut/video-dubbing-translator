@@ -188,6 +188,78 @@ def test_worker_operations_produce_decodable_artifacts(monkeypatch):
         assert dubbing_usage["output_duration_seconds"] is not None
 
 
+def test_dubbing_uses_one_hy_mt2_refinement_only_for_overlong_segments(monkeypatch):
+    refinement_calls = []
+
+    def fake_transcribe(provider, audio_path, *, language=None):
+        provider.detected_language = "en"
+        return [
+            {"id": "fit", "start": 0.0, "end": 1.0, "text": "Fit source"},
+            {"id": "long", "start": 1.0, "end": 2.0, "text": "Long source"},
+        ]
+
+    def fake_separate(provider, audio_path, *, stems, output_dir):
+        output_dir.mkdir(parents=True, exist_ok=True)
+        vocals = output_dir / "vocals.wav"
+        instrumental = output_dir / "instrumental.wav"
+        shutil.copy2(audio_path, vocals)
+        shutil.copy2(audio_path, instrumental)
+        return {"vocals": vocals, "instrumental": instrumental}
+
+    def fake_synthesize(provider, text, *, reference_voice, language, output_path):
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        duration = 0.8 if text == "shortened long" or text == "fit translated" else 3.5
+        subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", f"sine=frequency=440:duration={duration}", "-ac", "1", "-ar", "16000", str(output_path)], check=True)
+        return output_path
+
+    class FakeTranslation:
+        name = "google-deep-translator"
+
+        def translate(self, segments, *, source, target):
+            return [{**segment, "source_text": segment["text"], "text": f"{segment['id']} translated"} for segment in segments]
+
+    class FakeRefinement:
+        name = "hymt2"
+
+        def rewrite_for_duration(self, text, **kwargs):
+            refinement_calls.append(text)
+            assert kwargs["source_text"] == "Long source"
+            assert kwargs["glossary"] is None
+            return "shortened long"
+
+        def release(self):
+            return None
+
+    monkeypatch.setattr("app.providers_real.WhisperTranscriptionProvider.transcribe", fake_transcribe)
+    monkeypatch.setattr("app.providers_real.DemucsStemSeparationProvider.separate", fake_separate)
+    monkeypatch.setattr("app.providers_real.ChatterboxMultilingualVoiceProvider.synthesize", fake_synthesize)
+    monkeypatch.setattr("app.worker.translation_provider", lambda: FakeTranslation())
+    monkeypatch.setattr("app.worker.translation_refinement_provider", lambda: FakeRefinement())
+
+    with TestClient(app) as client:
+        signup = client.post("/api/auth/signup", json={"email": "hy-refinement@example.com", "password": "a-strong-password-123", "display_name": "Refinement"})
+        assert signup.status_code == 200
+        source = fixture_video()
+        uploaded = client.post("/api/media/upload", files={"upload": ("source.mp4", source.read_bytes(), "video/mp4")})
+        assert uploaded.status_code == 200
+        voice_source = fixture_audio()
+        voice = client.post("/api/voices", data={"name": "Refinement voice", "declaration": "I own or am authorized to use this voice.", "authorized": "true"}, files={"upload": ("reference.wav", voice_source.read_bytes(), "audio/wav")})
+        assert voice.status_code == 200
+        created = client.post("/api/jobs", json={"media_asset_id": uploaded.json()["id"], "operation": "dubbing", "target_language": "es", "voice_profile_id": voice.json()["id"], "preserve_voice": True, "keep_background": True})
+        assert created.status_code == 200, created.text
+        assert JobWorker().run_once() is True
+        detail = client.get(f"/api/jobs/{created.json()['id']}").json()
+        assert detail["state"] == "completed", detail
+        assert refinement_calls == ["long translated"]
+        timing_event = next(event for event in detail["events"] if event["message"] == "Translation and dubbing timing metrics")
+        metrics = timing_event["metadata"]["duration_segments"]
+        assert metrics[0]["hy_mt2_refinement_used"] is False
+        assert metrics[1]["hy_mt2_refinement_used"] is True
+        assert metrics[1]["refinement_passes"] == 1
+        assert metrics[0]["final_speed_adjustment_ratio"] is not None
+        assert metrics[1]["final_speed_adjustment_ratio"] is not None
+
+
 def test_unauthenticated_requests_are_rejected():
     with TestClient(app) as client:
         response = client.get("/api/credits")

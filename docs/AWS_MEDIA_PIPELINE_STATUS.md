@@ -3,7 +3,7 @@
 Date: 2026-09-05  
 Environment: \`eu-north-1\`  
 Public application: \`https://d3ncg3eqih0ccj.cloudfront.net\`  
-Current code commit: \`01412e5\` (Hy-MT2 load-time telemetry and benchmark cost fields)
+Current code commit: pending hybrid-translation commit (Google primary + Hy-MT2 refinement)
 Current status-document commit: \`46efe43\`
 Live application commit: \`a0cfc97\` (older deployed API; latest CPU worker rollout is still pending)
 Current API task revision: \`20\`
@@ -14,7 +14,7 @@ Current CPU validation worker task revision: \`6\` (desired/running/pending \`0/
 
 The production-style asynchronous media architecture is deployed and the API is healthy. The current API task is live at revision \`20\`; the GPU worker task definition remains present and the worker service remains at desired/running/pending \`0/0/0\`. The repository source of truth is \`01412e5\`; the last immutable image set known to be published successfully is \`03b673e\`, while the latest CPU worker rollout still needs live AWS access.
 
-The pending GPU quota request remains untouched: the EC2 service quota \`Running On-Demand G and VT instances\` is still \`0\` and the one-instance increase request is \`CASE_OPENED\`. GPU execution is therefore still a later performance-upgrade path. The CPU validation path was enabled without removing the GPU architecture. Hy-MT2-1.8B is now the self-hosted default translation adapter, with AWS Translate retained as an explicit optional comparison/fallback. A real isolated CPU Hy-MT2 inference completed successfully; the full API → S3 → SQS → CPU worker → Hy-MT2 → TTS → mux → S3 → download run remains PARTIAL because the account's current AWS console state prevents the needed live CPU worker rollout. No expensive GPU compute is running.
+The pending GPU quota request remains untouched: the EC2 service quota \`Running On-Demand G and VT instances\` is still \`0\` and the one-instance increase request is \`CASE_OPENED\`. GPU execution is therefore still a later performance-upgrade path. The CPU validation path was enabled without removing the GPU architecture. Google Translate through \`deep-translator\` is now the fast primary provider; Hy-MT2-1.8B is a lazy, duration-triggered refinement provider, and AWS Translate remains an explicit optional comparison/primary mode. A real Google CPU translation smoke passed; the full API → S3 → SQS → CPU worker → Google → Chatterbox → mux → S3 → download run remains PARTIAL because the account's current AWS console state prevents the needed live CPU worker rollout. No expensive GPU compute is running.
 
 The backend tests, lint checks, and Terraform checks pass for \`01412e5\`. The CI workflow is green through backend/infrastructure/frontend checks; the latest image publish is still running. The last completed immutable API/GPU/CPU image set is \`03b673e\` and its manifests were verified. The worker keeps a provider abstraction so the same job contract can later run on GPU.
 
@@ -63,7 +63,8 @@ ECS EC2 GPU was retained instead of introducing AWS Batch or EKS. The existing T
 - CloudWatch Logs and alarms: API/worker logs and queue scale signals.
 - ECR: immutable API and GPU worker images.
 - IAM/OIDC: short-lived GitHub Actions role restricted to the repository image-publish path.
-- Hy-MT2-1.8B: default self-hosted translation provider in the worker; no AWS Translate account access is required for the default path.
+- Google Translate through `deep-translator`: fast primary translation provider.
+- Hy-MT2-1.8B: duration-triggered self-hosted refinement provider, loaded only for overlong translated speech.
 - AWS Translate: optional comparison/fallback provider through the ECS task role.
 - Terraform: persistent infrastructure and deployment state.
 
@@ -84,7 +85,7 @@ ECS EC2 GPU was retained instead of introducing AWS Batch or EKS. The existing T
 13. \`/api/jobs/{job_id}/artifacts/{artifact_id}/download\` returns a presigned redirect for the private object.
 14. When the queue drains, scale-in reduces worker desired count to zero and the capacity provider can return the ASG to zero.
 
-The lifecycle is implemented. CPU proved the storage/queue/worker/model/output/download path for transcription and TTS, and a real isolated Hy-MT2 CPU inference completed. The full Hy-MT2 media acceptance run is still blocked by live AWS worker rollout access, not by the translation provider or GPU quota. GPU execution is still pending quota approval.
+The lifecycle is implemented. CPU proved the storage/queue/worker/model/output/download path for transcription and TTS. The hybrid translation routing and timing contract is covered by worker tests, and a real GoogleTranslator CPU smoke completed. The full hybrid media acceptance run is still blocked by live AWS worker rollout access, not by the provider contract or GPU quota. GPU execution is still pending quota approval.
 
 ## 6 AI pipeline stages
 
@@ -96,8 +97,10 @@ The temporary CPU worker used the same provider/worker contract as the GPU worke
 |---|---|---|
 | Real transcription | PASS | \`artifacts/aws-cpu-e2e/transcription-8e7fd9cf-fd44-4e2b-a5d1-3ea601d0324b/evidence.json\`; SRT/VTT/TXT downloaded |
 | Real CPU TTS | PASS | \`artifacts/aws-cpu-e2e/tts-316d86a2-25d2-4884-b008-38b7623f4668/evidence.json\`; WAV downloaded and FFprobe-validated |
-| Real Hy-MT2 translation | PASS | \`artifacts/translation-benchmark-smoke.json\`; real CPU BF16 inference, EN→TR, 156.5701 s, no mock |
-| Real dubbing attempt | PARTIAL | Earlier AWS Translate attempt reached the account gate; full Hy-MT2 media path needs live CPU worker rollout |
+| Real Google translation | PASS | Real `deep-translator.GoogleTranslator` EN→TR smoke; 1.5465 s; no mock |
+| Hybrid timing routing | PASS | `artifacts/hybrid-timing-routing.json`; fit case skipped, moderate/large mismatch cases refined once |
+| Real Hy-MT2 refinement inference | NOT RUN in this turn | Existing real CPU Hy-MT2 inference evidence remains in `artifacts/translation-benchmark-smoke.json`; full selective refinement run awaits worker/model image rollout |
+| Real dubbing attempt | PARTIAL | Earlier AWS Translate attempt reached the account gate; full hybrid media path needs live CPU worker rollout |
 | GPU execution | PENDING | quota remains zero; request remains \`CASE_OPENED\` |
 
 Measured successful CPU runs:
@@ -109,7 +112,7 @@ Measured successful CPU runs:
 
 The CPU percentage is process CPU time divided by wall time; values over 100% indicate multi-core use on the 4-vCPU task. *The historical job JSON stored Linux \`ru_maxrss\` in GiB under the \`peak_ram_mb\` field; values above are the corrected MiB interpretation, and commit \`7344f13\` fixes the unit conversion for future records. The failed dubbing attempt cost $0.005268 ($0.061173/input minute) before the external Translate failure, including retries; it is not a successful dubbing cost.
 
-Practical CPU conclusion so far: S3/SQS/API orchestration, FFmpeg, Whisper small, Demucs htdemucs, Chatterbox multilingual-v3, S3 output, job status, artifact download, and Hy-MT2 translation all run on CPU. The isolated Hy-MT2 smoke measured 156.5701 s for one 26-character segment (0.0064 segments/sec); this is far too slow for interactive production and makes GPU the recommended performance path. AWS Translate is optional and no longer required for the default path.
+Practical CPU conclusion so far: S3/SQS/API orchestration, FFmpeg, Whisper small, Demucs htdemucs, Chatterbox multilingual-v3, S3 output, job status, artifact download, Google translation, and Hy-MT2 refinement all have CPU-capable adapters. Google translation is fast enough for the primary path; the isolated Hy-MT2 smoke measured 156.5701 s for one 26-character segment (0.0064 segments/sec), so Hy-MT2 is selectively useful but GPU is the recommended performance path when refinement is triggered. AWS Translate is optional and no longer required for the default path.
 
 The dubbing operation is implemented as explicit stages:
 
@@ -117,7 +120,7 @@ The dubbing operation is implemented as explicit stages:
 2. audio extraction with FFmpeg;
 3. two-stem background separation with Demucs when background preservation is enabled;
 4. Whisper transcription with source-language detection;
-5. contextual segment translation through Hy-MT2 by default (AWS Translate remains optional);
+5. segment translation through GoogleTranslator by default, with Hy-MT2 invoked only when first-pass TTS exceeds the timing tolerance (AWS Translate remains optional);
 6. reference-voice retrieval from a consented voice profile;
 7. Chatterbox multilingual synthesis per translated segment;
 8. timing-window checks and constrained speed adjustment;
@@ -127,20 +130,25 @@ The dubbing operation is implemented as explicit stages:
 
 DeepFilterNet3 remains a separate modular noise-enhancement operation. Lip sync is optional and is not part of the baseline dubbing path or this E2E gate.
 
-## 7 Hy-MT2 translation checkpoint and runtime
+## 7 Hybrid translation providers and runtime
 
-The default provider is `TRANSLATION_PROVIDER=hymt2` with `TRANSLATION_MODEL=tencent/Hy-MT2-1.8B`. It is a lazy-loaded, in-process Transformers adapter using `AutoTokenizer` and `AutoModelForCausalLM`; the deprecated Transformers v5 translation pipeline is not used. `TRANSLATION_DEVICE=auto` selects CUDA when available and CPU otherwise. `TRANSLATION_DTYPE=auto` selects BF16, matching the published checkpoint tensor type; operators can explicitly select float32 where CPU BF16 support is unavailable. The model is released at the end of a translation/dubbing stage while the downloaded checkpoint remains in the worker cache.
+The primary provider is `TRANSLATION_PROVIDER=google-deep-translator`, implemented with `deep_translator.GoogleTranslator`. Each segment keeps its original timing and a `source_text` field so the optional refinement stage can receive the Google translation plus source/context metadata. Empty responses and provider/network errors fail explicitly; source text is never silently passed through as a translation.
+
+The refinement provider is controlled independently with `TRANSLATION_REFINEMENT_PROVIDER=hymt2` and `TRANSLATION_REFINEMENT_MAX_PASSES=1`. It is not loaded during normal translation. After the first Chatterbox synthesis, the worker compares measured speech duration against the existing timing window and configured tolerance. Only an overlong segment enters Hy-MT2; the worker sends the Google translation, source text, surrounding context, glossary, style, names/numbers/technical-term constraints, and maximum spoken duration. The segment is synthesized again, measured again, then the existing bounded FFmpeg `atempo` adjustment is applied as the last step. A segment that fits the tolerance never constructs or invokes Hy-MT2.
+
+Hy-MT2 is a lazy-loaded, in-process Transformers adapter using `AutoTokenizer` and `AutoModelForCausalLM`; the deprecated Transformers v5 translation pipeline is not used. `TRANSLATION_DEVICE=auto` selects CUDA when available and CPU otherwise. `TRANSLATION_DTYPE=auto` selects BF16, matching the published checkpoint tensor type; operators can explicitly select float32 where CPU BF16 support is unavailable. The model is released at the end of a refinement stage while the downloaded checkpoint remains in the worker cache.
 
 For dubbing, the adapter sends bounded contextual batches containing source/target language, ordered segment IDs, text, surrounding transcript context, glossary entries, register/style, and a concise-spoken-duration instruction. Responses must contain exactly one `<SEG_id>` marker per input in the original order. Missing, duplicate, reordered, empty, or commentary-surrounded output is rejected; one bounded repair inference is allowed. Unsupported language codes fail explicitly. After TTS, output duration is measured per segment; a segment over the configured 20% tolerance receives at most one Hy-MT2 duration rewrite before the existing 1.6x speed-adjustment ceiling is applied.
 
-The reproducible corpus is `scripts/benchmarks/fixtures/hymt2-dubbing.json` (20 segments covering names, numbers, URLs, idioms, technical terms, context, glossary, and duration-aware speech). `scripts/benchmarks/benchmark_translation.py` records model/runtime/device/dtype, cold model load, wall/CPU time, peak RAM, segment/character throughput, batch count, retries, output text, and cost-per-minute estimates when `COMPUTE_HOURLY_PRICE_USD` is provided. It deliberately calls the configured real provider; the corpus is not a translation mock. The first real smoke result is recorded in `artifacts/translation-benchmark-smoke.json`; the full 20-segment CPU run was not started because the measured one-segment runtime would exceed the controlled validation window. The current repository tests cover provider selection, language validation, deterministic mapping, batch bounds, malformed output rejection, bounded plain-output fallback, and AWS adapter compatibility.
+The reproducible corpus is `scripts/benchmarks/fixtures/hymt2-dubbing.json` (20 segments covering names, numbers, URLs, idioms, technical terms, context, glossary, and duration-aware speech). `scripts/benchmarks/benchmark_translation.py` records model/runtime/device/dtype, cold model load, wall/CPU time, peak RAM, segment/character throughput, batch count, retries, output text, and cost-per-minute estimates when `COMPUTE_HOURLY_PRICE_USD` is provided. `scripts/benchmarks/benchmark_hybrid_timing.py` intentionally covers fit, moderate-mismatch, and large-mismatch cases and proves that only mismatch cases receive one refinement pass. The real Google smoke is recorded in the current run output; the existing real Hy-MT2 smoke is recorded in `artifacts/translation-benchmark-smoke.json`. The current repository tests cover Google provider selection, empty-result failure, Hy-MT2 mapping, language validation, bounded refinement, duration telemetry, and AWS adapter compatibility.
 
 ## 8 Selected model/checkpoint for every stage
 
 | Stage | Selected model/provider | Configured version/checkpoint | Technical reason |
 |---|---|---|---|
 | Speech to text | OpenAI Whisper | \`small\` | Multilingual transcription, segment timestamps, moderate VRAM/cold-start profile, existing real adapter |
-| Translation | Hy-MT2 | `tencent/Hy-MT2-1.8B`, Transformers in-process, BF16 default | Self-hosted default, contextual segment mapping, duration-aware dubbing prompts, no AWS Translate account dependency |
+| Translation primary | GoogleTranslator | `deep-translator==1.11.4` | Fast segment translation with low worker memory and no local model load |
+| Translation refinement | Hy-MT2 | `tencent/Hy-MT2-1.8B` @ pinned revision, Transformers in-process, BF16 default | Selective natural shortening only when first-pass TTS exceeds timing tolerance |
 | Background separation | Demucs | \`htdemucs\`, 2 stems | Existing dubbing path, useful vocal/instrumental split, preserves a practical background track |
 | Noise enhancement | DeepFilterNet | DeepFilterNet3; \`deepfilternet==0.5.6\`, \`deepfilterlib==0.5.6\` | Modular speech enhancement provider and explicit real runtime |
 | Voice cloning/TTS | Chatterbox multilingual | \`multilingual-v3\`; \`chatterbox-tts==0.1.7\` | Reference-voice multilingual synthesis and existing provider contract |
@@ -160,7 +168,7 @@ The reproducible benchmark entry points are:
 - \`scripts/benchmarks/benchmark_translation.py\` with \`scripts/benchmarks/fixtures/hymt2-dubbing.json\`;
 - \`scripts/benchmarks/benchmark_media.py\`.
 
-The existing local complete-dubbing evidence measured the configured stack: Whisper \`small\`, Demucs \`htdemucs\`, Chatterbox multilingual-v3, and FFmpeg. The Hy-MT2 corpus and harness are now committed; its measured real inference row remains pending the image rollout. No large candidate sweep was run because the goal requires controlled spend and the AWS GPU quota is unavailable. A real comparative AWS Translate benchmark remains pending account access.
+The existing local complete-dubbing evidence measured the configured stack: Whisper \`small\`, Demucs \`htdemucs\`, Chatterbox multilingual-v3, and FFmpeg. The real GoogleTranslator smoke took 1.5465 s for one EN→TR segment. The hybrid timing harness produced one fit case with zero refinement calls and two mismatch cases with one bounded refinement pass each. No large candidate sweep was run because the goal requires controlled spend and the AWS GPU quota is unavailable. A real comparative AWS Translate benchmark remains optional and pending account access.
 
 | Local stage | Wall time |
 |---|---:|
@@ -212,8 +220,10 @@ The repeatable client for this procedure is \`scripts/aws_golden_e2e.py\`. It up
 |---|---|---|
 | Real CPU transcription API → S3 → SQS → worker → model → S3 → download | PASS | Three real transcript artifacts downloaded; evidence JSON above |
 | Real CPU TTS API → SQS → Chatterbox → S3 → download | PASS | 265,004-byte PCM WAV, 5.52 s, FFprobe validated |
-| Real CPU Hy-MT2 translation | PASS | One real EN→TR segment; BF16 Transformers CPU; natural Turkish output; smoke evidence above |
-| Real CPU dubbing attempt | PARTIAL | Existing Demucs/Whisper path passed; Hy-MT2 provider passed in isolation; live full worker rollout remains pending |
+| Real CPU Google translation | PASS | One real EN→TR segment through deep-translator; 1.5465 s |
+| Hybrid timing refinement routing | PASS | Fit segment skipped; mismatch segments each used one bounded refinement pass in the targeted harness and worker integration test |
+| Real CPU Hy-MT2 translation/refinement | PARTIAL | Existing real Hy-MT2 inference passed in isolation; new selective refinement prompt is covered by tests; live full worker rollout remains pending |
+| Real CPU dubbing attempt | PARTIAL | Existing Demucs/Whisper path passed; live full hybrid worker rollout remains pending |
 | Real API job submission / input in S3 / SQS | PASS for CPU jobs | Public API harness, no direct queue injection |
 | GPU compute starts automatically | Pending | EC2 G/VT quota is \`0\` |
 | Real GPU inference and GPU output | Pending | Quota request remains open |
@@ -242,7 +252,9 @@ GPU golden metrics do not exist yet. CPU measurements are recorded by the worker
 |---|---|
 | CPU transcription | 18.196 s total; RTF 3.521594; corrected RAM ~1,832 MiB; aggregate CPU 704.376% |
 | CPU TTS | 107.422 s total; 5.520 s output; corrected RAM ~7,151 MiB; aggregate CPU 137.548% |
+| GoogleTranslator CPU/network smoke | 1.5465 s for one EN→TR segment; real output |
 | Hy-MT2 CPU smoke | 156.5701 s for one 26-character segment; 0.0064 segments/s; BF16; real output; RAM not captured by wrapper |
+| Hybrid timing benchmark | 3 segments; 1 fit + 2 mismatch; 2 refinement calls; 66.67% routing refinement rate; one pass per mismatch segment |
 | CPU telemetry rate | \`$0.233/hour\` temporary Fargate 4 vCPU/16 GiB approximation |
 | Successful CPU input-minute cost | Transcription \`$0.013679/min\`; dubbing success unavailable |
 | Failed dubbing attempt cost | \`$0.005268\` total / \`$0.061173\` per input minute before Translate failure |
@@ -280,7 +292,7 @@ The full plan also showed local frontend asset drift because the local \`fronten
 
 ## 15 Test and security results
 
-- Backend tests: \`52 passed\` locally, with one existing FastAPI/Starlette deprecation warning; Hy-MT2 selection, mapping, language, batch, malformed-response, and bounded plain-output fallback tests are included.
+- Backend tests: \`58 passed\` locally, with one existing FastAPI/Starlette deprecation warning; Google selection, empty-result handling, Hy-MT2 mapping, language, batch, bounded refinement, and duration telemetry tests are included.
 - GitHub CI: backend, frontend, infrastructure, migration, dependency audit, Ruff, Bandit, compile, and Docker checks are green for \`01412e5\`; the latest image publishing workflow is still running. The last completed immutable image set is \`03b673e\`; the first unpinned-Hugging-Face run failed on B615 and the revision pin fixed it.
 - Ruff: passed locally and in CI.
 - Bandit medium-and-higher severity scan: passed.
@@ -384,10 +396,11 @@ The remaining account-level actions are completing AWS account activation/free-p
     CPU FULL DUBBING E2E: PARTIAL — Hy-MT2 isolated inference PASS; live API/S3/SQS/worker/TTS/mux/download rollout pending
     GPU E2E MEDIA PIPELINE: PENDING — quota request remains open
     SELECTED STT MODEL: Whisper small
-    DEFAULT TRANSLATION PROVIDER: Hy-MT2 self-hosted
-    TRANSLATION MODEL/CHECKPOINT: tencent/Hy-MT2-1.8B
-    TRANSLATION RUNTIME: Transformers in-process
-    TRANSLATION DTYPE: BF16 default; CPU/GPU selectable by environment
+    DEFAULT TRANSLATION PROVIDER: Google Translate via deep-translator.GoogleTranslator
+    REFINEMENT PROVIDER: Hy-MT2-1.8B, duration-triggered, max one pass per segment
+    TRANSLATION MODEL/CHECKPOINT: deep-translator==1.11.4; Hy-MT2 tencent/Hy-MT2-1.8B pinned revision
+    TRANSLATION RUNTIME: Google network adapter; Hy-MT2 Transformers in-process when triggered
+    TRANSLATION DTYPE: Hy-MT2 BF16 default; CPU/GPU selectable by environment
     SELECTED TTS/VOICE MODEL: Chatterbox multilingual-v3
     SELECTED OTHER MAJOR MODELS: Demucs htdemucs; DeepFilterNet3; AWS Translate optional
     GPU INSTANCE: g4dn.xlarge planned
@@ -404,4 +417,4 @@ The remaining account-level actions are completing AWS account activation/free-p
     SECURITY CHECKS: PASS
     EXPENSIVE COMPUTE CURRENTLY RUNNING: NO
     LICENSE LINE: No license analysis performed; user will review before production
-    REMAINING GATES: Hy-MT2 real inference/CPU media acceptance; EC2 G/VT quota request CASE_OPENED; real GPU E2E pending
+    REMAINING GATES: real full hybrid CPU media acceptance through live worker; EC2 G/VT quota request CASE_OPENED; real GPU E2E pending

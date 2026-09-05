@@ -46,6 +46,7 @@ from .providers_real import (
     ProviderUnavailable,
     WhisperTranscriptionProvider,
     translation_provider,
+    translation_refinement_provider,
     validate_segments,
     write_srt,
     write_txt,
@@ -241,6 +242,16 @@ class JobWorker:
             )
         return list(provider.translate(segments, source=source, target=target))
 
+    @staticmethod
+    def _duration_deviation_percent(actual_seconds: float, target_seconds: float) -> float:
+        if target_seconds <= 0:
+            return 0.0
+        return round(((actual_seconds - target_seconds) / target_seconds) * 100.0, 4)
+
+    @staticmethod
+    def _requires_duration_refinement(actual_seconds: float, target_seconds: float, tolerance: float) -> bool:
+        return actual_seconds > target_seconds * (1.0 + tolerance)
+
     def _stems(self, audio: Path, output: Path, stem_count: int) -> tuple[Path, dict[str, Path]]:
         stems = DemucsStemSeparationProvider().separate(audio, stems=stem_count, output_dir=output.parent / "demucs")
         with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -302,24 +313,29 @@ class JobWorker:
                 job.options_json = json.dumps(options, sort_keys=True)
                 db.add(JobEvent(job_id=job.id, state=JobState.TRANSCRIBING.value, message="Source language detected", metadata_json=json.dumps({"language": transcriber.detected_language})))
         translator = translation_provider()
-        translation_metadata: dict[str, object] = {"provider": getattr(translator, "name", type(translator).__name__)}
+        translation_metadata: dict[str, object] = {
+            "provider": getattr(translator, "name", type(translator).__name__),
+            "refinement_provider": settings.translation_refinement_provider,
+            "refinement_max_passes": settings.translation_refinement_max_passes,
+        }
         try:
             with self._stage(db, job, JobState.TRANSLATING.value, "Translating subtitle segments", translation_metadata):
                 segments = validate_segments(self._translate(translator, segments, source=source_language or "auto", target=target_language, options=options, duration_aware=True))
                 self._model_load_seconds += float(getattr(translator, "last_model_load_seconds", 0.0) or 0.0)
                 translation_metadata.update(getattr(translator, "last_metrics", {}))
-        except Exception:
+        finally:
             release_provider = getattr(translator, "release", None)
             if callable(release_provider):
                 release_provider()
-            raise
         source_duration = inspect_media(source)["duration_seconds"]
         with self._stage(db, job, JobState.SYNTHESIZING.value, "Synthesizing translated speech with Chatterbox Multilingual"):
             reference = self._reference(db, job, work) if options.get("preserve_voice", True) else None
             voice_provider = ChatterboxMultilingualVoiceProvider()
             clips: list[Path] = []
             duration_metrics: list[dict[str, object]] = []
-            rewrite_count = 0
+            refinement_provider = None
+            refinement_count = 0
+            refinement_wall_clock_seconds = 0.0
             try:
                 for index, segment in enumerate(segments):
                     clip = work / f"segment-{index:04d}.wav"
@@ -331,24 +347,74 @@ class JobWorker:
                     before_seconds = inspect_media(clip)["duration_seconds"]
                     after_seconds = before_seconds
                     rewritten = False
-                    rewrite_provider = getattr(translator, "rewrite_for_duration", None)
-                    if before_seconds > window_seconds * (1.0 + settings.translation_duration_tolerance) and callable(rewrite_provider):
-                        rewritten_text = rewrite_provider(original_text, target=target_language, max_seconds=window_seconds * (1.0 + settings.translation_duration_tolerance))
-                        segment["text"] = rewritten_text
-                        voice_provider.synthesize(rewritten_text, reference_voice=reference, language=target_language, output_path=clip)
-                        after_seconds = inspect_media(clip)["duration_seconds"]
-                        rewritten = True
-                        rewrite_count += 1
-                    duration_metrics.append({"segment_id": segment.get("id") or f"seg-{index + 1:04d}", "window_seconds": round(window_seconds, 4), "tts_before_seconds": round(before_seconds, 4), "tts_after_seconds": round(after_seconds, 4), "rewritten": rewritten, "duration_ratio_before": round(before_seconds / window_seconds, 4), "duration_ratio_after": round(after_seconds / window_seconds, 4), "fits_without_speed_adjustment": after_seconds <= window_seconds * (1.0 + settings.translation_duration_tolerance)})
+                    rewritten_text = None
+                    refinement_error = None
+                    requires_refinement = self._requires_duration_refinement(before_seconds, window_seconds, settings.translation_duration_tolerance)
+                    segment_refinement_passes = 0
+                    if requires_refinement and segment_refinement_passes < max(0, settings.translation_refinement_max_passes):
+                        if refinement_provider is None:
+                            refinement_provider = translation_refinement_provider()
+                        rewrite_provider = getattr(refinement_provider, "rewrite_for_duration", None) if refinement_provider else None
+                        if callable(rewrite_provider):
+                            refinement_started = time.monotonic()
+                            try:
+                                rewritten_text = rewrite_provider(
+                                    original_text,
+                                    target=target_language,
+                                    max_seconds=window_seconds * (1.0 + settings.translation_duration_tolerance),
+                                    source_text=segment.get("source_text"),
+                                    context=options.get("translation_context") or " ".join(item.get("source_text", item["text"]) for item in segments)[:2400],
+                                    glossary=options.get("glossary") or None,
+                                    style=options.get("translation_style") or "natural spoken dubbing",
+                                )
+                                if rewritten_text.strip() and rewritten_text.strip() != original_text.strip():
+                                    segment["text"] = rewritten_text.strip()
+                                    voice_provider.synthesize(segment["text"], reference_voice=reference, language=target_language, output_path=clip)
+                                    after_seconds = inspect_media(clip)["duration_seconds"]
+                                    rewritten = True
+                                    refinement_count += 1
+                                    segment_refinement_passes += 1
+                                else:
+                                    refinement_error = "Hy-MT2 returned unchanged or empty text"
+                            except ProviderUnavailable as exc:
+                                refinement_error = str(exc)[:500]
+                                logger.warning("duration refinement unavailable; continuing with bounded speed adjustment", extra={"job_id": job.id, "segment_index": index, "error": refinement_error})
+                            finally:
+                                refinement_wall_clock_seconds += time.monotonic() - refinement_started
+                        else:
+                            refinement_error = "configured refinement provider has no duration rewrite capability"
+                    duration_metrics.append({
+                        "segment_id": segment.get("id") or f"seg-{index + 1:04d}",
+                        "original_duration_seconds": round(float(segment["end"]) - float(segment["start"]), 4),
+                        "timing_window_seconds": round(window_seconds, 4),
+                        "tts_before_seconds": round(before_seconds, 4),
+                        "duration_deviation_before_pct": self._duration_deviation_percent(before_seconds, window_seconds),
+                        "hy_mt2_refinement_used": rewritten,
+                        "refinement_passes": segment_refinement_passes,
+                        "refined_text": segment["text"] if rewritten else None,
+                        "refined_tts_duration_seconds": round(after_seconds, 4) if rewritten else None,
+                        "final_tts_duration_seconds": round(after_seconds, 4),
+                        "final_duration_deviation_pct": self._duration_deviation_percent(after_seconds, window_seconds),
+                        "final_speed_adjustment_ratio": None,
+                        "refinement_required": requires_refinement,
+                        "refinement_error": refinement_error,
+                        "fits_without_speed_adjustment": after_seconds <= window_seconds * (1.0 + settings.translation_duration_tolerance),
+                    })
                     clips.append(clip)
                 self._model_load_seconds += voice_provider.last_model_load_seconds
             finally:
                 voice_provider.release()
-                release_provider = getattr(translator, "release", None)
+                release_provider = getattr(refinement_provider, "release", None) if refinement_provider else None
                 if callable(release_provider):
                     release_provider()
-            translation_metadata.update({"duration_tolerance": settings.translation_duration_tolerance, "duration_rewrite_count": rewrite_count, "duration_segments": duration_metrics})
-            db.add(JobEvent(job_id=job.id, state=JobState.SYNTHESIZING.value, message="Translation and dubbing timing metrics", metadata_json=json.dumps(translation_metadata)))
+            translation_metadata.update({
+                "duration_tolerance": settings.translation_duration_tolerance,
+                "refinement_provider": getattr(refinement_provider, "name", settings.translation_refinement_provider) if refinement_provider else settings.translation_refinement_provider,
+                "hy_mt2_refined_segment_count": refinement_count,
+                "refinement_triggered": refinement_count > 0,
+                "refinement_wall_clock_seconds": round(refinement_wall_clock_seconds, 4),
+                "duration_segments": duration_metrics,
+            })
         if not clips:
             raise ProviderUnavailable("Transcription returned no speech segments")
         inputs: list[str] = []
@@ -360,6 +426,7 @@ class JobWorker:
             window_seconds = max(0.05, min(source_duration, max(start + 0.05, next_start)) - start)
             clip_duration = inspect_media(clip)["duration_seconds"]
             speedup = clip_duration / window_seconds
+            duration_metrics[index]["final_speed_adjustment_ratio"] = round(speedup, 6)
             if speedup > MAX_DUBBING_SPEEDUP:
                 raise ProviderUnavailable(
                     f"Translated segment {index + 1} is too long for its timing window; "
@@ -380,24 +447,29 @@ class JobWorker:
                 mixed_audio = work / "mixed.wav"
                 self._ffmpeg(["-i", str(background), "-i", str(dubbed_audio), "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=first:normalize=0[mix]", "-map", "[mix]", "-ar", "48000", "-t", f"{source_duration:.3f}", str(mixed_audio)])
                 dubbed_audio = mixed_audio
-            self._ffmpeg(["-i", str(source), "-i", str(dubbed_audio), "-map", "0:v?", "-map", "1:a", "-c:v", "copy", "-t", f"{source_duration:.3f}", str(output)])
+                self._ffmpeg(["-i", str(source), "-i", str(dubbed_audio), "-map", "0:v?", "-map", "1:a", "-c:v", "copy", "-t", f"{source_duration:.3f}", str(output)])
+        db.add(JobEvent(job_id=job.id, state=JobState.SYNTHESIZING.value, message="Translation and dubbing timing metrics", metadata_json=json.dumps(translation_metadata)))
         validate_output(output, "video", expected_duration_seconds=source_duration)
         return output
 
     def _model_version(self, operation: str) -> str:
+        primary = "google-deep-translator:GoogleTranslator" if settings.translation_provider in {"google", "deep-translator", "google-deep-translator"} else f"{settings.translation_provider}:{settings.translation_model}"
+        refinement = f"refinement:{settings.translation_refinement_provider}:{settings.translation_model}"
         return {
-            "dubbing": f"whisper+demucs+{settings.translation_provider}:{settings.translation_model}+chatterbox-multilingual-v3",
+            "dubbing": f"whisper+demucs+{primary}+{refinement}+chatterbox-multilingual-v3",
             "transcription": "whisper",
-            "subtitle_translation": f"whisper+{settings.translation_provider}:{settings.translation_model}",
+            "subtitle_translation": f"whisper+{primary}",
             "stems": "demucs",
             "noise": "deepfilternet",
             "tts": "chatterbox-multilingual-v3",
         }.get(operation, "unknown")
 
     def _model_manifest(self, operation: str) -> dict[str, str]:
+        primary = "google-deep-translator:GoogleTranslator" if settings.translation_provider in {"google", "deep-translator", "google-deep-translator"} else f"{settings.translation_provider}:{settings.translation_model}"
         manifest = {
             "stt": f"openai-whisper:{settings.whisper_model}",
-            "translation": f"{settings.translation_provider}:{settings.translation_model}",
+            "translation": primary,
+            "translation_refinement": f"{settings.translation_refinement_provider}:{settings.translation_model}",
             "separation": f"demucs:{settings.demucs_model}",
             "denoising": "deepfilternet:DeepFilterNet3",
             "tts": "chatterbox-tts:multilingual-v3",

@@ -76,7 +76,8 @@ def provider_registry() -> dict[str, str]:
     """Production provider names are configuration, so model swaps do not change job orchestration."""
     return {
         "transcription": "whisper (cached model adapter)",
-        "translation": "hymt2:tencent/Hy-MT2-1.8B",
+        "translation": "google-deep-translator:GoogleTranslator",
+        "translation_refinement": "hymt2:tencent/Hy-MT2-1.8B (duration-triggered, max one pass)",
         "voice": "chatterbox-multilingual-v3",
         "stem_separation": "demucs",
         "noise_removal": "deepfilternet",

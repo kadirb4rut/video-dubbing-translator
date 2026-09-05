@@ -89,6 +89,82 @@ class WhisperTranscriptionProvider:
         return [{"start": float(s["start"]), "end": float(s["end"]), "text": s["text"].strip()} for s in result.get("segments", []) if s.get("text", "").strip()]
 
 
+class GoogleDeepTranslatorProvider:
+    """Fast primary translation through deep-translator's Google adapter.
+
+    The adapter is intentionally segment-preserving: timing and source text
+    metadata stay attached to each translated segment so a later duration
+    refinement can explain exactly what was shortened.
+    """
+
+    name = "google-deep-translator"
+
+    def __init__(self, translator_factory=None):
+        self._translator_factory = translator_factory
+        self.last_model_load_seconds = 0.0
+        self.last_metrics: dict[str, object] = {}
+
+    def release(self) -> None:
+        return None
+
+    def _translator(self, *, source: str, target: str):
+        if self._translator_factory is not None:
+            return self._translator_factory(source=source, target=target)
+        module = _require("deep_translator")
+        return module.GoogleTranslator(source=source, target=target)
+
+    def translate(self, segments: Sequence[dict], *, source: str, target: str) -> Sequence[dict]:
+        return self.translate_segments(segments, source=source, target=target)
+
+    def translate_segments(
+        self,
+        segments: Sequence[dict],
+        *,
+        source: str,
+        target: str,
+        context: str | None = None,
+        glossary: Sequence[dict] | None = None,
+        style: str | None = None,
+        duration_aware: bool = False,
+    ) -> Sequence[dict]:
+        validated = validate_segments(segments)
+        normalized_source = (source or "auto").strip().lower().replace("_", "-")
+        normalized_target = (target or "").strip().lower().replace("_", "-")
+        if not normalized_target:
+            raise ProviderUnavailable("Google translation requires a target language")
+        started = time.monotonic()
+        if normalized_source == normalized_target:
+            translated = [{**segment, "source_text": segment["text"], "text": segment["text"]} for segment in validated]
+        else:
+            try:
+                translator = self._translator(source=normalized_source, target=normalized_target)
+                translated = []
+                for segment in validated:
+                    source_text = segment["text"].strip()
+                    text = str(translator.translate(source_text) or "").strip()
+                    if not text:
+                        raise ProviderUnavailable("GoogleTranslator returned empty text")
+                    translated.append({**segment, "source_text": source_text, "text": text})
+            except ProviderUnavailable:
+                raise
+            except Exception as exc:  # deep-translator surfaces network/provider errors directly
+                raise ProviderUnavailable("GoogleTranslator request failed") from exc
+        self.last_metrics = {
+            "provider": self.name,
+            "runtime": "deep-translator.GoogleTranslator",
+            "source_language": normalized_source,
+            "target_language": normalized_target,
+            "segment_count": len(validated),
+            "translated_segment_count": len(translated),
+            "wall_clock_seconds": round(time.monotonic() - started, 4),
+            "context_provided": bool(context),
+            "glossary_entry_count": len(glossary or []),
+            "duration_aware": duration_aware,
+            "refinement_triggered": False,
+        }
+        return validate_segments(translated)
+
+
 class ConfiguredTranslationProvider:
     name = "configured-translation-api"
 
@@ -385,13 +461,34 @@ class HyMT2TranslationProvider:
         }
         return validate_segments(translated)
 
-    def rewrite_for_duration(self, text: str, *, target: str, max_seconds: float) -> str:
+    def rewrite_for_duration(
+        self,
+        text: str,
+        *,
+        target: str,
+        max_seconds: float,
+        source_text: str | None = None,
+        context: str | None = None,
+        glossary: Sequence[dict] | None = None,
+        style: str | None = None,
+    ) -> str:
         target = self._normalize_language(target)
-        prompt = (
-            f"Rewrite the following {self._language_names[target]} dubbing line so it can be spoken naturally in at most {max_seconds:.2f} seconds. "
-            "Preserve the meaning, names, numbers, and tone. Output only the rewritten line, with no explanation.\n"
-            f"{text.strip()}"
-        )
+        lines = [
+            f"Rewrite the following {self._language_names[target]} dubbing line so it can be spoken naturally in at most {max_seconds:.2f} seconds.",
+            "Preserve meaning, tone/register, names, numbers, technical terms, and glossary terms. Output only the rewritten line, with no explanation.",
+        ]
+        if source_text:
+            lines.extend(["[Source context]", source_text.strip()])
+        if context:
+            lines.extend(["[Surrounding context]", context.strip()])
+        if glossary:
+            entries = [f"{item.get('source', '')} => {item.get('target', '')}" for item in glossary if item.get("source") and item.get("target")]
+            if entries:
+                lines.extend(["[Glossary]", *entries])
+        if style:
+            lines.append(f"[Style] {style}")
+        lines.extend(["[Google translation to refine]", text.strip()])
+        prompt = "\n".join(lines)
         rewritten = self._generate(prompt).strip()
         if not rewritten or "<SEG_" in rewritten:
             raise ProviderUnavailable("Hy-MT2 duration rewrite returned an invalid response")
@@ -601,8 +698,19 @@ class FixtureTranslationProvider:
 def translation_provider():
     if settings.translation_provider == "fixture":
         return FixtureTranslationProvider()
+    if settings.translation_provider in {"google", "deep-translator", "google-deep-translator"}:
+        return GoogleDeepTranslatorProvider()
     if settings.translation_provider == "hymt2":
         return HyMT2TranslationProvider()
     if settings.translation_provider == "aws-translate":
         return AwsTranslateProvider()
     return ConfiguredTranslationProvider()
+
+
+def translation_refinement_provider():
+    """Return the optional duration-refinement adapter, loaded only on demand."""
+    if settings.translation_refinement_provider in {"", "none", "disabled"}:
+        return None
+    if settings.translation_refinement_provider == "hymt2":
+        return HyMT2TranslationProvider()
+    raise ProviderUnavailable(f"Unsupported translation refinement provider: {settings.translation_refinement_provider}")

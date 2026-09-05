@@ -13,7 +13,8 @@ api_desired_count    = 1
 worker_desired_count = 0
 worker_instance_type = "g4dn.xlarge"
 enable_rds           = true
-translation_provider = "hymt2"
+translation_provider = "google-deep-translator"
+translation_refinement_provider = "hymt2"
 
 # Set these only after a verified sender/domain and Stripe catalog exist.
 mail_provider = "ses"
