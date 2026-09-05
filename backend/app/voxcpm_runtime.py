@@ -88,6 +88,11 @@ def resolve_model_path(
     )
 
 
+def allow_model_download() -> bool:
+    value = os.getenv("VOXCPM_ALLOW_DOWNLOAD", "false").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
 def model_ready(
     *,
     model_id: str = VOXCPM_MODEL_ID,
@@ -118,7 +123,9 @@ def _force_runtime_dtype(dtype: str) -> Iterator[None]:
         yield
         return
     original = (utils.pick_runtime_dtype, voxcpm_v1.pick_runtime_dtype, voxcpm_v2.pick_runtime_dtype)
-    forced = lambda _device, _configured: dtype
+    def forced(_device, _configured):
+        return dtype
+
     utils.pick_runtime_dtype = forced
     voxcpm_v1.pick_runtime_dtype = forced
     voxcpm_v2.pick_runtime_dtype = forced
@@ -140,7 +147,11 @@ def load_model(
 
     runtime_device = resolve_device(device)
     runtime_dtype = resolve_dtype(runtime_device, dtype)
-    model_path = resolve_model_path(model_id=model_id, revision=revision, local_files_only=True)
+    model_path = resolve_model_path(
+        model_id=model_id,
+        revision=revision,
+        local_files_only=not allow_model_download(),
+    )
     with _force_runtime_dtype(runtime_dtype):
         model = VoxCPM.from_pretrained(
             str(model_path),

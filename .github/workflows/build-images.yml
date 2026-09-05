@@ -166,7 +166,7 @@ jobs:
             | .containerDefinitions |= map(if .name == "cpu-worker" then
                 .image = $image
                 | .environment = ((.environment // [])
-                    | map(select(.name as $name | ["TRANSLATION_PROVIDER", "TRANSLATION_REFINEMENT_PROVIDER", "TRANSLATION_REFINEMENT_MAX_PASSES", "TRANSLATION_MODEL", "TRANSLATION_MODEL_REVISION", "VOXCPM_MODEL", "VOXCPM_MODEL_REVISION", "VOXCPM_DEVICE", "VOXCPM_DTYPE"] | index($name) | not))
+                    | map(select(.name as $name | ["TRANSLATION_PROVIDER", "TRANSLATION_REFINEMENT_PROVIDER", "TRANSLATION_REFINEMENT_MAX_PASSES", "TRANSLATION_MODEL", "TRANSLATION_MODEL_REVISION", "VOXCPM_MODEL", "VOXCPM_MODEL_REVISION", "VOXCPM_DEVICE", "VOXCPM_DTYPE", "VOXCPM_ALLOW_DOWNLOAD"] | index($name) | not))
                     + [
                         {"name":"TRANSLATION_PROVIDER","value":"google-deep-translator"},
                         {"name":"TRANSLATION_REFINEMENT_PROVIDER","value":"hymt2"},
@@ -176,7 +176,8 @@ jobs:
                         {"name":"VOXCPM_MODEL","value":"openbmb/VoxCPM2"},
                         {"name":"VOXCPM_MODEL_REVISION","value":"32279effe8c19989596f05d353d1447f51d9e915"},
                         {"name":"VOXCPM_DEVICE","value":"cpu"},
-                        {"name":"VOXCPM_DTYPE","value":"bfloat16"}
+                        {"name":"VOXCPM_DTYPE","value":"bfloat16"},
+                        {"name":"VOXCPM_ALLOW_DOWNLOAD","value":"true"}
                     ])
               else . end)
           ' "$RUNNER_TEMP/current-task-definition.json" > "$RUNNER_TEMP/voxcpm-task-definition.json"
@@ -264,6 +265,7 @@ jobs:
           docker run --rm --user 0 \
             -e VOXCPM_DEVICE=cpu \
             -e VOXCPM_DTYPE=bfloat16 \
+            -e VOXCPM_ALLOW_DOWNLOAD=true \
             -e PYTHONPATH=/app \
             -e HF_HOME=/mnt/cache/huggingface \
             -v "$PWD/artifacts/voxcpm-smoke:/mnt" \

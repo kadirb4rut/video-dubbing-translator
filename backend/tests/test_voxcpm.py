@@ -8,6 +8,7 @@ from app.voxcpm_runtime import (
     VOXCPM_MODEL_ID,
     VOXCPM_MODEL_REVISION,
     VOXCPM_OUTPUT_SAMPLE_RATE,
+    allow_model_download,
     resolve_device,
     resolve_dtype,
     synthesize_cloned_speech,
@@ -29,6 +30,13 @@ def test_voxcpm2_device_and_dtype_policy():
     assert resolve_dtype("cuda", "fp16") == "float16"
     with pytest.raises(ValueError, match="Unsupported VOXCPM_DTYPE"):
         resolve_dtype("cpu", "int8")
+
+
+def test_model_download_is_opt_in(monkeypatch):
+    monkeypatch.delenv("VOXCPM_ALLOW_DOWNLOAD", raising=False)
+    assert allow_model_download() is False
+    monkeypatch.setenv("VOXCPM_ALLOW_DOWNLOAD", "true")
+    assert allow_model_download() is True
 
 
 def test_voxcpm2_empty_text_and_reference_validation_fail_before_inference(tmp_path: Path):
