@@ -278,7 +278,7 @@ The full plan also showed local frontend asset drift because the local \`fronten
 
 ## 15 Test and security results
 
-- Backend tests: \`51 passed\` locally, with one existing FastAPI/Starlette deprecation warning; Hy-MT2 selection, mapping, language, batch, malformed-response, and bounded plain-output fallback tests are included.
+- Backend tests: \`52 passed\` locally, with one existing FastAPI/Starlette deprecation warning; Hy-MT2 selection, mapping, language, batch, malformed-response, and bounded plain-output fallback tests are included.
 - GitHub CI and image publishing: backend, frontend, infrastructure, migration, dependency audit, Ruff, Bandit, compile, Docker, API, GPU worker, and CPU worker checks passed for \`03b673e\`; the first unpinned-Hugging-Face run failed on B615 and the revision pin fixed it.
 - Ruff: passed locally and in CI.
 - Bandit medium-and-higher severity scan: passed.
