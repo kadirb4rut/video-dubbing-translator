@@ -20,13 +20,13 @@ The exact voice model is `openbmb/VoxCPM2`, revision `32279effe8c19989596f05d353
 
 ## Validation status
 
-The immutable CPU image was published successfully. The first real acceptance attempt stopped before deployment because the existing GitHub OIDC role is intentionally ECR-only and lacks ECS deployment permission (`ecs:DescribeServices` denied). No CPU task was started and no AWS compute was consumed by that failed attempt. The Terraform change below prepares an opt-in least-privilege acceptance policy; the real provider/E2E run remains pending until it is applied.
+The immutable CPU image was published successfully. The first full acceptance attempt stopped before deployment because the existing GitHub OIDC role is intentionally ECR-only and lacks ECS deployment permission (`ecs:DescribeServices` denied). No CPU task was started and no AWS compute was consumed by that failed attempt. A separate real-inference smoke attempt reached the ECR digest but could not pull the image because the same role also lacks `ecr:GetDownloadUrlForLayer`. Terraform now prepares both the opt-in ECS acceptance policy and the missing ECR pull action; the real provider/E2E run remains pending until the IAM changes are applied.
 
 | Gate | Status | Evidence |
 |---|---|---|
 | VoxCPM2 provider import/contract | PASS | Backend tests and worker image check |
 | Exact model revision | PASS | Runtime/config/manifest pin |
-| Real CPU VoxCPM2 inference | PENDING | Deployment permission must be enabled |
+| Real CPU VoxCPM2 inference | BLOCKED | OIDC role denied ECR layer download before container start |
 | Real full CPU dubbing E2E | BLOCKED | OIDC role denied `ecs:DescribeServices` before task start |
 | GPU quota | PENDING | Existing `CASE_OPENED` request preserved |
 | CPU/GPU scale-to-zero | PASS/PENDING | Recheck after E2E cleanup |
@@ -79,8 +79,8 @@ OUTPUT SAMPLE RATE: 48000 Hz
 
 CHATTERBOX REMOVED COMPLETELY: YES
 
-REAL VOXCPM2 INFERENCE: PENDING
-REAL FULL DUBBING E2E: PENDING
+REAL VOXCPM2 INFERENCE: BLOCKED — ECR pull permission not yet applied
+REAL FULL DUBBING E2E: BLOCKED — ECS deployment permission not yet applied
 FINAL DUBBED MEDIA GENERATED: PENDING
 OUTPUT DOWNLOAD VERIFIED: PENDING
 
@@ -109,10 +109,10 @@ INFRA:
 - GPU worker/ASG state: 0/0/0
 - GPU quota: CASE_OPENED, quota remains 0
 - expensive compute currently running: no
-- tests: pending final run
-- Terraform: pending final run
-- security checks: pending final run
-- repo status: pending final commit/push
+- tests: 62 passed locally; CI image build passed
+- Terraform: fmt/validate passed locally; IAM apply pending
+- security checks: Bandit API scope passed; pip-audit dev requirements passed
+- repo status: pushed; live acceptance artifacts pending
 
 LICENSE REVIEW:
 NOT PERFORMED — USER WILL REVIEW BEFORE PRODUCTION
@@ -127,4 +127,4 @@ NOT PERFORMED — USER WILL REVIEW BEFORE PRODUCTION
     terraform fmt -check -recursive infrastructure/terraform
     terraform -chdir=infrastructure/terraform validate
 
-GPU approval remains a later performance step. It must not block CPU validation, and the request must remain open. To authorize only the manual acceptance workflow, set `github_actions_ecs_deploy = true` for the Terraform apply, run the workflow once, then set it back to `false` and apply again. This does not change billing, quota, worker desired counts, or the $25 budget guardrail.
+GPU approval remains a later performance step. It must not block CPU validation, and the request must remain open. Apply the Terraform change that adds ECR pull access and set `github_actions_ecs_deploy = true` only for the manual acceptance run; after the run, set it back to `false` and apply again. This does not change billing, quota, worker desired counts, or the $25 budget guardrail.
