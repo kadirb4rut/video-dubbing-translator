@@ -582,18 +582,48 @@ resource "aws_cloudwatch_metric_alarm" "worker_queue_nonempty" {
 
 resource "aws_cloudwatch_metric_alarm" "worker_queue_empty" {
   alarm_name          = "${var.name}-queue-empty"
-  alarm_description   = "Scale ECS worker tasks in after the queue has been empty."
-  namespace           = "AWS/SQS"
-  metric_name         = "ApproximateNumberOfMessagesVisible"
-  statistic           = "Maximum"
-  period              = 60
+  alarm_description   = "Scale ECS worker tasks in after visible and in-flight queue messages have been absent."
   evaluation_periods  = 15
   comparison_operator = "LessThanThreshold"
   threshold           = 1
   treat_missing_data  = "notBreaching"
   alarm_actions       = [aws_appautoscaling_policy.worker_scale_in.arn]
-  dimensions = {
-    QueueName = aws_sqs_queue.jobs.name
+
+  metric_query {
+    id          = "active"
+    expression  = "visible + inflight"
+    label       = "Visible and in-flight SQS messages"
+    return_data = true
+  }
+
+  metric_query {
+    id          = "visible"
+    return_data = false
+
+    metric {
+      metric_name = "ApproximateNumberOfMessagesVisible"
+      namespace   = "AWS/SQS"
+      period      = 60
+      stat        = "Maximum"
+      dimensions = {
+        QueueName = aws_sqs_queue.jobs.name
+      }
+    }
+  }
+
+  metric_query {
+    id          = "inflight"
+    return_data = false
+
+    metric {
+      metric_name = "ApproximateNumberOfMessagesNotVisible"
+      namespace   = "AWS/SQS"
+      period      = 60
+      stat        = "Maximum"
+      dimensions = {
+        QueueName = aws_sqs_queue.jobs.name
+      }
+    }
   }
 }
 

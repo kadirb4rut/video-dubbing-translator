@@ -230,7 +230,7 @@ This proves the idle guardrail state, but not post-job scale-to-zero because no 
 Terraform changes include:
 
 - ECS EC2 GPU capacity provider and ASG with desired/minimum zero;
-- queue-depth CloudWatch alarms and ECS step scaling;
+- queue-depth CloudWatch alarms and ECS step scaling; the scale-in alarm uses CloudWatch metric math over both visible and in-flight SQS messages so an actively leased job does not look like an empty queue;
 - GPU task definition with one GPU requirement, model-cache host volume, AWS Translate task permission, and cost telemetry environment;
 - ECR/GitHub OIDC role and repository/branch restrictions;
 - private encrypted S3, lifecycle, SQS/DLQ, RDS, Secrets Manager references, and CloudWatch log groups;
