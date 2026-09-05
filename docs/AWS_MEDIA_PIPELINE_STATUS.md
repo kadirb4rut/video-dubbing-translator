@@ -163,6 +163,8 @@ After quota approval:
 14. Wait for queue drain and verify ECS worker desired/running/pending and ASG capacity return to zero.
 15. Capture CloudWatch log evidence and final job JSON for the report.
 
+The repeatable client for this procedure is \`scripts/aws_golden_e2e.py\`. It uploads real media through the API, verifies the input download, creates an authorized reference voice and dubbing job, polls the real job state, downloads every output artifact, runs FFprobe, and writes evidence JSON without recording passwords or presigned URLs.
+
 ## 11 E2E test result
 
 | Required proof | Status | Evidence |
@@ -307,6 +309,9 @@ Out of scope: Stripe, checkout, payment webhooks, production SES, custom domain,
 
     Complete dubbing benchmark:
     PYTHONPATH=backend python scripts/benchmarks/benchmark_dubbing.py <video> --reference-voice <wav>
+
+    Real AWS golden E2E (run only after GPU quota approval):
+    python scripts/aws_golden_e2e.py --api-url https://<cloudfront-host> --media <real-video.mp4> --voice <authorized-reference.wav> --email <test-email> --password <test-password> --target-language es --output-dir artifacts/aws-golden-e2e
 
     Browser acceptance:
     cd frontend && npm run test:e2e
