@@ -52,8 +52,9 @@ The repository contains reproducible benchmark entry points at `scripts/benchmar
 - Terraform apply: OIDC image publishing role, worker telemetry environment, and ECR permissions applied.
 - Public `/health`: HTTP 200.
 - API deployment: new image with migration `0010_media_pipeline_telemetry` is serving successfully.
+- ECS worker task definition revision 13 now points to the immutable GPU worker image for commit `39cf5ef`; service remains `0/0/0` by design.
 - CPU worker image: built, pushed, and smoke-checked previously.
-- GPU image publishing workflow: API image push succeeded; GPU worker build is in progress in GitHub Actions.
+- GPU image publishing workflow: API and GPU worker image builds/pushes succeeded; both immutable images for commit `39cf5ef` were verified in ECR. The GPU worker image is approximately 4.97 GB.
 
 ## Real E2E test status
 
@@ -132,5 +133,5 @@ TESTS: PASS
 SECURITY CHECKS: PASS
 EXPENSIVE COMPUTE CURRENTLY RUNNING: NO
 LICENSE REVIEW: NOT PERFORMED — USER WILL REVIEW BEFORE PRODUCTION
-REMAINING BLOCKERS: AWS GPU quota request CASE_OPENED; GPU worker image publication in progress; real E2E validation pending
+REMAINING BLOCKERS: AWS GPU quota request CASE_OPENED; real E2E validation pending
 ```
