@@ -319,6 +319,28 @@ Manual user action still required: approve or wait for the existing AWS G/VT quo
 
 ## Final gate
 
+    E2E MEDIA PIPELINE: PASS
+    REAL MODEL INFERENCE: PASS
+    REAL OUTPUT GENERATED: YES
+    OUTPUT DOWNLOAD VERIFIED: YES
+    SELECTED STT MODEL: Whisper small
+    SELECTED TTS/VOICE MODEL: Chatterbox multilingual-v3
+    SELECTED OTHER MAJOR MODELS: Demucs htdemucs; DeepFilterNet3; GoogleTranslator; Hy-MT2-1.8B; FFmpeg
+    GPU INSTANCE: g4dn.xlarge planned; CPU E2E accepted without GPU
+    INPUT DURATION: 13.36 seconds
+    TOTAL PROCESSING TIME: 174.667102 seconds
+    REAL-TIME FACTOR: 13.073885
+    PEAK VRAM: unavailable on CPU worker
+    TEST COST: $0.011305
+    ESTIMATED COMPUTE COST PER INPUT MINUTE: $0.050771
+    GPU SCALE-TO-ZERO: PASS — idle zero verified; GPU job not used because quota is zero
+    TERRAFORM: PASS
+    TESTS: PASS
+    SECURITY CHECKS: PASS
+    EXPENSIVE COMPUTE CURRENTLY RUNNING: NO
+    LICENSE REVIEW: NOT PERFORMED — USER WILL REVIEW BEFORE PRODUCTION
+    REMAINING BLOCKERS: GPU G/VT quota CASE_OPENED and optional GPU E2E; AWS Translate comparison account gate; user-owned license review
+
     DEFAULT TRANSLATION PROVIDER: Google Translate via deep-translator 1.11.4
     REFINEMENT PROVIDER: tencent/Hy-MT2-1.8B, selective, maximum one pass
     REAL FULL DUBBING E2E: PASS (CPU)
