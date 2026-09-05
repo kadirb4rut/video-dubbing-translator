@@ -246,6 +246,9 @@ jobs:
           test -n "$digest" -a "$digest" != "None"
           echo "image_uri=${repository_uri}@${digest}" >> "$GITHUB_OUTPUT"
 
+      - name: Install media tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Prepare real reference voice
         run: |
           set -euo pipefail
