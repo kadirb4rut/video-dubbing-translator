@@ -263,6 +263,35 @@ class HyMT2TranslationProvider:
             raise ProviderUnavailable("Hy-MT2 returned an empty translated segment")
         return texts
 
+    def _single_prompt(self, segment: dict, *, source: str, target: str, context: str | None, glossary: Sequence[dict] | None, style: str | None, duration_aware: bool) -> str:
+        source_name = self._language_names[source]
+        target_name = self._language_names[target]
+        lines = [
+            f"Translate this {source_name} spoken subtitle into {target_name}.",
+            "Output only the translated sentence. Do not add a label, explanation, quotation marks, or commentary.",
+            f"[Source] {segment['text'].strip()}",
+        ]
+        if context:
+            lines.insert(2, f"[Context] {context.strip()}")
+        if glossary:
+            entries = [f"{item.get('source', '')} => {item.get('target', '')}" for item in glossary if item.get("source") and item.get("target")]
+            if entries:
+                lines.insert(2, "[Glossary] " + "; ".join(entries))
+        if style:
+            lines.insert(2, f"[Style] {style}")
+        if duration_aware:
+            lines.insert(2, "Use natural, concise spoken language suitable for dubbing; do not omit meaning.")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _parse_single(raw: str) -> str:
+        text = raw.strip().strip('"').strip()
+        if not text or "<SEG_" in text or "Translation:" in text or "Here is" in text:
+            raise ProviderUnavailable("Hy-MT2 returned commentary or an invalid single-segment translation")
+        if "\n" in text:
+            raise ProviderUnavailable("Hy-MT2 returned multiple lines for a single segment")
+        return text
+
     def _batches(self, segments: Sequence[dict]) -> list[list[dict]]:
         batches: list[list[dict]] = []
         current: list[dict] = []
@@ -290,6 +319,7 @@ class HyMT2TranslationProvider:
         started = time.monotonic()
         retries = 0
         malformed = 0
+        single_segment_fallbacks = 0
         translated: list[dict] = []
         batches = self._batches(validated)
         for batch in batches:
@@ -299,11 +329,39 @@ class HyMT2TranslationProvider:
                 texts = self._parse(raw, batch)
             except ProviderUnavailable:
                 malformed += 1
-                if retries >= settings.translation_max_retries:
-                    raise
-                retries += 1
-                repair = "Return only the corrected marked translations, with no commentary.\n" + raw[:6000]
-                texts = self._parse(self._generate(repair), batch)
+                if retries < settings.translation_max_retries:
+                    retries += 1
+                    repair = "Return only the corrected marked translations, with no commentary.\n" + raw[:6000]
+                    try:
+                        texts = self._parse(self._generate(repair), batch)
+                    except ProviderUnavailable:
+                        texts = []
+                else:
+                    texts = []
+                if not texts:
+                    # Hy-MT2's published translation instruction prefers a
+                    # plain translation and may ignore output markers. Keep
+                    # the logical batch/context contract, but isolate each
+                    # line and wrap it with the deterministic source ID in
+                    # our own result object rather than accepting ambiguous
+                    # model output.
+                    single_segment_fallbacks += len(batch)
+                    texts = [
+                        self._parse_single(
+                            self._generate(
+                                self._single_prompt(
+                                    segment,
+                                    source=source,
+                                    target=target,
+                                    context=context,
+                                    glossary=glossary,
+                                    style=style,
+                                    duration_aware=duration_aware,
+                                )
+                            )
+                        )
+                        for segment in batch
+                    ]
             translated.extend({**segment, "text": text} for segment, text in zip(batch, texts, strict=True))
         self.last_metrics = {
             "provider": self.name,
@@ -320,6 +378,7 @@ class HyMT2TranslationProvider:
             "output_chars": sum(len(segment["text"]) for segment in translated),
             "retry_count": retries,
             "malformed_response_count": malformed,
+            "single_segment_fallback_count": single_segment_fallbacks,
             "wall_clock_seconds": round(time.monotonic() - started, 4),
             "duration_aware": duration_aware,
         }

@@ -125,6 +125,16 @@ def test_hymt2_rejects_unsupported_language_without_loading_model():
         provider.translate([{"start": 0, "end": 1, "text": "Hello"}], source="xx", target="tr")
 
 
+def test_hymt2_wraps_plain_model_output_with_deterministic_source_id(monkeypatch):
+    monkeypatch.setattr("app.providers_real.settings", replace(settings, translation_max_retries=0))
+    provider = HyMT2TranslationProvider(model_name="test-model")
+    outputs = iter(["Merhaba dünya", "Merhaba dünya"])
+    monkeypatch.setattr(provider, "_generate", lambda prompt: next(outputs))
+    result = provider.translate_segments([{"id": "s01", "start": 0, "end": 1, "text": "Hello world"}], source="en", target="tr")
+    assert result == [{"id": "s01", "start": 0.0, "end": 1.0, "text": "Merhaba dünya"}]
+    assert provider.last_metrics["single_segment_fallback_count"] == 1
+
+
 def test_hymt2_is_selectable_as_the_default_provider(monkeypatch):
     monkeypatch.setattr("app.providers_real.settings", replace(settings, translation_provider="hymt2"))
     assert isinstance(translation_provider(), HyMT2TranslationProvider)
