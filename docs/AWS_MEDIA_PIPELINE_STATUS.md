@@ -12,7 +12,7 @@ Current CPU validation worker task revision: \`6\` (desired/running/pending \`0/
 
 The production-style asynchronous media architecture is deployed and the API is healthy. The current API task is live at revision \`20\`; the GPU worker task definition remains present and the worker service remains at desired/running/pending \`0/0/0\`. The source-of-truth commit for the current code is \`7344f13\`.
 
-The pending GPU quota request remains untouched: the EC2 service quota \`Running On-Demand G and VT instances\` is still \`0\` and the one-instance increase request is \`CASE_OPENED\`. GPU execution is therefore still a later performance-upgrade path. The CPU validation path was enabled without removing the GPU architecture. A real CPU transcription job and a real CPU Chatterbox TTS job completed through API → S3 → SQS → CPU worker → model → S3 → API download. The complete dubbing job reached Demucs and Whisper, then stopped at the AWS Translate call because this account's Translate subscription is not enabled; that stage is isolated as an external service prerequisite, not a CPU limitation. No expensive GPU compute is running.
+The pending GPU quota request remains untouched: the EC2 service quota \`Running On-Demand G and VT instances\` is still \`0\` and the one-instance increase request is \`CASE_OPENED\`. GPU execution is therefore still a later performance-upgrade path. The CPU validation path was enabled without removing the GPU architecture. A real CPU transcription job and a real CPU Chatterbox TTS job completed through API → S3 → SQS → CPU worker → model → S3 → API download. The complete dubbing job reached Demucs and Whisper, then stopped at the AWS Translate call because the AWS console reports incomplete account setup/free-plan service limitations; that stage is isolated as an external account prerequisite, not a CPU limitation. No expensive GPU compute is running.
 
 The backend tests, lint checks, and image-publish workflow for commit \`7344f13\` passed. API, GPU worker, and CPU worker images were published and their manifests verified. The worker keeps a provider abstraction so the same job contract can later run on GPU.
 
@@ -93,7 +93,7 @@ The temporary CPU worker used the same provider/worker contract as the GPU worke
 |---|---|---|
 | Real transcription | PASS | \`artifacts/aws-cpu-e2e/transcription-8e7fd9cf-fd44-4e2b-a5d1-3ea601d0324b/evidence.json\`; SRT/VTT/TXT downloaded |
 | Real CPU TTS | PASS | \`artifacts/aws-cpu-e2e/tts-316d86a2-25d2-4884-b008-38b7623f4668/evidence.json\`; WAV downloaded and FFprobe-validated |
-| Real dubbing attempt | PARTIAL | Demucs and Whisper completed; AWS Translate returned \`SubscriptionRequiredException\`; no mock translation was used |
+| Real dubbing attempt | PARTIAL | Demucs and Whisper completed; AWS Translate returned \`SubscriptionRequiredException\`; the AWS console reports incomplete account setup/free-plan limitations; no mock translation was used |
 | GPU execution | PENDING | quota remains zero; request remains \`CASE_OPENED\` |
 
 Measured successful CPU runs:
@@ -189,7 +189,7 @@ CPU validation can run now with the temporary Fargate CPU worker. The GPU golden
 14. Wait for queue drain and verify ECS worker desired/running/pending and ASG capacity return to zero.
 15. Capture CloudWatch log evidence and final job JSON for the report.
 
-The CPU evidence harness used the same public API and real media. It completed transcription and TTS separately because the full dubbing path reached the real AWS Translate provider and the AWS account returned \`SubscriptionRequiredException\`. No fixture translator, direct SQS enqueue, or prerecorded output was used.
+The CPU evidence harness used the same public API and real media. It completed transcription and TTS separately because the full dubbing path reached the real AWS Translate provider and the AWS account returned \`SubscriptionRequiredException\`; the AWS console currently reports incomplete account setup/free-plan service limitations. No fixture translator, direct SQS enqueue, or prerecorded output was used.
 
 The repeatable client for this procedure is \`scripts/aws_golden_e2e.py\`. It uploads real media through the API, verifies the input download, creates an authorized reference voice and dubbing job, polls the real job state, downloads every output artifact, runs FFprobe, and writes evidence JSON without recording passwords or presigned URLs.
 
@@ -199,7 +199,7 @@ The repeatable client for this procedure is \`scripts/aws_golden_e2e.py\`. It up
 |---|---|---|
 | Real CPU transcription API → S3 → SQS → worker → model → S3 → download | PASS | Three real transcript artifacts downloaded; evidence JSON above |
 | Real CPU TTS API → SQS → Chatterbox → S3 → download | PASS | 265,004-byte PCM WAV, 5.52 s, FFprobe validated |
-| Real CPU dubbing attempt | PARTIAL | Demucs and Whisper passed; AWS Translate account subscription blocked continuation |
+| Real CPU dubbing attempt | PARTIAL | Demucs and Whisper passed; AWS Translate account setup/free-plan limitation blocked continuation |
 | Real API job submission / input in S3 / SQS | PASS for CPU jobs | Public API harness, no direct queue injection |
 | GPU compute starts automatically | Pending | EC2 G/VT quota is \`0\` |
 | Real GPU inference and GPU output | Pending | Quota request remains open |
@@ -354,7 +354,7 @@ Out of scope: Stripe, checkout, payment webhooks, production SES, custom domain,
 
 ## 20 Manual user action still required
 
-The remaining account-level action is approval of the AWS EC2 quota increase request for at least one On-Demand G/VT instance. This no longer blocks CPU progress: the CPU path is validated and the GPU request remains open as a later performance-upgrade gate. A separate AWS Translate account/service subscription must also be enabled before full dubbing can complete through the real translation stage.
+The remaining account-level actions are completing AWS account activation/free-plan access requirements for Translate and approval of the AWS EC2 quota increase request for at least one On-Demand G/VT instance. These are account-level actions and were not changed automatically because they may involve payment, identity, or plan decisions. They no longer block CPU progress: the CPU path is validated and the GPU request remains open as a later performance-upgrade gate.
 
 ## Final gate
 
@@ -362,7 +362,7 @@ The remaining account-level action is approval of the AWS EC2 quota increase req
     REAL CPU MODEL INFERENCE: PASS — Whisper, Demucs, Chatterbox
     REAL CPU OUTPUT GENERATED: YES — transcript artifacts and WAV
     CPU OUTPUT DOWNLOAD VERIFIED: YES
-    FULL DUBBING: PARTIAL — AWS Translate SubscriptionRequiredException
+    FULL DUBBING: PARTIAL — AWS Translate SubscriptionRequiredException; account setup/free-plan gate
     GPU E2E MEDIA PIPELINE: PENDING — quota request remains open
     SELECTED STT MODEL: Whisper small
     SELECTED TTS/VOICE MODEL: Chatterbox multilingual-v3
@@ -381,4 +381,4 @@ The remaining account-level action is approval of the AWS EC2 quota increase req
     SECURITY CHECKS: PASS
     EXPENSIVE COMPUTE CURRENTLY RUNNING: NO
     LICENSE REVIEW: NOT PERFORMED — USER WILL REVIEW BEFORE PRODUCTION
-    REMAINING GATES: EC2 G/VT quota request CASE_OPENED; AWS Translate account subscription; real GPU E2E pending
+    REMAINING GATES: EC2 G/VT quota request CASE_OPENED; AWS account activation/Translate access; real GPU E2E pending
