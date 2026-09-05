@@ -270,6 +270,8 @@ class JobWorker:
             self._model_load_seconds += transcriber.last_model_load_seconds
             if transcriber.detected_language:
                 source_language = source_language or transcriber.detected_language
+                options["source_language"] = source_language
+                job.options_json = json.dumps(options, sort_keys=True)
                 db.add(JobEvent(job_id=job.id, state=JobState.TRANSCRIBING.value, message="Source language detected", metadata_json=json.dumps({"language": transcriber.detected_language})))
         with self._stage(db, job, JobState.TRANSLATING.value, "Translating subtitle segments"):
             segments = validate_segments(list(translation_provider().translate(segments, source=source_language or "auto", target=target_language)))
@@ -327,6 +329,27 @@ class JobWorker:
             "noise": "deepfilternet",
             "tts": "chatterbox-multilingual-v3",
         }.get(operation, "unknown")
+
+    def _model_manifest(self, operation: str) -> dict[str, str]:
+        manifest = {
+            "stt": f"openai-whisper:{settings.whisper_model}",
+            "translation": "aws-translate",
+            "separation": f"demucs:{settings.demucs_model}",
+            "denoising": "deepfilternet:DeepFilterNet3",
+            "tts": "chatterbox-tts:multilingual-v3",
+            "mux": "ffmpeg-runtime",
+        }
+        if operation == "transcription":
+            return {"stt": manifest["stt"]}
+        if operation == "subtitle_translation":
+            return {key: manifest[key] for key in ("stt", "translation")}
+        if operation == "stems":
+            return {"separation": manifest["separation"]}
+        if operation == "noise":
+            return {"denoising": manifest["denoising"]}
+        if operation == "tts":
+            return {"tts": manifest["tts"]}
+        return manifest
 
     def _measured_costs(self, db: Session, duration: float | None, wall_clock_seconds: float) -> tuple[float | None, float | None]:
         if not self.gpu_type:
@@ -396,6 +419,7 @@ class JobWorker:
         peak_vram_mb: float | None = None,
         peak_ram_mb: float | None = None,
     ) -> None:
+        options = json.loads(job.options_json or "{}")
         record = db.scalar(select(UsageRecord).where(UsageRecord.job_id == job.id))
         attempt_wall_clock = time.monotonic() - started
         total_wall_clock = (record.wall_clock_seconds if record else 0) + attempt_wall_clock
@@ -428,6 +452,9 @@ class JobWorker:
             "worker_type": self.worker_type,
             "gpu_type": self.gpu_type,
             "model_version": self._model_version(job.operation),
+            "source_language": options.get("source_language"),
+            "target_language": options.get("target_language"),
+            "models_json": json.dumps(self._model_manifest(job.operation), sort_keys=True),
             "estimated_cost_usd": estimated_cost,
             "actual_cost_usd": actual_cost,
             "compute_cost_per_input_minute_usd": cost_per_input_minute,
@@ -487,6 +514,8 @@ class JobWorker:
                     with self._stage(db, job, JobState.TRANSCRIBING.value, "Transcribing source audio"):
                         segments, outputs, detected_language = self._transcribe(audio, work, options.get("source_language"))
                         if detected_language:
+                            options["source_language"] = options.get("source_language") or detected_language
+                            job.options_json = json.dumps(options, sort_keys=True)
                             db.add(JobEvent(job_id=job.id, state=JobState.TRANSCRIBING.value, message="Source language detected", metadata_json=json.dumps({"language": detected_language})))
                     if operation == "subtitle_translation":
                         with self._stage(db, job, JobState.TRANSLATING.value, "Translating subtitle segments"):

@@ -43,6 +43,7 @@ from .models import (
     Job,
     JobArtifact,
     JobEvent,
+    JobStageMetric,
     MediaAsset,
     ModelVersion,
     PasswordResetToken,
@@ -376,6 +377,16 @@ def usage_history(user: User = Depends(current_user), db: Session = Depends(get_
             "worker_type": record.worker_type,
             "gpu_type": record.gpu_type,
             "model_version": record.model_version,
+            "source_language": record.source_language,
+            "target_language": record.target_language,
+            "models": json.loads(record.models_json or "{}"),
+            "queue_wait_seconds": record.queue_wait_seconds,
+            "compute_startup_seconds": record.compute_startup_seconds,
+            "model_load_seconds": record.model_load_seconds,
+            "real_time_factor": record.real_time_factor,
+            "peak_vram_mb": record.peak_vram_mb,
+            "peak_ram_mb": record.peak_ram_mb,
+            "compute_cost_per_input_minute_usd": record.compute_cost_per_input_minute_usd,
             "estimated_cost_usd": record.estimated_cost_usd,
             "actual_cost_usd": record.actual_cost_usd,
             "retry_count": record.retry_count,
@@ -599,6 +610,18 @@ def job_detail(job_id: str, user: User = Depends(current_user), db: Session = De
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     payload = serialize_job(job, usage=db.scalar(select(UsageRecord).where(UsageRecord.job_id == job.id)))
+    payload["success"] = job.state == JobState.COMPLETED.value
+    payload["stages"] = [
+        {
+            "stage": metric.stage,
+            "started_at": metric.started_at.isoformat(),
+            "finished_at": metric.finished_at.isoformat() if metric.finished_at else None,
+            "wall_clock_seconds": metric.wall_clock_seconds,
+            "model_seconds": metric.model_seconds,
+            "metadata": json.loads(metric.metadata_json or "{}"),
+        }
+        for metric in db.scalars(select(JobStageMetric).where(JobStageMetric.job_id == job.id).order_by(JobStageMetric.started_at.asc())).all()
+    ]
     payload["events"] = [{"state": event.state, "message": event.message, "metadata": json.loads(event.metadata_json), "created_at": event.created_at.isoformat()} for event in db.scalars(select(JobEvent).where(JobEvent.job_id == job.id).order_by(JobEvent.created_at.asc())).all()]
     payload["artifacts"] = [serialize_artifact(artifact) for artifact in db.scalars(select(JobArtifact).where(JobArtifact.job_id == job.id).order_by(JobArtifact.created_at.asc())).all()]
     return payload
