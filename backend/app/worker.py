@@ -409,7 +409,7 @@ class JobWorker:
             pass
         # Linux reports ru_maxrss in KiB; macOS reports bytes. Workers run on Linux.
         divisor = 1024 * 1024 if sys.platform == "darwin" else 1024
-        peak_ram_mb = round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / divisor / 1024, 3)
+        peak_ram_mb = round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / divisor, 3)
         return peak_vram_mb, peak_ram_mb
 
     def _reset_gpu_peak(self) -> None:
