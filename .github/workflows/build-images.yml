@@ -103,7 +103,6 @@ jobs:
 
   cpu-golden-e2e:
     if: ${{ inputs.run_cpu_e2e == true }}
-    needs: build-and-publish
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
