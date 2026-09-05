@@ -3,17 +3,17 @@
 Date: 2026-09-05  
 Environment: \`eu-north-1\`  
 Public application: \`https://d3ncg3eqih0ccj.cloudfront.net\`  
-Current application commit: \`3ab30d3\`  
-Current API task revision: \`16\`  
-Current GPU worker task revision: \`14\`
+Current application commit: \`bdc1c57\`
+Current API task revision: \`17\`
+Current GPU worker task revision: \`15\`
 
 ## 1 Executive summary
 
-The production-style asynchronous media architecture is deployed and the API is healthy. The current API task runs the immutable image for commit \`3ab30d3\`; the GPU worker task definition points to the matching immutable image and the worker service remains at desired/running/pending \`0/0/0\`.
+The production-style asynchronous media architecture is deployed and the API is healthy. The current API task runs the immutable image built from commit \`bdc1c57\`; the GPU worker task definition points to the matching immutable image and the worker service remains at desired/running/pending \`0/0/0\`.
 
 The required real AWS GPU E2E test has not been run because the EC2 service quota \`Running On-Demand G and VT instances\` is still \`0\`. The quota increase request for one instance is \`CASE_OPENED\`. This is the current external blocker for proving real model inference, real output generation, download, measured GPU timings, and scale-to-zero after a completed job. No expensive GPU compute is running.
 
-The latest CI run for commit \`3ab30d3\` passed backend, frontend, infrastructure, dependency-audit, security, migration, and build checks. The API and approximately 4.97 GB GPU worker images were published to ECR and their manifests were verified.
+The latest CI run for commit \`bdc1c57\` passed backend, frontend, infrastructure, dependency-audit, security, migration, and build checks. The API and approximately 4.97 GB GPU worker images were published to ECR and their manifests were verified.
 
 ## 2 Architecture before this goal
 
@@ -234,14 +234,14 @@ Terraform changes include:
 - private encrypted S3, lifecycle, SQS/DLQ, RDS, Secrets Manager references, and CloudWatch log groups;
 - immutable API/worker image deployment variables.
 
-The latest immutable images for commit \`3ab30d3\` were published and verified in ECR. Terraform then applied only the API/worker task-definition and service targets to avoid unrelated frontend asset drift. The live API is task revision 16 and the live GPU worker task definition is revision 14. The API is running one task; the GPU worker remains zero.
+The latest immutable images for commit \`bdc1c57\` were published and verified in ECR. Terraform then applied only the API/worker task-definition and service targets to avoid unrelated frontend asset drift. The live API is task revision 17 and the live GPU worker task definition is revision 15. The API is running one task and carries the \`DATABASE_URL\` Secrets Manager reference; the GPU worker remains zero.
 
 The full plan also showed local frontend asset drift because the local \`frontend/dist\` file set does not exactly match the already-hosted asset set. That drift was not applied or treated as an E2E prerequisite.
 
 ## 15 Test and security results
 
 - Backend tests: \`45 passed\`, two existing deprecation warnings.
-- GitHub CI: backend, frontend, infrastructure, migration, dependency audit, Ruff, Bandit, compile, and Docker checks passed for \`3ab30d3\`.
+- GitHub CI: backend, frontend, infrastructure, migration, dependency audit, Ruff, Bandit, compile, and Docker checks passed for \`bdc1c57\`.
 - Ruff: passed locally and in CI.
 - Bandit medium-and-higher severity scan: passed.
 - pip-audit: passed in GitHub CI.
@@ -346,4 +346,3 @@ The only blocking manual/account-level action is approval of the AWS EC2 quota i
     EXPENSIVE COMPUTE CURRENTLY RUNNING: NO
     LICENSE REVIEW: NOT PERFORMED — USER WILL REVIEW BEFORE PRODUCTION
     REMAINING BLOCKERS: EC2 G/VT quota is 0; request CASE_OPENED; real AWS E2E pending
-
