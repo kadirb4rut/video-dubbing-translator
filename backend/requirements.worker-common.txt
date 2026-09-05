@@ -5,3 +5,4 @@ librosa==0.11.0
 soundfile==0.13.1
 deepfilternet==0.5.6
 deepfilterlib==0.5.6
+deep-translator==1.11.4
