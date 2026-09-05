@@ -57,6 +57,11 @@ variable "translation_model" {
   type        = string
   default     = "tencent/Hy-MT2-1.8B"
 }
+variable "translation_model_revision" {
+  description = "Immutable Hugging Face revision for the self-hosted translation checkpoint."
+  type        = string
+  default     = "9a341cd1b679d3efd23b46e847b01745a71ed792"
+}
 variable "api_secrets" {
   description = "Map of ECS API environment variable names to Secrets Manager secret or secret-version ARNs. DATABASE_URL is required when api_image is set."
   type        = map(string)

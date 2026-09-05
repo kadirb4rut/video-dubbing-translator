@@ -118,7 +118,7 @@ class HyMT2TranslationProvider:
     """
 
     name = "hymt2"
-    _models: ClassVar[dict[tuple[str, str, str], tuple[object, object]]] = {}
+    _models: ClassVar[dict[tuple[str, str, str, str], tuple[object, object]]] = {}
     _supported_languages: ClassVar[set[str]] = {
         "ar", "bn", "bo", "cs", "de", "en", "es", "fa", "fr", "gu", "he", "hi", "id", "it", "ja", "kk", "km", "ko", "mn", "mr", "ms", "my", "nl", "pl", "pt", "ru", "ta", "te", "th", "tl", "tr", "uk", "ug", "vi", "yue", "zh", "zh-hant",
     }
@@ -161,7 +161,7 @@ class HyMT2TranslationProvider:
     def _load(self) -> tuple[object, object]:
         if self._tokenizer is not None and self._model is not None:
             return self._tokenizer, self._model
-        key = (self.model_name, self.device, self.dtype_name)
+        key = (self.model_name, settings.translation_model_revision, self.device, self.dtype_name)
         cached = self._models.get(key)
         if cached is not None:
             self._tokenizer, self._model = cached
@@ -172,11 +172,11 @@ class HyMT2TranslationProvider:
         except ImportError as exc:
             raise ProviderUnavailable("Transformers is not installed; install the full worker requirements for Hy-MT2") from exc
         started = time.monotonic()
-        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name, trust_remote_code=True)
+        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name, revision=settings.translation_model_revision, trust_remote_code=True)
         kwargs = {"dtype": self._dtype(torch), "trust_remote_code": True}
         if self.device.startswith("cuda"):
             kwargs["device_map"] = "auto"
-        self._model = AutoModelForCausalLM.from_pretrained(self.model_name, **kwargs)
+        self._model = AutoModelForCausalLM.from_pretrained(self.model_name, revision=settings.translation_model_revision, **kwargs)
         if not self.device.startswith("cuda"):
             self._model.to(self.device)
         self._model.eval()
@@ -187,7 +187,7 @@ class HyMT2TranslationProvider:
     def release(self) -> None:
         if self._tokenizer is None and self._model is None:
             return
-        key = (self.model_name, self.device, self.dtype_name)
+        key = (self.model_name, settings.translation_model_revision, self.device, self.dtype_name)
         self._models.pop(key, None)
         self._tokenizer = None
         self._model = None
@@ -308,6 +308,7 @@ class HyMT2TranslationProvider:
         self.last_metrics = {
             "provider": self.name,
             "model": self.model_name,
+            "model_revision": settings.translation_model_revision,
             "runtime": "transformers-in-process",
             "device": self.device,
             "dtype": self.dtype_name if self.dtype_name != "auto" else "bfloat16",

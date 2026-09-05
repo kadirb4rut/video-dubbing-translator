@@ -42,6 +42,7 @@ class Settings:
     # operational fallback.
     translation_provider: str = os.getenv("TRANSLATION_PROVIDER", "hymt2")
     translation_model: str = os.getenv("TRANSLATION_MODEL", "tencent/Hy-MT2-1.8B")
+    translation_model_revision: str = os.getenv("TRANSLATION_MODEL_REVISION", "9a341cd1b679d3efd23b46e847b01745a71ed792")
     translation_device: str = os.getenv("TRANSLATION_DEVICE", "auto")
     translation_dtype: str = os.getenv("TRANSLATION_DTYPE", "auto")
     translation_batch_size: int = int(os.getenv("TRANSLATION_BATCH_SIZE", "4"))
