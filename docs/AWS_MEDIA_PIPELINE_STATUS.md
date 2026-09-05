@@ -14,7 +14,7 @@ The production-style asynchronous media architecture is deployed and the API is 
 
 The pending GPU quota request remains untouched: the EC2 service quota \`Running On-Demand G and VT instances\` is still \`0\` and the one-instance increase request is \`CASE_OPENED\`. GPU execution is therefore still a later performance-upgrade path. The CPU validation path was enabled without removing the GPU architecture. A real CPU transcription job and a real CPU Chatterbox TTS job completed through API → S3 → SQS → CPU worker → model → S3 → API download. The complete dubbing job reached Demucs and Whisper, then stopped at the AWS Translate call because this account's Translate subscription is not enabled; that stage is isolated as an external service prerequisite, not a CPU limitation. No expensive GPU compute is running.
 
-The backend tests and lint checks for commit \`7344f13\` passed. Its image-publish workflow is still in progress; the latest completed image publish is the prior successful worker image line, while the RAM telemetry correction is being published. The worker keeps a provider abstraction so the same job contract can later run on GPU.
+The backend tests, lint checks, and image-publish workflow for commit \`7344f13\` passed. API, GPU worker, and CPU worker images were published and their manifests verified. The worker keeps a provider abstraction so the same job contract can later run on GPU.
 
 ## 2 Architecture before this goal
 
@@ -259,14 +259,14 @@ Terraform changes include:
 - private encrypted S3, lifecycle, SQS/DLQ, RDS, Secrets Manager references, and CloudWatch log groups;
 - immutable API/worker image deployment variables.
 
-Terraform applied only targeted API/CPU worker task-definition and service changes to avoid unrelated frontend asset drift. The live API is task revision 20 with the temporary pricing override returned to \`false\`; the GPU worker remains zero and the CPU worker task definition is revision 6 with desired count zero. The API carries the \`DATABASE_URL\` Secrets Manager reference. The latest completed image publish is the prior successful image line; the \`7344f13\` image publish is still running and is not required to interpret the already captured CPU evidence.
+Terraform applied only targeted API/CPU worker task-definition and service changes to avoid unrelated frontend asset drift. The live API is task revision 20 with the temporary pricing override returned to \`false\`; the GPU worker remains zero and the CPU worker task definition is revision 6 with desired count zero. The API carries the \`DATABASE_URL\` Secrets Manager reference. The immutable image publish for \`7344f13\` completed successfully and its API/GPU/CPU manifests were verified.
 
 The full plan also showed local frontend asset drift because the local \`frontend/dist\` file set does not exactly match the already-hosted asset set. That drift was not applied or treated as an E2E prerequisite.
 
 ## 15 Test and security results
 
 - Backend tests: \`47 passed\` locally, with one existing FastAPI/Starlette deprecation warning; CPU telemetry, model-release, and worker contract tests are included.
-- GitHub CI: backend, frontend, infrastructure, migration, dependency audit, Ruff, Bandit, compile, Docker, API, GPU worker, and CPU worker checks passed for \`7344f13\`; its image-publish workflow was still in progress at report time.
+- GitHub CI and image publishing: backend, frontend, infrastructure, migration, dependency audit, Ruff, Bandit, compile, Docker, API, GPU worker, and CPU worker checks passed for \`7344f13\`.
 - Ruff: passed locally and in CI.
 - Bandit medium-and-higher severity scan: passed.
 - pip-audit: passed in GitHub CI.
