@@ -15,6 +15,11 @@ on:
         required: false
         default: false
         type: boolean
+      run_voxcpm_smoke:
+        description: "Run one real VoxCPM2 CPU voice-cloning inference in the published worker image"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -26,6 +31,7 @@ concurrency:
 
 jobs:
   build-and-publish:
+    if: ${{ inputs.run_cpu_e2e != true && inputs.run_voxcpm_smoke != true }}
     runs-on: ubuntu-latest
     env:
       AWS_REGION: eu-north-1
@@ -210,4 +216,66 @@ jobs:
         with:
           name: aws-voxcpm-cpu-golden-e2e-${{ github.run_id }}
           path: artifacts/aws-golden-e2e
+          if-no-files-found: warn
+
+  voxcpm-cpu-smoke:
+    if: ${{ inputs.run_voxcpm_smoke == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      AWS_REGION: eu-north-1
+      IMAGE_TAG: ${{ inputs.image_tag }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+          role-session-name: github-actions-voxcpm-cpu-smoke
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        run: |
+          repository_uri="$(aws ecr describe-repositories --repository-names lingowave-worker --query 'repositories[0].repositoryUri' --output text)"
+          registry="${repository_uri%%/*}"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
+          digest="$(aws ecr describe-images --repository-name lingowave-worker --image-ids imageTag="${IMAGE_TAG}-cpu" --query 'imageDetails[0].imageDigest' --output text)"
+          test -n "$digest" -a "$digest" != "None"
+          echo "image_uri=${repository_uri}@${digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare real reference voice
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/voxcpm-smoke
+          curl --fail --location --retry 3 --max-time 60 --output artifacts/voxcpm-smoke/source.flac https://raw.githubusercontent.com/openai/whisper/main/tests/jfk.flac
+          ffmpeg -hide_banner -loglevel error -y -i artifacts/voxcpm-smoke/source.flac -ac 1 -ar 22050 -c:a pcm_s16le artifacts/voxcpm-smoke/reference.wav
+
+      - name: Run real VoxCPM2 CPU inference
+        env:
+          IMAGE_URI: ${{ steps.ecr.outputs.image_uri }}
+        run: |
+          set -euo pipefail
+          docker run --rm --user 0 \
+            -e VOXCPM_DEVICE=cpu \
+            -e VOXCPM_DTYPE=bfloat16 \
+            -e PYTHONPATH=/app \
+            -e HF_HOME=/mnt/cache/huggingface \
+            -v "$PWD/artifacts/voxcpm-smoke:/mnt" \
+            -v "$PWD/scripts/benchmarks/benchmark_voxcpm.py:/mnt/benchmark_voxcpm.py:ro" \
+            -w /app "$IMAGE_URI" \
+            python /mnt/benchmark_voxcpm.py \
+              --reference /mnt/reference.wav \
+              --output /mnt/speech.wav \
+              --json /mnt/voxcpm.json
+          ffprobe -v error -show_entries format=duration,size,format_name -show_streams -of json artifacts/voxcpm-smoke/speech.wav > artifacts/voxcpm-smoke/output-ffprobe.json
+
+      - name: Upload VoxCPM2 CPU evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: voxcpm-cpu-smoke-${{ github.run_id }}
+          path: artifacts/voxcpm-smoke
           if-no-files-found: warn
