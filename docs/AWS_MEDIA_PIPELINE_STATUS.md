@@ -4,7 +4,7 @@ Date: 2026-09-05
 Environment: `eu-north-1`
 Public application: `https://d3ncg3eqih0ccj.cloudfront.net`
 Implementation commit: `4fe48638bcb5723fdecf226ef4a4fc0dfff5f2a4`
-Documentation commit: `4cd20ca`
+Documentation commit: `da36b68`
 CPU image: `520646547849.dkr.ecr.eu-north-1.amazonaws.com/lingowave-worker:4fe48638bcb5723fdecf226ef4a4fc0dfff5f2a4-cpu`
 CI image build: GitHub Actions run `33956600442` — success
 GPU quota: `Running On-Demand G/VT instances = 0`, request `CASE_OPENED`, untouched
