@@ -116,6 +116,9 @@ jobs:
       ECS_CLUSTER: lingowave-workers
       ECS_SERVICE: lingowave-cpu-worker
       TASK_FAMILY: lingowave-cpu-worker
+      API_CLUSTER: lingowave-api
+      API_SERVICE: lingowave-api
+      API_TASK_FAMILY: lingowave-api
       LINGOWAVE_API_URL: https://d3ncg3eqih0ccj.cloudfront.net
       IMAGE_TAG: ${{ inputs.image_tag }}
     steps:
@@ -158,8 +161,24 @@ jobs:
           set -euo pipefail
           previous_task_definition="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].taskDefinition' --output text)"
           previous_desired_count="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].desiredCount' --output text)"
+          previous_api_task_definition="$(aws ecs describe-services --cluster "$API_CLUSTER" --services "$API_SERVICE" --query 'services[0].taskDefinition' --output text)"
+          previous_api_desired_count="$(aws ecs describe-services --cluster "$API_CLUSTER" --services "$API_SERVICE" --query 'services[0].desiredCount' --output text)"
           printf '%s\n' "$previous_task_definition" > "$RUNNER_TEMP/previous-task-definition"
           printf '%s\n' "$previous_desired_count" > "$RUNNER_TEMP/previous-desired-count"
+          printf '%s\n' "$previous_api_task_definition" > "$RUNNER_TEMP/previous-api-task-definition"
+          printf '%s\n' "$previous_api_desired_count" > "$RUNNER_TEMP/previous-api-desired-count"
+          aws ecs describe-task-definition --task-definition "$API_TASK_FAMILY" --query taskDefinition --output json > "$RUNNER_TEMP/current-api-task-definition.json"
+          jq '
+            del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
+            | .containerDefinitions |= map(if .name == "api" then
+                .environment = ((.environment // [])
+                    | map(select(.name != "ALLOW_UNMEASURED_PRICING"))
+                    + [{"name":"ALLOW_UNMEASURED_PRICING","value":"true"}])
+              else . end)
+          ' "$RUNNER_TEMP/current-api-task-definition.json" > "$RUNNER_TEMP/acceptance-api-task-definition.json"
+          api_task_definition="$(aws ecs register-task-definition --cli-input-json file://$RUNNER_TEMP/acceptance-api-task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)"
+          aws ecs update-service --cluster "$API_CLUSTER" --service "$API_SERVICE" --task-definition "$api_task_definition" --desired-count "$previous_api_desired_count" --force-new-deployment --output json > artifacts/aws-golden-e2e/api-service-start.json
+          aws ecs wait services-stable --cluster "$API_CLUSTER" --services "$API_SERVICE"
           aws ecs describe-task-definition --task-definition "$TASK_FAMILY" --query taskDefinition --output json > "$RUNNER_TEMP/current-task-definition.json"
           jq --arg image "$IMAGE_URI" '
             del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
@@ -200,6 +219,7 @@ jobs:
           set +e
           aws logs tail "/ecs/lingowave/worker" --since 240m --format short > artifacts/aws-golden-e2e/worker-cloudwatch.log 2>&1
           aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --output json > artifacts/aws-golden-e2e/service-before-restore.json
+          aws ecs describe-services --cluster "$API_CLUSTER" --services "$API_SERVICE" --output json > artifacts/aws-golden-e2e/api-service-before-restore.json
 
       - name: Restore CPU worker to zero and previous task definition
         if: always()
@@ -207,9 +227,14 @@ jobs:
           set -euo pipefail
           previous_task_definition="$(cat "$RUNNER_TEMP/previous-task-definition")"
           previous_desired_count="$(cat "$RUNNER_TEMP/previous-desired-count")"
+          previous_api_task_definition="$(cat "$RUNNER_TEMP/previous-api-task-definition")"
+          previous_api_desired_count="$(cat "$RUNNER_TEMP/previous-api-desired-count")"
           aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" --task-definition "$previous_task_definition" --desired-count "$previous_desired_count" --force-new-deployment --output json > artifacts/aws-golden-e2e/service-restore.json
           aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
           aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --output json > artifacts/aws-golden-e2e/service-after-restore.json
+          aws ecs update-service --cluster "$API_CLUSTER" --service "$API_SERVICE" --task-definition "$previous_api_task_definition" --desired-count "$previous_api_desired_count" --force-new-deployment --output json > artifacts/aws-golden-e2e/api-service-restore.json
+          aws ecs wait services-stable --cluster "$API_CLUSTER" --services "$API_SERVICE"
+          aws ecs describe-services --cluster "$API_CLUSTER" --services "$API_SERVICE" --output json > artifacts/aws-golden-e2e/api-service-after-restore.json
 
       - name: Upload E2E evidence and generated media
         if: always()
