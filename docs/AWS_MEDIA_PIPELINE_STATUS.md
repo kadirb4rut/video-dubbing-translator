@@ -42,7 +42,7 @@ The provider abstraction is configured through environment settings. Hy-MT2 is l
 | Component | Final state | Notes |
 |---|---|---|
 | Public API | Healthy | CloudFront `/health` returns HTTP 200 |
-| API ECS service | Revision 20, `1/0/0` | 1 desired, 1 running, 0 pending |
+| API ECS service | Revision 20, `1/1/0` | 1 desired, 1 running, 0 pending |
 | CPU validation worker | Revision 8, `0/0/0` | Temporary Fargate worker stopped after test |
 | GPU worker service | Revision 15, `0/0/0` | No expensive GPU capacity running |
 | GPU ASG | `0/0/0` | Desired/min/max capacity remains zero |
