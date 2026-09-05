@@ -18,6 +18,8 @@ The existing API, S3, SQS/DLQ, RDS, telemetry, retries, credit ledger, artifact 
 
 The exact voice model is `openbmb/VoxCPM2`, revision `32279effe8c19989596f05d353d1447f51d9e915`, package `voxcpm==2.0.3`, with 48 kHz output validation. CPU uses a runtime-selected or configured CPU-safe dtype; the planned NVIDIA T4 path uses FP16 rather than assuming BF16 support.
 
+The real Hy-MT2 CPU benchmark also completed independently: `tencent/Hy-MT2-1.8B`, revision `9a341cd1b679d3efd23b46e847b01745a71ed792`, Transformers in-process, CPU bfloat16, 156.5701 seconds for one segment. The adapter handled a plain model response through its bounded single-segment fallback; no mock translation was used.
+
 ## Validation status
 
 The immutable CPU image was published successfully. Earlier acceptance attempts correctly stopped before compute because the GitHub OIDC role lacked ECR layer-pull and ECS deployment permissions. For the live validation, the required permissions were enabled only for the manual run, the API was temporarily configured with `ALLOW_UNMEASURED_PRICING=true`, and the CPU worker was temporarily deployed with the immutable VoxCPM2 image. The real E2E completed successfully, the API and CPU worker were restored, and the temporary acceptance policy was deleted. The permanent ECR policy and opt-in Terraform path remain available for a future explicitly authorized run.
@@ -28,6 +30,7 @@ The immutable CPU image was published successfully. Earlier acceptance attempts 
 | Exact model revision | PASS | Runtime/config/manifest pin |
 | Real CPU VoxCPM2 inference | PASS | GitHub Actions run `33981024341`, real CPU synthesis with pinned model |
 | Real full CPU dubbing E2E | PASS | GitHub Actions run `33982181160`, API→S3→SQS→CPU worker→S3→download |
+| Targeted timing routing benchmark | PASS | 3 cases: fit not refined; moderate/large mismatch refined once |
 | GPU quota | PENDING | Existing `CASE_OPENED` request preserved |
 | CPU/GPU scale-to-zero | PASS | Final CPU `0/0/0`; GPU ASG desired `0` |
 
@@ -93,6 +96,7 @@ TRANSLATION METRICS:
 - average duration deviation after refinement: -2.5455%
 - translation time: 0.1278 s
 - Hy-MT2 refinement time: 0 s (not triggered)
+- separate real Hy-MT2 CPU benchmark: 156.5701 s for 1 segment; E2E refinement was not triggered
 
 VOXCPM2:
 - model load time: 69.2947 s
@@ -109,6 +113,7 @@ PIPELINE:
 - Whisper time: 12.7818 s
 - translation time: 0.1278 s
 - Hy-MT2 time if triggered: 0 s (not triggered)
+- targeted routing benchmark: 3 segments, 2 refinement calls, maximum one pass per segment
 - VoxCPM2 time: 126.8118 s stage wall time; 64.9108 s synthesis telemetry
 - FFmpeg/mixing time: 0.4936 s
 - total job time: 151.3362 s
