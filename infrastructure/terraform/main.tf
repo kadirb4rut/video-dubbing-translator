@@ -17,6 +17,10 @@ data "aws_ecr_repository" "worker" {
   name = "${var.name}-worker"
 }
 
+data "aws_ecr_repository" "api" {
+  name = "${var.name}-api"
+}
+
 resource "aws_s3_bucket" "media" {
   bucket        = "${var.name}-${data.aws_caller_identity.current.account_id}-media"
   force_destroy = false
@@ -227,7 +231,10 @@ resource "aws_iam_role_policy" "github_actions_ecr" {
           "ecr:PutImage",
           "ecr:UploadLayerPart",
         ]
-        Resource = data.aws_ecr_repository.worker.arn
+        Resource = [
+          data.aws_ecr_repository.worker.arn,
+          data.aws_ecr_repository.api.arn,
+        ]
       },
     ]
   })
@@ -332,6 +339,8 @@ resource "aws_ecs_task_definition" "worker" {
       { name = "AWS_REGION", value = var.aws_region },
       { name = "TRANSLATION_PROVIDER", value = var.translation_provider },
       { name = "WORKER_TYPE", value = "aws-gpu" },
+      { name = "GPU_TYPE", value = var.worker_instance_type },
+      { name = "GPU_HOURLY_PRICE_USD", value = tostring(var.worker_hourly_price_usd) },
       { name = "XDG_CACHE_HOME", value = "/home/lingowave/.cache" },
     ]
     secrets = [for name, value_from in var.worker_secrets : { name = name, valueFrom = value_from }]

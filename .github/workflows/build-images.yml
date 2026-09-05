@@ -1,6 +1,9 @@
 name: Build and publish production images
 
 on:
+  push:
+    branches:
+      - codex/production-saas
   workflow_dispatch:
     inputs:
       image_tag:

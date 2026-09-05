@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import ClassVar
@@ -49,12 +50,15 @@ class WhisperTranscriptionProvider:
     def __init__(self, model_name: str | None = None):
         self.model_name = model_name or settings.whisper_model
         self.detected_language: str | None = None
+        self.last_model_load_seconds = 0.0
 
     def transcribe(self, audio_path: Path, *, language: str | None = None) -> Sequence[dict]:
         whisper = _require("whisper")
         model = self._models.get(self.model_name)
         if model is None:
+            started = time.monotonic()
             model = whisper.load_model(self.model_name)
+            self.last_model_load_seconds = time.monotonic() - started
             self._models[self.model_name] = model
         result = model.transcribe(str(audio_path), language=language, verbose=False)
         self.detected_language = result.get("language")
@@ -116,6 +120,7 @@ class ChatterboxMultilingualVoiceProvider:
 
     def __init__(self, device: str | None = None):
         self.device = device or settings.chatterbox_device
+        self.last_model_load_seconds = 0.0
 
     def synthesize(self, text: str, *, reference_voice: Path | None, language: str, output_path: Path) -> Path:
         if reference_voice is not None and not reference_voice.is_file():
@@ -129,6 +134,7 @@ class ChatterboxMultilingualVoiceProvider:
         key = (self.device, "v3")
         model = self._models.get(key)
         if model is None:
+            started = time.monotonic()
             loader = ChatterboxMultilingualTTS.from_pretrained
             if "t3_model" in inspect.signature(loader).parameters:
                 model = loader(device=self.device, t3_model="v3")
@@ -137,6 +143,7 @@ class ChatterboxMultilingualVoiceProvider:
                 # choosing map_location; passing torch.device('cpu') would
                 # accidentally try to deserialize CUDA checkpoints on CPU.
                 model = loader(device=self.device)
+            self.last_model_load_seconds = time.monotonic() - started
             self._models[key] = model
         output_path.parent.mkdir(parents=True, exist_ok=True)
         wav = model.generate(text, language_id=language, audio_prompt_path=str(reference_voice) if reference_voice else None)

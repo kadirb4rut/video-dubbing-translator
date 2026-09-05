@@ -4,8 +4,10 @@ import argparse
 import json
 import logging
 import os
+import resource
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -79,6 +81,8 @@ class JobWorker:
         self.worker_id = os.getenv("WORKER_ID") or f"{socket.gethostname()}-{uuid.uuid4().hex[:12]}"
         self._requeued_job_ids: set[str] = set()
         self._active_message: JobMessage | None = None
+        self._worker_started_monotonic = time.monotonic()
+        self._model_load_seconds = 0.0
 
     def _touch_lease(self, db: Session) -> None:
         lease = db.get(WorkerLease, self.worker_id)
@@ -212,6 +216,7 @@ class JobWorker:
     def _transcribe(self, audio: Path, output_dir: Path, language: str | None) -> tuple[list[dict], dict[str, Path], str | None]:
         provider = WhisperTranscriptionProvider()
         segments = list(provider.transcribe(audio, language=language))
+        self._model_load_seconds += provider.last_model_load_seconds
         return segments, {"srt": write_srt(segments, output_dir / "transcript.srt"), "vtt": write_vtt(segments, output_dir / "transcript.vtt"), "txt": write_txt(segments, output_dir / "transcript.txt")}, provider.detected_language
 
     def _stems(self, audio: Path, output: Path, stem_count: int) -> tuple[Path, dict[str, Path]]:
@@ -243,7 +248,9 @@ class JobWorker:
         text = options.get("text")
         if not text:
             raise ProviderUnavailable("tts jobs require text")
-        result = ChatterboxMultilingualVoiceProvider().synthesize(text, reference_voice=self._reference(db, job, work), language=options.get("target_language") or "en", output_path=output)
+        provider = ChatterboxMultilingualVoiceProvider()
+        result = provider.synthesize(text, reference_voice=self._reference(db, job, work), language=options.get("target_language") or "en", output_path=output)
+        self._model_load_seconds += provider.last_model_load_seconds
         validate_output(result, "audio")
         return result
 
@@ -260,6 +267,7 @@ class JobWorker:
         with self._stage(db, job, JobState.TRANSCRIBING.value, "Transcribing source speech"):
             transcriber = WhisperTranscriptionProvider()
             segments = validate_segments(list(transcriber.transcribe(audio, language=source_language)))
+            self._model_load_seconds += transcriber.last_model_load_seconds
             if transcriber.detected_language:
                 source_language = source_language or transcriber.detected_language
                 db.add(JobEvent(job_id=job.id, state=JobState.TRANSCRIBING.value, message="Source language detected", metadata_json=json.dumps({"language": transcriber.detected_language})))
@@ -268,10 +276,12 @@ class JobWorker:
         source_duration = inspect_media(source)["duration_seconds"]
         with self._stage(db, job, JobState.SYNTHESIZING.value, "Synthesizing translated speech with Chatterbox Multilingual"):
             reference = self._reference(db, job, work) if options.get("preserve_voice", True) else None
+            voice_provider = ChatterboxMultilingualVoiceProvider()
             clips: list[Path] = []
             for index, segment in enumerate(segments):
                 clip = work / f"segment-{index:04d}.wav"
-                ChatterboxMultilingualVoiceProvider().synthesize(segment["text"], reference_voice=reference, language=target_language, output_path=clip)
+                voice_provider.synthesize(segment["text"], reference_voice=reference, language=target_language, output_path=clip)
+                self._model_load_seconds += voice_provider.last_model_load_seconds
                 clips.append(clip)
         if not clips:
             raise ProviderUnavailable("Transcription returned no speech segments")
@@ -326,18 +336,66 @@ class JobWorker:
             .where(GpuCostProfile.gpu_type == self.gpu_type, GpuCostProfile.region == settings.s3_region, GpuCostProfile.measured.is_(True))
             .order_by(GpuCostProfile.created_at.desc())
         )
-        if not profile or profile.hourly_price_usd is None or profile.hourly_price_usd <= 0:
+        hourly_price = profile.hourly_price_usd if profile and profile.hourly_price_usd and profile.hourly_price_usd > 0 else None
+        if hourly_price is None:
+            try:
+                hourly_price = float(os.getenv("GPU_HOURLY_PRICE_USD", ""))
+            except ValueError:
+                hourly_price = None
+        if hourly_price is None or hourly_price <= 0:
             return None, None
-        actual = (wall_clock_seconds / 3600) * profile.hourly_price_usd
+        actual = (wall_clock_seconds / 3600) * hourly_price
+        if not profile:
+            return round(actual, 6), round(actual, 6)
         if duration and profile.processed_minutes_per_hour and profile.processed_minutes_per_hour > 0:
             processing_seconds = (duration / 60) / profile.processed_minutes_per_hour * 3600
             startup_seconds = (profile.startup_seconds or 0) + (profile.model_load_seconds or 0)
-            estimated = ((processing_seconds + startup_seconds) / 3600) * profile.hourly_price_usd
+            estimated = ((processing_seconds + startup_seconds) / 3600) * hourly_price
         else:
             estimated = actual
         return round(estimated, 6), round(actual, 6)
 
-    def _record_usage(self, db: Session, job: Job, duration: float | None, output_duration: float | None, started: float, *, input_bytes: int | None, output_bytes: int) -> None:
+    def _memory_metrics(self) -> tuple[float | None, float | None]:
+        peak_vram_mb = None
+        try:
+            import torch
+
+            cuda = getattr(torch, "cuda", None)
+            if cuda is not None and cuda.is_available():
+                peak_vram_mb = round(cuda.max_memory_allocated() / (1024 * 1024), 3)
+        except (ImportError, RuntimeError):
+            pass
+        # Linux reports ru_maxrss in KiB; macOS reports bytes. Workers run on Linux.
+        divisor = 1024 * 1024 if sys.platform == "darwin" else 1024
+        peak_ram_mb = round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / divisor / 1024, 3)
+        return peak_vram_mb, peak_ram_mb
+
+    def _reset_gpu_peak(self) -> None:
+        try:
+            import torch
+
+            cuda = getattr(torch, "cuda", None)
+            if cuda is not None and cuda.is_available():
+                cuda.reset_peak_memory_stats()
+        except (ImportError, RuntimeError):
+            pass
+
+    def _record_usage(
+        self,
+        db: Session,
+        job: Job,
+        duration: float | None,
+        output_duration: float | None,
+        started: float,
+        *,
+        input_bytes: int | None,
+        output_bytes: int,
+        queue_wait_seconds: float | None = None,
+        compute_startup_seconds: float | None = None,
+        model_load_seconds: float | None = None,
+        peak_vram_mb: float | None = None,
+        peak_ram_mb: float | None = None,
+    ) -> None:
         record = db.scalar(select(UsageRecord).where(UsageRecord.job_id == job.id))
         attempt_wall_clock = time.monotonic() - started
         total_wall_clock = (record.wall_clock_seconds if record else 0) + attempt_wall_clock
@@ -349,7 +407,32 @@ class JobWorker:
                 JobStageMetric.stage.in_({JobState.SEPARATING_AUDIO.value, JobState.TRANSCRIBING.value, JobState.TRANSLATING.value, JobState.SYNTHESIZING.value, JobState.MIXING.value}),
             )
         ) or 0
-        values = {"user_id": job.user_id, "job_id": job.id, "input_duration_seconds": duration, "output_duration_seconds": output_duration, "input_bytes": input_bytes, "output_bytes": output_bytes, "wall_clock_seconds": total_wall_clock, "model_seconds": float(model_seconds), "worker_type": self.worker_type, "gpu_type": self.gpu_type, "model_version": self._model_version(job.operation), "estimated_cost_usd": estimated_cost, "actual_cost_usd": actual_cost, "retry_count": max(0, (job.retry_count or 1) - 1)}
+        cost_per_input_minute = None
+        if actual_cost is not None and duration and duration > 0:
+            cost_per_input_minute = round(actual_cost / (duration / 60), 6)
+        values = {
+            "user_id": job.user_id,
+            "job_id": job.id,
+            "input_duration_seconds": duration,
+            "output_duration_seconds": output_duration,
+            "input_bytes": input_bytes,
+            "output_bytes": output_bytes,
+            "wall_clock_seconds": total_wall_clock,
+            "model_seconds": float(model_seconds),
+            "queue_wait_seconds": queue_wait_seconds,
+            "compute_startup_seconds": compute_startup_seconds,
+            "model_load_seconds": model_load_seconds,
+            "real_time_factor": round(total_wall_clock / duration, 6) if duration and duration > 0 else None,
+            "peak_vram_mb": peak_vram_mb,
+            "peak_ram_mb": peak_ram_mb,
+            "worker_type": self.worker_type,
+            "gpu_type": self.gpu_type,
+            "model_version": self._model_version(job.operation),
+            "estimated_cost_usd": estimated_cost,
+            "actual_cost_usd": actual_cost,
+            "compute_cost_per_input_minute_usd": cost_per_input_minute,
+            "retry_count": max(0, (job.retry_count or 1) - 1),
+        }
         if record:
             for key, value in values.items():
                 setattr(record, key, value)
@@ -373,6 +456,15 @@ class JobWorker:
             db.close()
             return
         asset = db.get(MediaAsset, job.media_asset_id) if job.media_asset_id else None
+        created_at = job.created_at
+        # SQLite returns DateTime(timezone=True) values without tzinfo while
+        # PostgreSQL keeps them aware. Normalize both forms for telemetry.
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=now().tzinfo)
+        queue_wait_seconds = max(0.0, (now() - created_at).total_seconds())
+        compute_startup_seconds = max(0.0, started - self._worker_started_monotonic)
+        self._model_load_seconds = 0.0
+        self._reset_gpu_peak()
         heartbeat_stop, heartbeat_thread = self._start_lease_heartbeat()
         try:
             with tempfile.TemporaryDirectory(prefix=f"lingowave-{job.id}-") as temp:
@@ -435,7 +527,8 @@ class JobWorker:
             finalize(db, job, job.reserved_credits)
             job.completed_at = now()
             self._event(db, job, JobState.COMPLETED.value, "Job completed", {"artifact_count": len(artifacts)})
-            self._record_usage(db, job, asset.duration_seconds if asset else None, output_duration, started, input_bytes=asset.size_bytes if asset else None, output_bytes=output_bytes)
+            peak_vram_mb, peak_ram_mb = self._memory_metrics()
+            self._record_usage(db, job, asset.duration_seconds if asset else None, output_duration, started, input_bytes=asset.size_bytes if asset else None, output_bytes=output_bytes, queue_wait_seconds=queue_wait_seconds, compute_startup_seconds=compute_startup_seconds, model_load_seconds=self._model_load_seconds, peak_vram_mb=peak_vram_mb, peak_ram_mb=peak_ram_mb)
             db.commit()
             self._notify_job(db, job, JobState.COMPLETED.value)
         except Exception as exc:  # noqa: BLE001 - every worker failure must settle the job safely
@@ -448,7 +541,8 @@ class JobWorker:
                     job.error_code = "PROVIDER_FAILURE" if isinstance(exc, ProviderUnavailable) else "WORKER_FAILURE"
                     job.error_message = str(exc)[:2000]
                     db.add(JobEvent(job_id=job.id, state=job.state, message=job.error_message, metadata_json=json.dumps({"error_type": type(exc).__name__, "attempt": job.retry_count})))
-                    self._record_usage(db, job, asset.duration_seconds if asset else None, None, started, input_bytes=asset.size_bytes if asset else None, output_bytes=0)
+                    peak_vram_mb, peak_ram_mb = self._memory_metrics()
+                    self._record_usage(db, job, asset.duration_seconds if asset else None, None, started, input_bytes=asset.size_bytes if asset else None, output_bytes=0, queue_wait_seconds=queue_wait_seconds, compute_startup_seconds=compute_startup_seconds, model_load_seconds=self._model_load_seconds, peak_vram_mb=peak_vram_mb, peak_ram_mb=peak_ram_mb)
                     db.commit()
                     self._notify_job(db, job, JobState.FAILED.value)
                 else:
@@ -456,7 +550,8 @@ class JobWorker:
                     job.error_code = "RETRYING"
                     job.error_message = str(exc)[:2000]
                     db.add(JobEvent(job_id=job.id, state=job.state, message="Job returned to queue after worker failure", metadata_json=json.dumps({"error_type": type(exc).__name__, "attempt": job.retry_count})))
-                    self._record_usage(db, job, asset.duration_seconds if asset else None, None, started, input_bytes=asset.size_bytes if asset else None, output_bytes=0)
+                    peak_vram_mb, peak_ram_mb = self._memory_metrics()
+                    self._record_usage(db, job, asset.duration_seconds if asset else None, None, started, input_bytes=asset.size_bytes if asset else None, output_bytes=0, queue_wait_seconds=queue_wait_seconds, compute_startup_seconds=compute_startup_seconds, model_load_seconds=self._model_load_seconds, peak_vram_mb=peak_vram_mb, peak_ram_mb=peak_ram_mb)
                     db.commit()
                     self.queue.send(JobMessage(job.id, job.operation))
                     self._requeued_job_ids.add(job.id)

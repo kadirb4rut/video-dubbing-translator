@@ -262,6 +262,13 @@ class UsageRecord(Base):
     model_version: Mapped[str | None] = mapped_column(String(160), nullable=True)
     estimated_cost_usd: Mapped[float | None] = mapped_column(nullable=True)
     actual_cost_usd: Mapped[float | None] = mapped_column(nullable=True)
+    queue_wait_seconds: Mapped[float | None] = mapped_column(nullable=True)
+    compute_startup_seconds: Mapped[float | None] = mapped_column(nullable=True)
+    model_load_seconds: Mapped[float | None] = mapped_column(nullable=True)
+    real_time_factor: Mapped[float | None] = mapped_column(nullable=True)
+    peak_vram_mb: Mapped[float | None] = mapped_column(nullable=True)
+    peak_ram_mb: Mapped[float | None] = mapped_column(nullable=True)
+    compute_cost_per_input_minute_usd: Mapped[float | None] = mapped_column(nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 

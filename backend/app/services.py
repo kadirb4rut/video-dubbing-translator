@@ -267,14 +267,37 @@ def serialize_asset(asset: MediaAsset) -> dict:
     return {"id": asset.id, "filename": asset.original_filename, "mime_type": asset.mime_type, "size_bytes": asset.size_bytes, "duration_seconds": asset.duration_seconds, "width": asset.width, "height": asset.height, "fps": asset.fps, "media_kind": asset.media_kind, "status": asset.status, "created_at": asset.created_at.isoformat()}
 
 
-def serialize_job(job: Job, *, include_internal_error: bool = False) -> dict:
+def serialize_job(job: Job, *, include_internal_error: bool = False, usage: object | None = None) -> dict:
     public_error = {
         "PROVIDER_FAILURE": "A configured media provider could not complete this job. Please retry or contact support.",
         "WORKER_FAILURE": "The media worker could not complete this job. Please retry.",
         "WORKER_LEASE_EXHAUSTED": "The media worker stopped responding. Please retry.",
         "QUEUE_UNAVAILABLE": "The job queue is temporarily unavailable. Please retry shortly.",
     }.get(job.error_code, job.error_message)
-    return {"id": job.id, "project_id": job.project_id, "operation": job.operation, "state": job.state, "estimate_credits": job.estimate_credits, "reserved_credits": job.reserved_credits, "actual_credits": job.actual_credits, "output_object_key": job.output_object_key, "error_code": job.error_code, "error_message": job.error_message if include_internal_error else public_error, "created_at": job.created_at.isoformat(), "updated_at": job.updated_at.isoformat(), "completed_at": job.completed_at.isoformat() if job.completed_at else None}
+    telemetry = None
+    if usage is not None:
+        telemetry = {
+            "input_duration_seconds": usage.input_duration_seconds,
+            "output_duration_seconds": usage.output_duration_seconds,
+            "input_bytes": usage.input_bytes,
+            "output_bytes": usage.output_bytes,
+            "wall_clock_seconds": usage.wall_clock_seconds,
+            "model_seconds": usage.model_seconds,
+            "queue_wait_seconds": usage.queue_wait_seconds,
+            "compute_startup_seconds": usage.compute_startup_seconds,
+            "model_load_seconds": usage.model_load_seconds,
+            "real_time_factor": usage.real_time_factor,
+            "peak_vram_mb": usage.peak_vram_mb,
+            "peak_ram_mb": usage.peak_ram_mb,
+            "worker_type": usage.worker_type,
+            "gpu_type": usage.gpu_type,
+            "model_version": usage.model_version,
+            "estimated_cost_usd": usage.estimated_cost_usd,
+            "actual_cost_usd": usage.actual_cost_usd,
+            "compute_cost_per_input_minute_usd": usage.compute_cost_per_input_minute_usd,
+            "retry_count": usage.retry_count,
+        }
+    return {"id": job.id, "project_id": job.project_id, "operation": job.operation, "state": job.state, "estimate_credits": job.estimate_credits, "reserved_credits": job.reserved_credits, "actual_credits": job.actual_credits, "output_object_key": job.output_object_key, "error_code": job.error_code, "error_message": job.error_message if include_internal_error else public_error, "created_at": job.created_at.isoformat(), "updated_at": job.updated_at.isoformat(), "completed_at": job.completed_at.isoformat() if job.completed_at else None, "telemetry": telemetry}
 
 
 def serialize_artifact(artifact: JobArtifact) -> dict:

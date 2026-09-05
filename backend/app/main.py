@@ -598,7 +598,7 @@ def job_detail(job_id: str, user: User = Depends(current_user), db: Session = De
     job = db.scalar(select(Job).where(Job.id == job_id, Job.user_id == user.id))
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    payload = serialize_job(job)
+    payload = serialize_job(job, usage=db.scalar(select(UsageRecord).where(UsageRecord.job_id == job.id)))
     payload["events"] = [{"state": event.state, "message": event.message, "metadata": json.loads(event.metadata_json), "created_at": event.created_at.isoformat()} for event in db.scalars(select(JobEvent).where(JobEvent.job_id == job.id).order_by(JobEvent.created_at.asc())).all()]
     payload["artifacts"] = [serialize_artifact(artifact) for artifact in db.scalars(select(JobArtifact).where(JobArtifact.job_id == job.id).order_by(JobArtifact.created_at.asc())).all()]
     return payload

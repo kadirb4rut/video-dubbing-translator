@@ -135,6 +135,15 @@ variable "worker_instance_type" {
   type    = string
   default = "g4dn.xlarge"
 }
+variable "worker_hourly_price_usd" {
+  description = "On-demand hourly price used for approximate worker cost telemetry. Keep aligned with the selected instance type and region."
+  type        = number
+  default     = 0.558
+  validation {
+    condition     = var.worker_hourly_price_usd >= 0
+    error_message = "worker_hourly_price_usd must be zero or greater."
+  }
+}
 variable "worker_desired_count" {
   type    = number
   default = 0
