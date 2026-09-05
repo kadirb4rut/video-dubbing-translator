@@ -4,6 +4,7 @@ import gc
 import inspect
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -105,6 +106,235 @@ class ConfiguredTranslationProvider:
         if not isinstance(translated, list) or len(translated) != len(segments):
             raise ProviderUnavailable("Translation provider returned an invalid segment payload")
         return validate_segments(translated)
+
+
+class HyMT2TranslationProvider:
+    """Self-hosted Hy-MT2 translation with deterministic dubbing segments.
+
+    The model is loaded lazily so API/test processes do not need a local ML
+    runtime. Dubbing uses one structured prompt per bounded batch; each source
+    segment is identified by an immutable marker and the response is rejected
+    if markers are missing, duplicated, reordered, or surrounded by filler.
+    """
+
+    name = "hymt2"
+    _models: ClassVar[dict[tuple[str, str, str], tuple[object, object]]] = {}
+    _supported_languages: ClassVar[set[str]] = {
+        "ar", "bn", "bo", "cs", "de", "en", "es", "fa", "fr", "gu", "he", "hi", "id", "it", "ja", "kk", "km", "ko", "mn", "mr", "ms", "my", "nl", "pl", "pt", "ru", "ta", "te", "th", "tl", "tr", "uk", "ug", "vi", "yue", "zh", "zh-hant",
+    }
+    _language_names: ClassVar[dict[str, str]] = {
+        "ar": "Arabic", "bn": "Bengali", "bo": "Tibetan", "cs": "Czech", "de": "German", "en": "English", "es": "Spanish", "fa": "Persian", "fr": "French", "gu": "Gujarati", "he": "Hebrew", "hi": "Hindi", "id": "Indonesian", "it": "Italian", "ja": "Japanese", "kk": "Kazakh", "km": "Khmer", "ko": "Korean", "mn": "Mongolian", "mr": "Marathi", "ms": "Malay", "my": "Burmese", "nl": "Dutch", "pl": "Polish", "pt": "Portuguese", "ru": "Russian", "ta": "Tamil", "te": "Telugu", "th": "Thai", "tl": "Filipino", "tr": "Turkish", "uk": "Ukrainian", "ug": "Uyghur", "vi": "Vietnamese", "yue": "Cantonese", "zh": "Chinese", "zh-hant": "Traditional Chinese",
+    }
+
+    def __init__(self, model_name: str | None = None, *, device: str | None = None, dtype: str | None = None, tokenizer=None, model=None):
+        self.model_name = model_name or settings.translation_model
+        self.device = self._resolve_device(device or settings.translation_device)
+        self.dtype_name = dtype or settings.translation_dtype
+        self._tokenizer = tokenizer
+        self._model = model
+        self.last_model_load_seconds = 0.0
+        self.last_metrics: dict[str, object] = {}
+
+    @staticmethod
+    def _resolve_device(value: str) -> str:
+        if value != "auto":
+            return value
+        try:
+            import torch
+
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        except ImportError:
+            return "cpu"
+
+    def _dtype(self, torch):
+        if self.dtype_name == "float32":
+            return torch.float32
+        if self.dtype_name in {"float16", "fp16"}:
+            return torch.float16
+        if self.dtype_name in {"bfloat16", "bf16"}:
+            return torch.bfloat16
+        # Hy-MT2 is published as BF16. Keeping that default on CPU is
+        # important for the 1.8B checkpoint's memory envelope; operators can
+        # opt into float32 explicitly when their CPU lacks BF16 support.
+        return torch.bfloat16
+
+    def _load(self) -> tuple[object, object]:
+        if self._tokenizer is not None and self._model is not None:
+            return self._tokenizer, self._model
+        key = (self.model_name, self.device, self.dtype_name)
+        cached = self._models.get(key)
+        if cached is not None:
+            self._tokenizer, self._model = cached
+            return cached
+        torch = _require("torch")
+        try:
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+        except ImportError as exc:
+            raise ProviderUnavailable("Transformers is not installed; install the full worker requirements for Hy-MT2") from exc
+        started = time.monotonic()
+        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name, trust_remote_code=True)
+        kwargs = {"dtype": self._dtype(torch), "trust_remote_code": True}
+        if self.device.startswith("cuda"):
+            kwargs["device_map"] = "auto"
+        self._model = AutoModelForCausalLM.from_pretrained(self.model_name, **kwargs)
+        if not self.device.startswith("cuda"):
+            self._model.to(self.device)
+        self._model.eval()
+        self.last_model_load_seconds = time.monotonic() - started
+        self._models[key] = (self._tokenizer, self._model)
+        return self._tokenizer, self._model
+
+    def release(self) -> None:
+        if self._tokenizer is None and self._model is None:
+            return
+        key = (self.model_name, self.device, self.dtype_name)
+        self._models.pop(key, None)
+        self._tokenizer = None
+        self._model = None
+        _release_torch_memory()
+
+    @classmethod
+    def _normalize_language(cls, value: str) -> str:
+        normalized = value.strip().lower().replace("_", "-")
+        if normalized == "zh-hant":
+            return normalized
+        if normalized not in cls._supported_languages:
+            raise ProviderUnavailable(f"Hy-MT2 does not support language code '{value}'")
+        return normalized
+
+    @staticmethod
+    def _segment_id(segment: dict, index: int) -> str:
+        value = str(segment.get("id") or f"seg-{index + 1:04d}").strip()
+        if not value or any(char.isspace() for char in value) or ">" in value or "<" in value:
+            raise ProviderUnavailable(f"Invalid translation segment id at index {index}")
+        return value
+
+    def _prompt(self, batch: Sequence[dict], *, source: str, target: str, context: str | None, glossary: Sequence[dict] | None, style: str | None, duration_aware: bool) -> str:
+        source_name = self._language_names[source]
+        target_name = self._language_names[target]
+        lines = [
+            f"Translate the following {source_name} subtitle segments into {target_name}.",
+            "Return ONLY one translated line for every marker, preserving marker spelling and order exactly.",
+            "Do not add commentary, explanations, speaker labels, or filler. Keep names, numbers, URLs, and product terms accurate.",
+        ]
+        if context:
+            lines.extend(["[Surrounding Context]", context.strip()])
+        if glossary:
+            entries = [f"{item.get('source', '')} => {item.get('target', '')}" for item in glossary if item.get("source") and item.get("target")]
+            if entries:
+                lines.extend(["[Glossary]", *entries])
+        if style:
+            lines.append(f"[Style] {style}")
+        if duration_aware:
+            lines.append("Use natural, concise spoken language suitable for dubbing; do not omit meaning.")
+        lines.append("[Segments]")
+        for index, segment in enumerate(batch):
+            lines.append(f"<SEG_{self._segment_id(segment, index)}> {segment['text'].strip()}")
+        lines.append("[Output]")
+        return "\n".join(lines)
+
+    def _generate(self, prompt: str) -> str:
+        tokenizer, model = self._load()
+        torch = _require("torch")
+        messages = [{"role": "user", "content": prompt}]
+        inputs = tokenizer.apply_chat_template(messages, add_generation_prompt=True, return_tensors="pt")
+        if hasattr(inputs, "to"):
+            inputs = inputs.to(model.device)
+        with torch.no_grad():
+            kwargs = {"max_new_tokens": settings.translation_max_new_tokens, "do_sample": False}
+            outputs = model.generate(**inputs, **kwargs)
+        prompt_length = inputs["input_ids"].shape[-1]
+        return tokenizer.decode(outputs[0][prompt_length:], skip_special_tokens=True).strip()
+
+    def _parse(self, raw: str, batch: Sequence[dict]) -> list[str]:
+        expected = [self._segment_id(segment, index) for index, segment in enumerate(batch)]
+        pattern = re.compile("<SEG_([^>]+)>[ \\t]*(.*?)(?=\\n<SEG_[^>]+>|$)", re.DOTALL)
+        matches = list(pattern.finditer(raw))
+        if not matches or raw[: matches[0].start()].strip():
+            raise ProviderUnavailable("Hy-MT2 returned commentary or a missing segment marker")
+        remainder = pattern.sub("", raw).strip()
+        if remainder:
+            raise ProviderUnavailable("Hy-MT2 returned text outside segment markers")
+        received = [match.group(1).strip() for match in matches]
+        if received != expected or len(set(received)) != len(received):
+            raise ProviderUnavailable("Hy-MT2 returned missing, duplicate, or reordered segment markers")
+        texts = [match.group(2).strip() for match in matches]
+        if any(not text for text in texts):
+            raise ProviderUnavailable("Hy-MT2 returned an empty translated segment")
+        return texts
+
+    def _batches(self, segments: Sequence[dict]) -> list[list[dict]]:
+        batches: list[list[dict]] = []
+        current: list[dict] = []
+        chars = 0
+        for segment in segments:
+            size = len(segment["text"])
+            if current and (len(current) >= max(1, settings.translation_batch_size) or chars + size > settings.translation_max_chars_per_batch):
+                batches.append(current)
+                current, chars = [], 0
+            current.append(segment)
+            chars += size
+        if current:
+            batches.append(current)
+        return batches
+
+    def translate(self, segments: Sequence[dict], *, source: str, target: str) -> Sequence[dict]:
+        return self.translate_segments(segments, source=source, target=target)
+
+    def translate_segments(self, segments: Sequence[dict], *, source: str, target: str, context: str | None = None, glossary: Sequence[dict] | None = None, style: str | None = None, duration_aware: bool = False) -> Sequence[dict]:
+        validated = validate_segments(segments)
+        source = self._normalize_language(source)
+        target = self._normalize_language(target)
+        if source == target:
+            return validated
+        started = time.monotonic()
+        retries = 0
+        malformed = 0
+        translated: list[dict] = []
+        batches = self._batches(validated)
+        for batch in batches:
+            prompt = self._prompt(batch, source=source, target=target, context=context, glossary=glossary, style=style, duration_aware=duration_aware)
+            raw = self._generate(prompt)
+            try:
+                texts = self._parse(raw, batch)
+            except ProviderUnavailable:
+                malformed += 1
+                if retries >= settings.translation_max_retries:
+                    raise
+                retries += 1
+                repair = "Return only the corrected marked translations, with no commentary.\n" + raw[:6000]
+                texts = self._parse(self._generate(repair), batch)
+            translated.extend({**segment, "text": text} for segment, text in zip(batch, texts, strict=True))
+        self.last_metrics = {
+            "provider": self.name,
+            "model": self.model_name,
+            "runtime": "transformers-in-process",
+            "device": self.device,
+            "dtype": self.dtype_name if self.dtype_name != "auto" else "bfloat16",
+            "source_language": source,
+            "target_language": target,
+            "segment_count": len(validated),
+            "batch_count": len(batches),
+            "input_chars": sum(len(segment["text"]) for segment in validated),
+            "output_chars": sum(len(segment["text"]) for segment in translated),
+            "retry_count": retries,
+            "malformed_response_count": malformed,
+            "wall_clock_seconds": round(time.monotonic() - started, 4),
+            "duration_aware": duration_aware,
+        }
+        return validate_segments(translated)
+
+    def rewrite_for_duration(self, text: str, *, target: str, max_seconds: float) -> str:
+        target = self._normalize_language(target)
+        prompt = (
+            f"Rewrite the following {self._language_names[target]} dubbing line so it can be spoken naturally in at most {max_seconds:.2f} seconds. "
+            "Preserve the meaning, names, numbers, and tone. Output only the rewritten line, with no explanation.\n"
+            f"{text.strip()}"
+        )
+        rewritten = self._generate(prompt).strip()
+        if not rewritten or "<SEG_" in rewritten:
+            raise ProviderUnavailable("Hy-MT2 duration rewrite returned an invalid response")
+        return rewritten
 
 
 class AwsTranslateProvider:
@@ -310,6 +540,8 @@ class FixtureTranslationProvider:
 def translation_provider():
     if settings.translation_provider == "fixture":
         return FixtureTranslationProvider()
+    if settings.translation_provider == "hymt2":
+        return HyMT2TranslationProvider()
     if settings.translation_provider == "aws-translate":
         return AwsTranslateProvider()
     return ConfiguredTranslationProvider()

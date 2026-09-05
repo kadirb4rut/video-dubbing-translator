@@ -44,13 +44,18 @@ variable "worker_secrets" {
   default     = {}
 }
 variable "translation_provider" {
-  description = "Translation adapter for production workers. Use aws-translate to use the task role instead of an external API key."
+  description = "Translation adapter for production workers. Hy-MT2 is the self-hosted default; AWS Translate and configured-api remain optional alternatives."
   type        = string
-  default     = "aws-translate"
+  default     = "hymt2"
   validation {
-    condition     = contains(["configured-api", "aws-translate"], var.translation_provider)
-    error_message = "translation_provider must be configured-api or aws-translate."
+    condition     = contains(["hymt2", "configured-api", "aws-translate"], var.translation_provider)
+    error_message = "translation_provider must be hymt2, configured-api, or aws-translate."
   }
+}
+variable "translation_model" {
+  description = "Self-hosted translation checkpoint used when translation_provider is hymt2."
+  type        = string
+  default     = "tencent/Hy-MT2-1.8B"
 }
 variable "api_secrets" {
   description = "Map of ECS API environment variable names to Secrets Manager secret or secret-version ARNs. DATABASE_URL is required when api_image is set."

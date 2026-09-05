@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from app.config import settings
 from app.media import inspect_media, validate_upload
 from app.providers_real import (
     AwsTranslateProvider,
     ChatterboxMultilingualVoiceProvider,
     DeepFilterNetNoiseProvider,
     FixtureTranslationProvider,
+    HyMT2TranslationProvider,
     ProviderUnavailable,
     WhisperTranscriptionProvider,
+    translation_provider,
 )
 from app.worker import MAX_DUBBING_SPEEDUP
 
@@ -94,6 +98,36 @@ def test_fixture_translation_is_explicit_and_preserves_segment_timing():
     assert translated == [{"start": 0.0, "end": 1.25, "text": "hola mundo"}]
     with pytest.raises(ProviderUnavailable, match="no mapping"):
         FixtureTranslationProvider().translate([{"start": 0, "end": 1, "text": "unknown phrase"}], source="en", target="es")
+
+
+def test_hymt2_segment_contract_is_deterministic_and_rejects_filler_or_reordering():
+    provider = HyMT2TranslationProvider(model_name="test-model")
+    segments = [
+        {"id": "intro", "start": 0, "end": 1, "text": "Hello"},
+        {"id": "detail", "start": 1, "end": 2, "text": "World"},
+    ]
+    assert provider._parse("<SEG_intro> Merhaba\n<SEG_detail> Dünya", segments) == ["Merhaba", "Dünya"]
+    for malformed in ("Note:\n<SEG_intro> Merhaba\n<SEG_detail> Dünya", "<SEG_detail> Dünya\n<SEG_intro> Merhaba", "<SEG_intro> Merhaba\n<SEG_intro> Dünya"):
+        with pytest.raises(ProviderUnavailable):
+            provider._parse(malformed, segments)
+
+
+def test_hymt2_batches_respect_count_and_character_bounds(monkeypatch):
+    monkeypatch.setattr("app.providers_real.settings", replace(settings, translation_batch_size=2, translation_max_chars_per_batch=10))
+    provider = HyMT2TranslationProvider(model_name="test-model")
+    segments = [{"start": i, "end": i + 1, "text": text} for i, text in enumerate(("one", "two", "three"))]
+    assert [[item["text"] for item in batch] for batch in provider._batches(segments)] == [["one", "two"], ["three"]]
+
+
+def test_hymt2_rejects_unsupported_language_without_loading_model():
+    provider = HyMT2TranslationProvider(model_name="test-model")
+    with pytest.raises(ProviderUnavailable, match="does not support"):
+        provider.translate([{"start": 0, "end": 1, "text": "Hello"}], source="xx", target="tr")
+
+
+def test_hymt2_is_selectable_as_the_default_provider(monkeypatch):
+    monkeypatch.setattr("app.providers_real.settings", replace(settings, translation_provider="hymt2"))
+    assert isinstance(translation_provider(), HyMT2TranslationProvider)
 
 
 def test_aws_translate_provider_preserves_segment_timing():

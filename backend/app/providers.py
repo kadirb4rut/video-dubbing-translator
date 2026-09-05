@@ -23,6 +23,20 @@ class TranslationProvider(Protocol):
 
     def translate(self, segments: Sequence[dict], *, source: str, target: str) -> Sequence[dict]: ...
 
+    # Optional richer operation used by dubbing. Legacy providers only need
+    # to implement translate(); the worker feature-detects this method.
+    def translate_segments(
+        self,
+        segments: Sequence[dict],
+        *,
+        source: str,
+        target: str,
+        context: str | None = None,
+        glossary: Sequence[dict] | None = None,
+        style: str | None = None,
+        duration_aware: bool = False,
+    ) -> Sequence[dict]: ...
+
 
 class VoiceProvider(Protocol):
     name: str
@@ -62,7 +76,7 @@ def provider_registry() -> dict[str, str]:
     """Production provider names are configuration, so model swaps do not change job orchestration."""
     return {
         "transcription": "whisper (cached model adapter)",
-        "translation": "configured-api",
+        "translation": "hymt2:tencent/Hy-MT2-1.8B",
         "voice": "chatterbox-multilingual-v3",
         "stem_separation": "demucs",
         "noise_removal": "deepfilternet",

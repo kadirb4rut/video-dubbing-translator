@@ -222,6 +222,25 @@ class JobWorker:
         finally:
             provider.release()
 
+    @staticmethod
+    def _translate(provider, segments: list[dict], *, source: str, target: str, options: dict, duration_aware: bool) -> list[dict]:
+        """Use the richer contextual contract when the adapter supports it."""
+        translate_segments = getattr(provider, "translate_segments", None)
+        if callable(translate_segments):
+            context = options.get("translation_context") or " ".join(segment["text"] for segment in segments)[:2400]
+            return list(
+                translate_segments(
+                    segments,
+                    source=source,
+                    target=target,
+                    context=context,
+                    glossary=options.get("glossary") or None,
+                    style=options.get("translation_style") or "natural spoken dubbing",
+                    duration_aware=duration_aware,
+                )
+            )
+        return list(provider.translate(segments, source=source, target=target))
+
     def _stems(self, audio: Path, output: Path, stem_count: int) -> tuple[Path, dict[str, Path]]:
         stems = DemucsStemSeparationProvider().separate(audio, stems=stem_count, output_dir=output.parent / "demucs")
         with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -282,21 +301,53 @@ class JobWorker:
                 options["source_language"] = source_language
                 job.options_json = json.dumps(options, sort_keys=True)
                 db.add(JobEvent(job_id=job.id, state=JobState.TRANSCRIBING.value, message="Source language detected", metadata_json=json.dumps({"language": transcriber.detected_language})))
-        with self._stage(db, job, JobState.TRANSLATING.value, "Translating subtitle segments"):
-            segments = validate_segments(list(translation_provider().translate(segments, source=source_language or "auto", target=target_language)))
+        translator = translation_provider()
+        translation_metadata: dict[str, object] = {"provider": getattr(translator, "name", type(translator).__name__)}
+        try:
+            with self._stage(db, job, JobState.TRANSLATING.value, "Translating subtitle segments", translation_metadata):
+                segments = validate_segments(self._translate(translator, segments, source=source_language or "auto", target=target_language, options=options, duration_aware=True))
+                translation_metadata.update(getattr(translator, "last_metrics", {}))
+        except Exception:
+            release_provider = getattr(translator, "release", None)
+            if callable(release_provider):
+                release_provider()
+            raise
         source_duration = inspect_media(source)["duration_seconds"]
         with self._stage(db, job, JobState.SYNTHESIZING.value, "Synthesizing translated speech with Chatterbox Multilingual"):
             reference = self._reference(db, job, work) if options.get("preserve_voice", True) else None
             voice_provider = ChatterboxMultilingualVoiceProvider()
             clips: list[Path] = []
+            duration_metrics: list[dict[str, object]] = []
+            rewrite_count = 0
             try:
                 for index, segment in enumerate(segments):
                     clip = work / f"segment-{index:04d}.wav"
-                    voice_provider.synthesize(segment["text"], reference_voice=reference, language=target_language, output_path=clip)
+                    start = max(0.0, float(segment["start"]))
+                    next_start = float(segments[index + 1]["start"]) if index + 1 < len(segments) else source_duration
+                    window_seconds = max(0.05, min(source_duration, max(start + 0.05, next_start)) - start)
+                    original_text = segment["text"]
+                    voice_provider.synthesize(original_text, reference_voice=reference, language=target_language, output_path=clip)
+                    before_seconds = inspect_media(clip)["duration_seconds"]
+                    after_seconds = before_seconds
+                    rewritten = False
+                    rewrite_provider = getattr(translator, "rewrite_for_duration", None)
+                    if before_seconds > window_seconds * (1.0 + settings.translation_duration_tolerance) and callable(rewrite_provider):
+                        rewritten_text = rewrite_provider(original_text, target=target_language, max_seconds=window_seconds * (1.0 + settings.translation_duration_tolerance))
+                        segment["text"] = rewritten_text
+                        voice_provider.synthesize(rewritten_text, reference_voice=reference, language=target_language, output_path=clip)
+                        after_seconds = inspect_media(clip)["duration_seconds"]
+                        rewritten = True
+                        rewrite_count += 1
+                    duration_metrics.append({"segment_id": segment.get("id") or f"seg-{index + 1:04d}", "window_seconds": round(window_seconds, 4), "tts_before_seconds": round(before_seconds, 4), "tts_after_seconds": round(after_seconds, 4), "rewritten": rewritten, "duration_ratio_before": round(before_seconds / window_seconds, 4), "duration_ratio_after": round(after_seconds / window_seconds, 4), "fits_without_speed_adjustment": after_seconds <= window_seconds * (1.0 + settings.translation_duration_tolerance)})
                     clips.append(clip)
                 self._model_load_seconds += voice_provider.last_model_load_seconds
             finally:
                 voice_provider.release()
+                release_provider = getattr(translator, "release", None)
+                if callable(release_provider):
+                    release_provider()
+            translation_metadata.update({"duration_tolerance": settings.translation_duration_tolerance, "duration_rewrite_count": rewrite_count, "duration_segments": duration_metrics})
+            db.add(JobEvent(job_id=job.id, state=JobState.SYNTHESIZING.value, message="Translation and dubbing timing metrics", metadata_json=json.dumps(translation_metadata)))
         if not clips:
             raise ProviderUnavailable("Transcription returned no speech segments")
         inputs: list[str] = []
@@ -334,9 +385,9 @@ class JobWorker:
 
     def _model_version(self, operation: str) -> str:
         return {
-            "dubbing": "whisper+demucs+chatterbox-multilingual-v3",
+            "dubbing": f"whisper+demucs+{settings.translation_provider}:{settings.translation_model}+chatterbox-multilingual-v3",
             "transcription": "whisper",
-            "subtitle_translation": "whisper+configured-translation-api",
+            "subtitle_translation": f"whisper+{settings.translation_provider}:{settings.translation_model}",
             "stems": "demucs",
             "noise": "deepfilternet",
             "tts": "chatterbox-multilingual-v3",
@@ -345,7 +396,7 @@ class JobWorker:
     def _model_manifest(self, operation: str) -> dict[str, str]:
         manifest = {
             "stt": f"openai-whisper:{settings.whisper_model}",
-            "translation": "aws-translate",
+            "translation": f"{settings.translation_provider}:{settings.translation_model}",
             "separation": f"demucs:{settings.demucs_model}",
             "denoising": "deepfilternet:DeepFilterNet3",
             "tts": "chatterbox-tts:multilingual-v3",
@@ -541,7 +592,13 @@ class JobWorker:
                     if operation == "subtitle_translation":
                         with self._stage(db, job, JobState.TRANSLATING.value, "Translating subtitle segments"):
                             translation_source = options.get("source_language") or detected_language or "auto"
-                            segments = validate_segments(list(translation_provider().translate(segments, source=translation_source, target=options.get("target_language") or "en")))
+                            translator = translation_provider()
+                            try:
+                                segments = validate_segments(self._translate(translator, segments, source=translation_source, target=options.get("target_language") or "en", options=options, duration_aware=False))
+                            finally:
+                                release_provider = getattr(translator, "release", None)
+                                if callable(release_provider):
+                                    release_provider()
                             outputs = {"srt": write_srt(segments, work / "translated.srt"), "vtt": write_vtt(segments, work / "translated.vtt"), "txt": write_txt(segments, work / "translated.txt")}
                     artifacts.extend((path, name, {"srt": "application/x-subrip", "vtt": "text/vtt", "txt": "text/plain"}[name]) for name, path in outputs.items())
                 elif operation == "stems":

@@ -1,0 +1,32 @@
+{
+  "source_language": "en",
+  "target_language": "tr",
+  "style": "natural spoken dubbing, concise but faithful",
+  "glossary": [
+    {"source": "LingoWave", "target": "LingoWave"},
+    {"source": "AWS", "target": "AWS"},
+    {"source": "GPU quota", "target": "GPU kotası"}
+  ],
+  "segments": [
+    {"id": "s01", "start": 0.0, "end": 2.2, "text": "Welcome back to LingoWave."},
+    {"id": "s02", "start": 2.2, "end": 5.0, "text": "Today we are testing a real media-processing pipeline."},
+    {"id": "s03", "start": 5.0, "end": 7.5, "text": "The API stores the upload in S3 and sends a job to SQS."},
+    {"id": "s04", "start": 7.5, "end": 10.0, "text": "A CPU worker then downloads the asset and transcribes the speech."},
+    {"id": "s05", "start": 10.0, "end": 12.6, "text": "Keep the product name LingoWave exactly as written."},
+    {"id": "s06", "start": 12.6, "end": 15.0, "text": "The build completed in 18.196 seconds on a four-vCPU worker."},
+    {"id": "s07", "start": 15.0, "end": 17.4, "text": "Do not translate the URL https://example.com or the number 42."},
+    {"id": "s08", "start": 17.4, "end": 20.0, "text": "This phrase is intentionally idiomatic: the ball is in your court."},
+    {"id": "s09", "start": 20.0, "end": 22.4, "text": "The speaker sounds calm, precise, and helpful."},
+    {"id": "s10", "start": 22.4, "end": 25.0, "text": "A shorter line is better than a literal and awkward sentence."},
+    {"id": "s11", "start": 25.0, "end": 27.5, "text": "Preserve names such as Dr. Ada Lovelace and Istanbul."},
+    {"id": "s12", "start": 27.5, "end": 30.2, "text": "The target audio should fit the original timing window."},
+    {"id": "s13", "start": 30.2, "end": 32.6, "text": "If a line is too long, rewrite it once before speed adjustment."},
+    {"id": "s14", "start": 32.6, "end": 35.0, "text": "Never add commentary such as here is your translation."},
+    {"id": "s15", "start": 35.0, "end": 37.4, "text": "The AWS Translate adapter is optional and must not block this path."},
+    {"id": "s16", "start": 37.4, "end": 40.0, "text": "The pending GPU quota request remains open for a later upgrade."},
+    {"id": "s17", "start": 40.0, "end": 42.4, "text": "CPU validation should still produce a downloadable MP4."},
+    {"id": "s18", "start": 42.4, "end": 45.0, "text": "Measure wall time, memory, CPU usage, and cost per minute."},
+    {"id": "s19", "start": 45.0, "end": 47.4, "text": "This is a technical benchmark, not a customer-facing script."},
+    {"id": "s20", "start": 47.4, "end": 50.0, "text": "Finally, release temporary compute and report every remaining blocker."}
+  ]
+}

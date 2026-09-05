@@ -37,7 +37,18 @@ class Settings:
     frontend_origin: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
     translation_api_url: str | None = os.getenv("TRANSLATION_API_URL") or None
     translation_api_key: str | None = os.getenv("TRANSLATION_API_KEY") or None
-    translation_provider: str = os.getenv("TRANSLATION_PROVIDER", "configured-api")
+    # Hy-MT2 is the self-hosted production default. AWS Translate and an
+    # external configured API remain explicit alternatives for comparison or
+    # operational fallback.
+    translation_provider: str = os.getenv("TRANSLATION_PROVIDER", "hymt2")
+    translation_model: str = os.getenv("TRANSLATION_MODEL", "tencent/Hy-MT2-1.8B")
+    translation_device: str = os.getenv("TRANSLATION_DEVICE", "auto")
+    translation_dtype: str = os.getenv("TRANSLATION_DTYPE", "auto")
+    translation_batch_size: int = int(os.getenv("TRANSLATION_BATCH_SIZE", "4"))
+    translation_max_chars_per_batch: int = int(os.getenv("TRANSLATION_MAX_CHARS_PER_BATCH", "4000"))
+    translation_max_new_tokens: int = int(os.getenv("TRANSLATION_MAX_NEW_TOKENS", "1024"))
+    translation_duration_tolerance: float = float(os.getenv("TRANSLATION_DURATION_TOLERANCE", "0.2"))
+    translation_max_retries: int = int(os.getenv("TRANSLATION_MAX_RETRIES", "1"))
     whisper_model: str = os.getenv("WHISPER_MODEL", "small")
     chatterbox_device: str = os.getenv("CHATTERBOX_DEVICE", "cuda")
     demucs_model: str = os.getenv("DEMUCS_MODEL", "htdemucs")

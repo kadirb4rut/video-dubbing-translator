@@ -22,7 +22,7 @@ Required production controls before enabling public traffic:
 - If `enable_rds=true`, provide `database_password` through a secret-backed Terraform variable; there is no committed password default.
 - Set `create_network=true` to let Terraform create a small two-AZ VPC, public worker subnets, isolated database subnets, and least-privilege worker/database security groups. Leave it false only when the deployment supplies existing `vpc_id`, subnet IDs, and security-group IDs.
 - Pass `worker_secrets` as a map of ECS environment names to Secrets Manager ARNs (at minimum `DATABASE_URL`; add `TRANSLATION_API_KEY` or other provider secrets as needed). ECS injects these at task start; no secret value belongs in Terraform variables, images, or git.
-- The production default `translation_provider = "aws-translate"` uses Amazon Translate through the worker task role; Terraform grants only `translate:TranslateText` in that mode. Set `configured-api` when using an external translation endpoint and inject its key through `worker_secrets`.
+- The production default `translation_provider = "hymt2"` runs `tencent/Hy-MT2-1.8B` in-process in the worker with no translation API account dependency. `aws-translate` remains an optional comparison/fallback mode (and Terraform grants `translate:TranslateText` only in that mode); `configured-api` remains available for an external endpoint and key through `worker_secrets`.
 - S3 object validation, lifecycle retention rules, and signed URLs.
 - SQS visibility timeout, bounded retries, idempotency keys, and dead-letter queue.
 - For SES mail, set `mail_provider = "ses"`, use a verified `mail_from`, and pass its `ses_identity_arn`; Terraform scopes `ses:SendEmail` to that identity.
