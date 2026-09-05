@@ -154,10 +154,10 @@ class ChatterboxMultilingualVoiceProvider:
             raise ProviderUnavailable("Reference voice file is missing")
         _require("torch")
         try:
-            import torchaudio
+            import soundfile as sf
             from chatterbox.mtl_tts import ChatterboxMultilingualTTS
         except ImportError as exc:
-            raise ProviderUnavailable("Chatterbox Multilingual and torchaudio are not installed") from exc
+            raise ProviderUnavailable("Chatterbox Multilingual and soundfile are not installed") from exc
         key = (self.device, "v3")
         model = self._models.get(key)
         if model is None:
@@ -174,7 +174,12 @@ class ChatterboxMultilingualVoiceProvider:
             self._models[key] = model
         output_path.parent.mkdir(parents=True, exist_ok=True)
         wav = model.generate(text, language_id=language, audio_prompt_path=str(reference_voice) if reference_voice else None)
-        torchaudio.save(str(output_path), wav, model.sr)
+        # torchaudio 2.10 delegates save() to TorchCodec, whose native wheel
+        # is not ABI-compatible with every pinned PyTorch worker build. The
+        # provider only needs a real PCM WAV here, so use libsndfile directly
+        # while retaining torchaudio for Chatterbox's runtime contract.
+        waveform = wav.detach().cpu().squeeze(0).numpy() if hasattr(wav, "detach") else wav
+        sf.write(str(output_path), waveform, model.sr, subtype="PCM_16")
         validate_output(output_path, "audio")
         return output_path
 
