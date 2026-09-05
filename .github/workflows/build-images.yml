@@ -38,7 +38,7 @@ jobs:
       - name: Log in to Amazon ECR
         id: ecr
         env:
-          IMAGE_TAG: ${{ inputs.image_tag }}
+          IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
         run: |
           repository_uri="$(aws ecr describe-repositories --repository-names lingowave-worker --query 'repositories[0].repositoryUri' --output text)"
           api_repository_uri="$(aws ecr describe-repositories --repository-names lingowave-api --query 'repositories[0].repositoryUri' --output text)"

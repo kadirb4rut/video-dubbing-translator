@@ -221,12 +221,16 @@ resource "aws_iam_role_policy" "github_actions_ecr" {
         Resource = "*"
       },
       {
+        Effect   = "Allow"
+        Action   = ["ecr:DescribeRepositories"]
+        Resource = "*"
+      },
+      {
         Effect = "Allow"
         Action = [
           "ecr:BatchCheckLayerAvailability",
           "ecr:CompleteLayerUpload",
           "ecr:DescribeImages",
-          "ecr:DescribeRepositories",
           "ecr:InitiateLayerUpload",
           "ecr:PutImage",
           "ecr:UploadLayerPart",
