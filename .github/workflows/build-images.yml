@@ -267,7 +267,7 @@ jobs:
             -e VOXCPM_DTYPE=bfloat16 \
             -e VOXCPM_ALLOW_DOWNLOAD=true \
             -e PYTHONPATH=/app \
-            -e HF_HOME=/mnt/cache/huggingface \
+            -e HF_HOME=/tmp/voxcpm-huggingface \
             -v "$PWD/artifacts/voxcpm-smoke:/mnt" \
             -v "$PWD/scripts/benchmarks/benchmark_voxcpm.py:/mnt/benchmark_voxcpm.py:ro" \
             -w /app "$IMAGE_URI" \
