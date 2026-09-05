@@ -215,9 +215,12 @@ class JobWorker:
 
     def _transcribe(self, audio: Path, output_dir: Path, language: str | None) -> tuple[list[dict], dict[str, Path], str | None]:
         provider = WhisperTranscriptionProvider()
-        segments = list(provider.transcribe(audio, language=language))
-        self._model_load_seconds += provider.last_model_load_seconds
-        return segments, {"srt": write_srt(segments, output_dir / "transcript.srt"), "vtt": write_vtt(segments, output_dir / "transcript.vtt"), "txt": write_txt(segments, output_dir / "transcript.txt")}, provider.detected_language
+        try:
+            segments = list(provider.transcribe(audio, language=language))
+            self._model_load_seconds += provider.last_model_load_seconds
+            return segments, {"srt": write_srt(segments, output_dir / "transcript.srt"), "vtt": write_vtt(segments, output_dir / "transcript.vtt"), "txt": write_txt(segments, output_dir / "transcript.txt")}, provider.detected_language
+        finally:
+            provider.release()
 
     def _stems(self, audio: Path, output: Path, stem_count: int) -> tuple[Path, dict[str, Path]]:
         stems = DemucsStemSeparationProvider().separate(audio, stems=stem_count, output_dir=output.parent / "demucs")
@@ -249,10 +252,13 @@ class JobWorker:
         if not text:
             raise ProviderUnavailable("tts jobs require text")
         provider = ChatterboxMultilingualVoiceProvider()
-        result = provider.synthesize(text, reference_voice=self._reference(db, job, work), language=options.get("target_language") or "en", output_path=output)
-        self._model_load_seconds += provider.last_model_load_seconds
-        validate_output(result, "audio")
-        return result
+        try:
+            result = provider.synthesize(text, reference_voice=self._reference(db, job, work), language=options.get("target_language") or "en", output_path=output)
+            self._model_load_seconds += provider.last_model_load_seconds
+            validate_output(result, "audio")
+            return result
+        finally:
+            provider.release()
 
     def _dubbing(self, db: Session, job: Job, work: Path, source: Path, audio: Path, output: Path) -> Path:
         options = json.loads(job.options_json)
@@ -266,8 +272,11 @@ class JobWorker:
                 background = DemucsStemSeparationProvider().separate(audio, stems=2, output_dir=work / "background")["instrumental"]
         with self._stage(db, job, JobState.TRANSCRIBING.value, "Transcribing source speech"):
             transcriber = WhisperTranscriptionProvider()
-            segments = validate_segments(list(transcriber.transcribe(audio, language=source_language)))
-            self._model_load_seconds += transcriber.last_model_load_seconds
+            try:
+                segments = validate_segments(list(transcriber.transcribe(audio, language=source_language)))
+                self._model_load_seconds += transcriber.last_model_load_seconds
+            finally:
+                transcriber.release()
             if transcriber.detected_language:
                 source_language = source_language or transcriber.detected_language
                 options["source_language"] = source_language
@@ -280,11 +289,14 @@ class JobWorker:
             reference = self._reference(db, job, work) if options.get("preserve_voice", True) else None
             voice_provider = ChatterboxMultilingualVoiceProvider()
             clips: list[Path] = []
-            for index, segment in enumerate(segments):
-                clip = work / f"segment-{index:04d}.wav"
-                voice_provider.synthesize(segment["text"], reference_voice=reference, language=target_language, output_path=clip)
+            try:
+                for index, segment in enumerate(segments):
+                    clip = work / f"segment-{index:04d}.wav"
+                    voice_provider.synthesize(segment["text"], reference_voice=reference, language=target_language, output_path=clip)
+                    clips.append(clip)
                 self._model_load_seconds += voice_provider.last_model_load_seconds
-                clips.append(clip)
+            finally:
+                voice_provider.release()
         if not clips:
             raise ProviderUnavailable("Transcription returned no speech segments")
         inputs: list[str] = []

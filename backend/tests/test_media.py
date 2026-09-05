@@ -7,9 +7,11 @@ import pytest
 from app.media import inspect_media, validate_upload
 from app.providers_real import (
     AwsTranslateProvider,
+    ChatterboxMultilingualVoiceProvider,
     DeepFilterNetNoiseProvider,
     FixtureTranslationProvider,
     ProviderUnavailable,
+    WhisperTranscriptionProvider,
 )
 from app.worker import MAX_DUBBING_SPEEDUP
 
@@ -41,6 +43,25 @@ def test_gpu_worker_contract_scales_to_zero_and_reuses_live_host_model_cache():
     assert "sourceVolume" in contents and '"model-cache"' in contents
     assert 'host_path = "/var/lib/lingowave/model-cache"' in contents
     assert 'XDG_CACHE_HOME", value = "/home/lingowave/.cache"' in contents
+
+
+def test_stage_provider_release_evicts_in_memory_models(monkeypatch):
+    released = []
+    monkeypatch.setattr("app.providers_real._release_torch_memory", lambda: released.append(True))
+    whisper_model = object()
+    chatterbox_model = object()
+    WhisperTranscriptionProvider._models["small"] = whisper_model
+    ChatterboxMultilingualVoiceProvider._models[("cuda", "v3")] = chatterbox_model
+
+    try:
+        WhisperTranscriptionProvider("small").release()
+        ChatterboxMultilingualVoiceProvider("cuda").release()
+        assert "small" not in WhisperTranscriptionProvider._models
+        assert ("cuda", "v3") not in ChatterboxMultilingualVoiceProvider._models
+        assert released == [True, True]
+    finally:
+        WhisperTranscriptionProvider._models.pop("small", None)
+        ChatterboxMultilingualVoiceProvider._models.pop(("cuda", "v3"), None)
 
 
 def test_noise_removal_requires_explicit_dev_fallback(monkeypatch, tmp_path):

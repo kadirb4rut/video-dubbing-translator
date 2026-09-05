@@ -113,6 +113,8 @@ DeepFilterNet3 remains a separate modular noise-enhancement operation. Lip sync 
 
 License and commercial-use review was intentionally not performed. The user owns that pre-production review.
 
+During a job, the Whisper and Chatterbox provider caches are released at stage boundaries and the PyTorch allocator cache is flushed on supported accelerators. The checkpoint files remain in the worker's host model-cache volume, so the next job can reuse downloaded weights without keeping both stage models resident in VRAM.
+
 ## 8 Models/checkpoints benchmarked
 
 The reproducible benchmark entry points are:
@@ -242,7 +244,7 @@ The full plan also showed local frontend asset drift because the local \`fronten
 
 ## 15 Test and security results
 
-- Backend tests: \`45 passed\`, two existing deprecation warnings.
+- Backend tests: \`46 passed\` locally, with one existing FastAPI/Starlette deprecation warning; the new model-release regression test is included.
 - GitHub CI: backend, frontend, infrastructure, migration, dependency audit, Ruff, Bandit, compile, and Docker checks passed for \`bdc1c57\`.
 - Ruff: passed locally and in CI.
 - Bandit medium-and-higher severity scan: passed.
@@ -302,7 +304,7 @@ Out of scope: Stripe, checkout, payment webhooks, production SES, custom domain,
     curl -fsS https://d3ncg3eqih0ccj.cloudfront.net/health
 
     Backend tests:
-    cd backend && PYTHONPATH=. pytest -q tests
+    PYTHONPATH=backend:. pytest -q backend/tests
 
     Provider benchmark:
     PYTHONPATH=backend python scripts/benchmarks/benchmark_providers.py <media> --voice-reference <wav>

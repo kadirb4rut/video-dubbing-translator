@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import inspect
 import math
 import os
@@ -43,6 +44,24 @@ def _require(module: str):
         raise ProviderUnavailable(f"Python dependency '{module}' is not installed in this worker image") from exc
 
 
+def _release_torch_memory() -> None:
+    """Release stage model references and flush accelerator allocator caches."""
+    gc.collect()
+    try:
+        import torch
+
+        if getattr(torch, "cuda", None) is not None and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        mps = getattr(torch, "mps", None)
+        if mps is not None and hasattr(mps, "empty_cache"):
+            mps.empty_cache()
+    except (ImportError, RuntimeError):
+        # Memory cleanup is best effort; the provider operation has already
+        # completed and must not fail because an optional allocator API is
+        # unavailable on a CPU-only worker.
+        pass
+
+
 class WhisperTranscriptionProvider:
     name = "whisper"
     _models: ClassVar[dict[str, object]] = {}
@@ -51,6 +70,10 @@ class WhisperTranscriptionProvider:
         self.model_name = model_name or settings.whisper_model
         self.detected_language: str | None = None
         self.last_model_load_seconds = 0.0
+
+    def release(self) -> None:
+        self._models.pop(self.model_name, None)
+        _release_torch_memory()
 
     def transcribe(self, audio_path: Path, *, language: str | None = None) -> Sequence[dict]:
         whisper = _require("whisper")
@@ -121,6 +144,10 @@ class ChatterboxMultilingualVoiceProvider:
     def __init__(self, device: str | None = None):
         self.device = device or settings.chatterbox_device
         self.last_model_load_seconds = 0.0
+
+    def release(self) -> None:
+        self._models.pop((self.device, "v3"), None)
+        _release_torch_memory()
 
     def synthesize(self, text: str, *, reference_voice: Path | None, language: str, output_path: Path) -> Path:
         if reference_voice is not None and not reference_voice.is_file():
