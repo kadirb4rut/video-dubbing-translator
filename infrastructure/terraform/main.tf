@@ -263,9 +263,12 @@ resource "aws_iam_role_policy" "github_actions_ecs_acceptance" {
         Resource = "*"
       },
       {
-        Effect   = "Allow"
-        Action   = ["iam:PassRole"]
-        Resource = [aws_iam_role.ecs_task_execution.arn, aws_iam_role.ecs_task_worker.arn]
+        Effect = "Allow"
+        Action = ["iam:PassRole"]
+        Resource = concat(
+          [aws_iam_role.ecs_task_execution.arn, aws_iam_role.ecs_task_worker.arn],
+          var.api_image != "" ? [aws_iam_role.ecs_task_api[0].arn] : []
+        )
       },
       {
         Effect = "Allow"

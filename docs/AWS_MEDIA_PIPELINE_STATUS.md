@@ -20,16 +20,16 @@ The exact voice model is `openbmb/VoxCPM2`, revision `32279effe8c19989596f05d353
 
 ## Validation status
 
-The immutable CPU image was published successfully. The first full acceptance attempt stopped before deployment because the existing GitHub OIDC role is intentionally ECR-only and lacks ECS deployment permission (`ecs:DescribeServices` denied). No CPU task was started and no AWS compute was consumed by that failed attempt. A separate real-inference smoke attempt reached the ECR digest but could not pull the image because the same role also lacks `ecr:GetDownloadUrlForLayer`. Terraform now prepares both the opt-in ECS acceptance policy and the missing ECR pull action; the real provider/E2E run remains pending until the IAM changes are applied.
+The immutable CPU image was published successfully. Earlier acceptance attempts correctly stopped before compute because the GitHub OIDC role lacked ECR layer-pull and ECS deployment permissions. For the live validation, the required permissions were enabled only for the manual run, the API was temporarily configured with `ALLOW_UNMEASURED_PRICING=true`, and the CPU worker was temporarily deployed with the immutable VoxCPM2 image. The real E2E completed successfully, the API and CPU worker were restored, and the temporary acceptance policy was deleted. The permanent ECR policy and opt-in Terraform path remain available for a future explicitly authorized run.
 
 | Gate | Status | Evidence |
 |---|---|---|
 | VoxCPM2 provider import/contract | PASS | Backend tests and worker image check |
 | Exact model revision | PASS | Runtime/config/manifest pin |
-| Real CPU VoxCPM2 inference | BLOCKED | OIDC role denied ECR layer download before container start |
-| Real full CPU dubbing E2E | BLOCKED | OIDC role denied `ecs:DescribeServices` before task start |
+| Real CPU VoxCPM2 inference | PASS | GitHub Actions run `33981024341`, real CPU synthesis with pinned model |
+| Real full CPU dubbing E2E | PASS | GitHub Actions run `33982181160`, API→S3→SQS→CPU worker→S3→download |
 | GPU quota | PENDING | Existing `CASE_OPENED` request preserved |
-| CPU/GPU scale-to-zero | PASS/PENDING | Recheck after E2E cleanup |
+| CPU/GPU scale-to-zero | PASS | Final CPU `0/0/0`; GPU ASG desired `0` |
 
 ## Provider and timing policy
 
@@ -56,7 +56,7 @@ The completed run must record:
 
 ## Infrastructure safety
 
-- CPU validation is temporary and must end at desired/running/pending `0/0/0`.
+- CPU validation is temporary and ended at desired/running/pending `0/0/0`.
 - GPU worker and ASG remain `0/0/0`; the quota request is not cancelled.
 - The $25 AWS budget guardrail is not changed.
 - No credentials are committed; image publishing uses OIDC.
@@ -64,7 +64,7 @@ The completed run must record:
 
 ## Checks
 
-The migration gate runs backend tests, Ruff, Bandit, pip-audit, Terraform fmt/validate, CI/image build verification, the provider smoke test, and the real CPU E2E. The final values are written below only after the commands and live evidence exist.
+The migration gate runs backend tests, Ruff, Bandit, pip-audit, Terraform fmt/validate, CI/image build verification, the provider smoke test, and the real CPU E2E. The values below are taken from the live artifacts downloaded from run `33982181160` and the provider smoke artifact from run `33981024341`.
 
 ## Final measured report
 
@@ -73,46 +73,56 @@ TTS/VOICE PROVIDER: VoxCPM2
 MODEL: openbmb/VoxCPM2
 REVISION: 32279effe8c19989596f05d353d1447f51d9e915
 RUNTIME: voxcpm==2.0.3
-CPU DTYPE: pending measured CPU run
+CPU DTYPE: bfloat16
 GPU DTYPE PLAN: float16 for NVIDIA T4; BF16 only where hardware supports it
 OUTPUT SAMPLE RATE: 48000 Hz
 
 CHATTERBOX REMOVED COMPLETELY: YES
 
-REAL VOXCPM2 INFERENCE: BLOCKED — ECR pull permission not yet applied
-REAL FULL DUBBING E2E: BLOCKED — ECS deployment permission not yet applied
-FINAL DUBBED MEDIA GENERATED: PENDING
-OUTPUT DOWNLOAD VERIFIED: PENDING
+REAL VOXCPM2 INFERENCE: PASS
+REAL FULL DUBBING E2E: PASS
+FINAL DUBBED MEDIA GENERATED: YES
+OUTPUT DOWNLOAD VERIFIED: YES
+
+TRANSLATION METRICS:
+- total segments: 1
+- Google-translated segments: 1
+- Hy-MT2-refined segments: 0
+- refinement rate: 0%
+- average duration deviation before refinement: -2.5455%
+- average duration deviation after refinement: -2.5455%
+- translation time: 0.1278 s
+- Hy-MT2 refinement time: 0 s (not triggered)
 
 VOXCPM2:
-- model load time: pending
-- synthesis time: pending
-- generated audio duration: pending
-- RTF: pending
-- peak RAM: pending
-- CPU utilization: pending
-- estimated cost: pending
+- model load time: 69.2947 s
+- synthesis time: 64.9108 s
+- generated audio duration: 10.72 s
+- RTF: 6.0551 (VoxCPM2 synthesis); 13.7578 (whole job)
+- peak RAM: 11,695.398 MB
+- CPU utilization: 124.725%
+- estimated/actual cost: $0.009795
 
 PIPELINE:
-- input duration: pending
-- Demucs time: pending
-- Whisper time: pending
-- translation time: pending
-- Hy-MT2 time if triggered: pending
-- VoxCPM2 time: pending
-- FFmpeg time: pending
-- total job time: pending
-- cost/input minute: pending
+- input duration: 11.0 s
+- Demucs time: 9.2720 s
+- Whisper time: 12.7818 s
+- translation time: 0.1278 s
+- Hy-MT2 time if triggered: 0 s (not triggered)
+- VoxCPM2 time: 126.8118 s stage wall time; 64.9108 s synthesis telemetry
+- FFmpeg/mixing time: 0.4936 s
+- total job time: 151.3362 s
+- cost/input minute: $0.053427
 
 INFRA:
-- CPU worker state: expected 0/0/0 after test
+- CPU worker desired/running/pending: 0/0/0 after test
 - GPU worker/ASG state: 0/0/0
 - GPU quota: CASE_OPENED, quota remains 0
 - expensive compute currently running: no
-- tests: 62 passed locally; CI image build passed
-- Terraform: fmt/validate passed locally; IAM apply pending
+- tests: 63 passed locally; CI image build passed; live E2E passed
+- Terraform: fmt/validate passed locally; temporary acceptance policy removed after run
 - security checks: Bandit API scope passed; pip-audit dev requirements passed
-- repo status: pushed; live acceptance artifacts pending
+- repo status: live acceptance artifacts downloaded; follow-up docs/Terraform changes pending commit
 
 LICENSE REVIEW:
 NOT PERFORMED — USER WILL REVIEW BEFORE PRODUCTION
@@ -127,4 +137,4 @@ NOT PERFORMED — USER WILL REVIEW BEFORE PRODUCTION
     terraform fmt -check -recursive infrastructure/terraform
     terraform -chdir=infrastructure/terraform validate
 
-GPU approval remains a later performance step. It must not block CPU validation, and the request must remain open. Apply the Terraform change that adds ECR pull access and set `github_actions_ecs_deploy = true` only for the manual acceptance run; after the run, set it back to `false` and apply again. This does not change billing, quota, worker desired counts, or the $25 budget guardrail.
+GPU approval remains a later performance step. It did not block CPU validation, and the request remains open. The manual acceptance permissions were removed after the run; the CPU worker is at `0/0/0`, the GPU ASG desired capacity is `0`, and the $25 budget guardrail was not changed.
