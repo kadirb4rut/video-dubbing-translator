@@ -67,7 +67,9 @@ jobs:
         with:
           context: .
           file: backend/Dockerfile.worker
-          build-args: WORKER_REQUIREMENTS=requirements.worker-gpu.txt
+          build-args: |
+            WORKER_REQUIREMENTS=requirements.worker-gpu.txt
+            INSTALL_CHATTERBOX=true
           platforms: linux/amd64
           push: true
           provenance: false

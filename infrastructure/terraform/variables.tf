@@ -100,6 +100,11 @@ variable "api_desired_count" {
     error_message = "api_desired_count must be zero or greater."
   }
 }
+variable "allow_unmeasured_pricing" {
+  description = "Temporary validation override. Keep false for production traffic; true only for an explicitly measured acceptance run before cost profiles are published."
+  type        = bool
+  default     = false
+}
 variable "api_certificate_arn" {
   description = "Optional ACM certificate ARN for a direct HTTPS API listener. Leave empty when the shared CloudFront distribution terminates HTTPS."
   type        = string

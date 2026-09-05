@@ -393,7 +393,7 @@ resource "aws_ecs_task_definition" "cpu_worker" {
     name      = "cpu-worker"
     image     = var.cpu_worker_image
     essential = true
-    command   = ["python", "-m", "app.worker"]
+    command   = ["sh", "-c", "mkdir -p /tmp/lingowave-home /tmp/lingowave-cache && exec python -m app.worker"]
     environment = [
       { name = "SQS_QUEUE_URL", value = aws_sqs_queue.jobs.url },
       { name = "SQS_VISIBILITY_TIMEOUT_SECONDS", value = tostring(var.sqs_visibility_timeout_seconds) },
@@ -405,14 +405,12 @@ resource "aws_ecs_task_definition" "cpu_worker" {
       { name = "CPU_TYPE", value = "fargate-${var.cpu_worker_cpu}-${var.cpu_worker_memory}" },
       { name = "COMPUTE_HOURLY_PRICE_USD", value = tostring(var.cpu_worker_hourly_price_usd) },
       { name = "CHATTERBOX_DEVICE", value = "cpu" },
-      { name = "XDG_CACHE_HOME", value = "/home/lingowave/.cache" },
+      { name = "HOME", value = "/tmp/lingowave-home" },
+      { name = "XDG_CACHE_HOME", value = "/tmp/lingowave-cache" },
+      { name = "TORCH_HOME", value = "/tmp/lingowave-cache/torch" },
+      { name = "HF_HOME", value = "/tmp/lingowave-cache/huggingface" },
     ]
     secrets = [for name, value_from in var.worker_secrets : { name = name, valueFrom = value_from }]
-    mountPoints = [{
-      sourceVolume  = "model-cache"
-      containerPath = "/home/lingowave/.cache"
-      readOnly      = false
-    }]
     logConfiguration = {
       logDriver = "awslogs"
       options = {
@@ -422,9 +420,6 @@ resource "aws_ecs_task_definition" "cpu_worker" {
       }
     }
   }])
-  volume {
-    name = "model-cache"
-  }
 }
 
 resource "aws_ecs_service" "cpu_worker" {
@@ -531,7 +526,7 @@ resource "aws_ecs_task_definition" "api" {
   memory                   = "2048"
   execution_role_arn       = aws_iam_role.ecs_task_execution.arn
   task_role_arn            = aws_iam_role.ecs_task_api[0].arn
-  container_definitions    = jsonencode([{ name = "api", image = var.api_image, essential = true, command = ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"], portMappings = [{ containerPort = 8000, protocol = "tcp" }], environment = [{ name = "S3_BUCKET", value = aws_s3_bucket.media.bucket }, { name = "STORAGE_BACKEND", value = "s3" }, { name = "AWS_REGION", value = var.aws_region }, { name = "S3_PRESIGN_ENDPOINT_URL", value = "https://s3.${var.aws_region}.amazonaws.com" }, { name = "SQS_QUEUE_URL", value = aws_sqs_queue.jobs.url }, { name = "FRONTEND_ORIGIN", value = var.frontend_origin }, { name = "COOKIE_SECURE", value = "true" }, { name = "SQS_VISIBILITY_TIMEOUT_SECONDS", value = tostring(var.sqs_visibility_timeout_seconds) }, { name = "MAIL_PROVIDER", value = var.mail_provider }, { name = "MAIL_FROM", value = var.mail_from }], secrets = [for name, value_from in var.api_secrets : { name = name, valueFrom = value_from }], logConfiguration = { logDriver = "awslogs", options = { "awslogs-group" = aws_cloudwatch_log_group.api[0].name, "awslogs-region" = var.aws_region, "awslogs-stream-prefix" = "api" } } }])
+  container_definitions    = jsonencode([{ name = "api", image = var.api_image, essential = true, command = ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"], portMappings = [{ containerPort = 8000, hostPort = 8000, protocol = "tcp" }], environment = [{ name = "S3_BUCKET", value = aws_s3_bucket.media.bucket }, { name = "STORAGE_BACKEND", value = "s3" }, { name = "AWS_REGION", value = var.aws_region }, { name = "S3_PRESIGN_ENDPOINT_URL", value = "https://s3.${var.aws_region}.amazonaws.com" }, { name = "SQS_QUEUE_URL", value = aws_sqs_queue.jobs.url }, { name = "FRONTEND_ORIGIN", value = var.frontend_origin }, { name = "COOKIE_SECURE", value = "true" }, { name = "SQS_VISIBILITY_TIMEOUT_SECONDS", value = tostring(var.sqs_visibility_timeout_seconds) }, { name = "MAIL_PROVIDER", value = var.mail_provider }, { name = "MAIL_FROM", value = var.mail_from }, { name = "ALLOW_UNMEASURED_PRICING", value = tostring(var.allow_unmeasured_pricing) }], secrets = [for name, value_from in var.api_secrets : { name = name, valueFrom = value_from }], logConfiguration = { logDriver = "awslogs", options = { "awslogs-group" = aws_cloudwatch_log_group.api[0].name, "awslogs-region" = var.aws_region, "awslogs-stream-prefix" = "api" } } }])
 
   lifecycle {
     precondition {
