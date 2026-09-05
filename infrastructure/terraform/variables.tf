@@ -80,6 +80,34 @@ variable "translation_model_revision" {
   type        = string
   default     = "9a341cd1b679d3efd23b46e847b01745a71ed792"
 }
+variable "voxcpm_model" {
+  description = "VoxCPM2 voice-cloning model identifier."
+  type        = string
+  default     = "openbmb/VoxCPM2"
+}
+variable "voxcpm_model_revision" {
+  description = "Immutable Hugging Face revision for the VoxCPM2 checkpoint."
+  type        = string
+  default     = "32279effe8c19989596f05d353d1447f51d9e915"
+}
+variable "voxcpm_gpu_dtype" {
+  description = "VoxCPM2 GPU dtype; FP16 is the safe default for the planned NVIDIA T4."
+  type        = string
+  default     = "float16"
+  validation {
+    condition     = contains(["float16", "bfloat16", "float32"], var.voxcpm_gpu_dtype)
+    error_message = "voxcpm_gpu_dtype must be float16, bfloat16, or float32."
+  }
+}
+variable "voxcpm_cpu_dtype" {
+  description = "VoxCPM2 CPU dtype used by the CPU validation worker."
+  type        = string
+  default     = "bfloat16"
+  validation {
+    condition     = contains(["float16", "bfloat16", "float32"], var.voxcpm_cpu_dtype)
+    error_message = "voxcpm_cpu_dtype must be float16, bfloat16, or float32."
+  }
+}
 variable "api_secrets" {
   description = "Map of ECS API environment variable names to Secrets Manager secret or secret-version ARNs. DATABASE_URL is required when api_image is set."
   type        = map(string)

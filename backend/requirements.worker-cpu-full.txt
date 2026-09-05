@@ -2,6 +2,7 @@
 # CPU-only PyTorch wheels keep the CPU validation task free of CUDA runtime
 # dependencies while retaining the same provider stack used by the GPU image.
 --extra-index-url https://download.pytorch.org/whl/cpu
+voxcpm==2.0.3
 torch==2.10.0
 torchaudio==2.10.0
 transformers==5.16.1

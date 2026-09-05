@@ -113,7 +113,7 @@ def test_worker_operations_produce_decodable_artifacts(monkeypatch):
         shutil.copy2(audio_path, output_path)
         return output_path
 
-    def fake_synthesize(provider, text, *, reference_voice, language, output_path):
+    def fake_synthesize(provider, text, *, reference_voice, language, output_path, reference_transcript=None, seed=42):
         output_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(reference_voice, output_path)
         return output_path
@@ -128,7 +128,7 @@ def test_worker_operations_produce_decodable_artifacts(monkeypatch):
     monkeypatch.setattr("app.providers_real.WhisperTranscriptionProvider.transcribe", fake_transcribe)
     monkeypatch.setattr("app.providers_real.DemucsStemSeparationProvider.separate", fake_separate)
     monkeypatch.setattr("app.providers_real.DeepFilterNetNoiseProvider.enhance", fake_enhance)
-    monkeypatch.setattr("app.providers_real.ChatterboxMultilingualVoiceProvider.synthesize", fake_synthesize)
+    monkeypatch.setattr("app.providers_real.VoxCPM2VoiceProvider.synthesize", fake_synthesize)
     monkeypatch.setattr("app.worker.translation_provider", lambda: FakeTranslation())
 
     with TestClient(app) as client:
@@ -206,7 +206,7 @@ def test_dubbing_uses_one_hy_mt2_refinement_only_for_overlong_segments(monkeypat
         shutil.copy2(audio_path, instrumental)
         return {"vocals": vocals, "instrumental": instrumental}
 
-    def fake_synthesize(provider, text, *, reference_voice, language, output_path):
+    def fake_synthesize(provider, text, *, reference_voice, language, output_path, reference_transcript=None, seed=42):
         output_path.parent.mkdir(parents=True, exist_ok=True)
         duration = 0.8 if text == "shortened long" or text == "fit translated" else 3.5
         subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", f"sine=frequency=440:duration={duration}", "-ac", "1", "-ar", "16000", str(output_path)], check=True)
@@ -232,7 +232,7 @@ def test_dubbing_uses_one_hy_mt2_refinement_only_for_overlong_segments(monkeypat
 
     monkeypatch.setattr("app.providers_real.WhisperTranscriptionProvider.transcribe", fake_transcribe)
     monkeypatch.setattr("app.providers_real.DemucsStemSeparationProvider.separate", fake_separate)
-    monkeypatch.setattr("app.providers_real.ChatterboxMultilingualVoiceProvider.synthesize", fake_synthesize)
+    monkeypatch.setattr("app.providers_real.VoxCPM2VoiceProvider.synthesize", fake_synthesize)
     monkeypatch.setattr("app.worker.translation_provider", lambda: FakeTranslation())
     monkeypatch.setattr("app.worker.translation_refinement_provider", lambda: FakeRefinement())
 

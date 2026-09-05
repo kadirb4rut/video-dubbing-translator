@@ -2,7 +2,7 @@
 
 This is a small control-flow benchmark, not a model-quality benchmark. It
 deliberately supplies three measured/synthetic TTS durations so the routing
-contract can be checked without spending time loading Chatterbox or Hy-MT2.
+contract can be checked without spending time loading VoxCPM2 or Hy-MT2.
 Pass ``--real-refinement`` to run the real configured refinement provider for
 the two overlong cases; the default run is dependency-light and proves only
 that a fitting segment never invokes refinement and each overlong segment gets

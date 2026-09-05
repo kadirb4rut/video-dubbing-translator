@@ -20,10 +20,10 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from app.providers_real import (
-    ChatterboxMultilingualVoiceProvider,
     DeepFilterNetNoiseProvider,
     DemucsStemSeparationProvider,
     ProviderUnavailable,
+    VoxCPM2VoiceProvider,
     WhisperTranscriptionProvider,
 )
 
@@ -97,7 +97,7 @@ def main() -> None:
         result["stages"]["demucs_4stem"] = run_stage("demucs_4stem", lambda: DemucsStemSeparationProvider().separate(args.media, stems=4, output_dir=work / "demucs4"))
         result["stages"]["noise"] = run_stage("noise", lambda: DeepFilterNetNoiseProvider().enhance(args.media, output_path=work / "enhanced.wav"))
         if args.voice_reference:
-            result["stages"]["voice"] = run_stage("voice", lambda: ChatterboxMultilingualVoiceProvider().synthesize(args.voice_text, reference_voice=args.voice_reference, language=args.language, output_path=work / "speech.wav"))
+            result["stages"]["voice"] = run_stage("voice", lambda: VoxCPM2VoiceProvider().synthesize(args.voice_text, reference_voice=args.voice_reference, language=args.language, output_path=work / "speech.wav"))
         else:
             result["stages"]["voice"] = {"status": "skipped", "reason": "--voice-reference was not supplied"}
     args.output.write_text(json.dumps(result, indent=2), encoding="utf-8")

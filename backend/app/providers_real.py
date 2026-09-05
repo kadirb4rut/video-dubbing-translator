@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import gc
-import inspect
 import math
 import os
 import re
@@ -14,7 +13,16 @@ from pathlib import Path
 from typing import ClassVar
 
 from .config import settings
-from .media import validate_output
+from .media import inspect_media, validate_output
+from .voxcpm_runtime import (
+    VOXCPM_MODEL_ID,
+    VOXCPM_MODEL_REVISION,
+    VOXCPM_OUTPUT_SAMPLE_RATE,
+    load_model,
+    resolve_device,
+    resolve_dtype,
+    synthesize_cloned_speech,
+)
 
 
 class ProviderUnavailable(RuntimeError):
@@ -525,51 +533,94 @@ class AwsTranslateProvider:
         return validate_segments(translated)
 
 
-class ChatterboxMultilingualVoiceProvider:
-    name = "chatterbox-multilingual-v3"
-    _models: ClassVar[dict[tuple[str, str], object]] = {}
+class VoxCPM2VoiceProvider:
+    name = "voxcpm2"
+    _models: ClassVar[dict[tuple[str, str, str, str], object]] = {}
 
-    def __init__(self, device: str | None = None):
-        self.device = device or settings.chatterbox_device
+    def __init__(self, device: str | None = None, dtype: str | None = None):
+        self.device = resolve_device(device or settings.voxcpm_device)
+        self.dtype = resolve_dtype(self.device, dtype or settings.voxcpm_dtype)
+        self.model_id = settings.voxcpm_model or VOXCPM_MODEL_ID
+        self.revision = settings.voxcpm_model_revision or VOXCPM_MODEL_REVISION
         self.last_model_load_seconds = 0.0
+        self.last_metrics: dict[str, object] = {
+            "provider": self.name,
+            "model": self.model_id,
+            "revision": self.revision,
+            "device": self.device,
+            "dtype": self.dtype,
+            "sample_rate": VOXCPM_OUTPUT_SAMPLE_RATE,
+        }
+
+    @property
+    def _key(self) -> tuple[str, str, str, str]:
+        return (self.device, self.dtype, self.model_id, self.revision)
 
     def release(self) -> None:
-        self._models.pop((self.device, "v3"), None)
+        self._models.pop(self._key, None)
         _release_torch_memory()
 
-    def synthesize(self, text: str, *, reference_voice: Path | None, language: str, output_path: Path) -> Path:
-        if reference_voice is not None and not reference_voice.is_file():
-            raise ProviderUnavailable("Reference voice file is missing")
+    def synthesize(
+        self,
+        text: str,
+        *,
+        reference_voice: Path | None,
+        language: str,
+        output_path: Path,
+        reference_transcript: str | None = None,
+        seed: int = 42,
+    ) -> Path:
         _require("torch")
-        try:
-            import soundfile as sf
-            from chatterbox.mtl_tts import ChatterboxMultilingualTTS
-        except ImportError as exc:
-            raise ProviderUnavailable("Chatterbox Multilingual and soundfile are not installed") from exc
-        key = (self.device, "v3")
-        model = self._models.get(key)
+        _require("soundfile")
+        model = self._models.get(self._key)
         if model is None:
             started = time.monotonic()
-            loader = ChatterboxMultilingualTTS.from_pretrained
-            if "t3_model" in inspect.signature(loader).parameters:
-                model = loader(device=self.device, t3_model="v3")
-            else:
-                # Current Chatterbox checks the string value for CPU/MPS before
-                # choosing map_location; passing torch.device('cpu') would
-                # accidentally try to deserialize CUDA checkpoints on CPU.
-                model = loader(device=self.device)
+            try:
+                model = load_model(
+                    device=self.device,
+                    dtype=self.dtype,
+                    model_id=self.model_id,
+                    revision=self.revision,
+                )
+            except (FileNotFoundError, ImportError, OSError, RuntimeError, ValueError) as exc:
+                raise ProviderUnavailable(f"VoxCPM2 model load failed: {exc}") from exc
             self.last_model_load_seconds = time.monotonic() - started
-            self._models[key] = model
+            self._models[self._key] = model
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        wav = model.generate(text, language_id=language, audio_prompt_path=str(reference_voice) if reference_voice else None)
-        # torchaudio 2.10 delegates save() to TorchCodec, whose native wheel
-        # is not ABI-compatible with every pinned PyTorch worker build. The
-        # provider only needs a real PCM WAV here, so use libsndfile directly
-        # while retaining torchaudio for Chatterbox's runtime contract.
-        waveform = wav.detach().cpu().squeeze(0).numpy() if hasattr(wav, "detach") else wav
-        sf.write(str(output_path), waveform, model.sr, subtype="PCM_16")
-        validate_output(output_path, "audio")
-        return output_path
+        started = time.monotonic()
+        try:
+            result = synthesize_cloned_speech(
+                model,
+                text,
+                reference_voice,
+                output_path,
+                prompt_text=reference_transcript,
+                seed=seed,
+                cfg_value=settings.voxcpm_cfg_value,
+                inference_timesteps=settings.voxcpm_inference_steps,
+                expected_sample_rate=settings.voxcpm_output_sample_rate,
+            )
+        except (FileNotFoundError, ValueError, RuntimeError, OSError) as exc:
+            raise ProviderUnavailable(f"VoxCPM2 synthesis failed: {exc}") from exc
+        validate_output(result, "audio")
+        output_duration = inspect_media(result)["duration_seconds"]
+        synthesis_seconds = time.monotonic() - started
+        calls = int(self.last_metrics.get("synthesis_calls", 0)) + 1
+        total_synthesis = float(self.last_metrics.get("synthesis_wall_clock_seconds_total", 0.0)) + synthesis_seconds
+        total_duration = float(self.last_metrics.get("output_duration_seconds_total", 0.0)) + output_duration
+        self.last_metrics.update({
+            "language": language,
+            "synthesis_calls": calls,
+            "synthesis_wall_clock_seconds": round(synthesis_seconds, 4),
+            "synthesis_wall_clock_seconds_total": round(total_synthesis, 4),
+            "output_duration_seconds": round(output_duration, 4),
+            "output_duration_seconds_total": round(total_duration, 4),
+            "real_time_factor": round(total_synthesis / total_duration, 6) if total_duration > 0 else None,
+            "output_sample_rate": settings.voxcpm_output_sample_rate,
+            "reference_voice_used": reference_voice is not None,
+            "reference_transcript_used": bool(reference_transcript and reference_transcript.strip()),
+        })
+        return result
 
 
 class DemucsStemSeparationProvider:

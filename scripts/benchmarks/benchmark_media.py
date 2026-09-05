@@ -23,7 +23,7 @@ def main() -> None:
         "ffprobe_seconds": round(time.monotonic() - started, 4),
         "providers": {
             "transcription": {"measured": False, "reason": "Run from a worker image with the selected model."},
-            "voice": {"measured": False, "reason": "Requires consented reference audio and Chatterbox model weights."},
+            "voice": {"measured": False, "reason": "Requires consented reference audio and VoxCPM2 model weights."},
             "stems": {"measured": False, "reason": "Requires Demucs checkpoint download."},
             "noise": {"measured": False, "reason": "Requires DeepFilterNet installation."},
         },

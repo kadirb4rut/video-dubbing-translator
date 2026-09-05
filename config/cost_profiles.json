@@ -36,7 +36,7 @@
   },
   "tts": {
     "credits_per_media_minute": 8,
-    "provider": "chatterbox-multilingual-v3",
+    "provider": "voxcpm2:openbmb/VoxCPM2",
     "gpu_profile": "configure-before-production",
     "measured": false,
     "notes": "Development seed only."

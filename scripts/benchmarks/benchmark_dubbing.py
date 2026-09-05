@@ -23,9 +23,9 @@ if str(BACKEND) not in sys.path:
 
 from app.media import inspect_media, validate_output
 from app.providers_real import (
-    ChatterboxMultilingualVoiceProvider,
     DemucsStemSeparationProvider,
     ProviderUnavailable,
+    VoxCPM2VoiceProvider,
     WhisperTranscriptionProvider,
     translation_provider,
     validate_segments,
@@ -69,7 +69,7 @@ def ffmpeg(args: list[str]) -> None:
 
 
 def synthesize_voice(text: str, *, reference_voice: Path, language: str, output_path: Path, python_path: str | None) -> None:
-    """Run Chatterbox in-process or through a compatible secondary runtime.
+    """Run VoxCPM2 in-process or through a compatible secondary runtime.
 
     The secondary-runtime option is benchmark-only. It lets a workstation
     measure a split audio/voice environment when the local Python ABI cannot
@@ -77,16 +77,16 @@ def synthesize_voice(text: str, *, reference_voice: Path, language: str, output_
     the in-process provider implementation.
     """
     if not python_path:
-        ChatterboxMultilingualVoiceProvider().synthesize(text, reference_voice=reference_voice, language=language, output_path=output_path)
+        VoxCPM2VoiceProvider().synthesize(text, reference_voice=reference_voice, language=language, output_path=output_path)
         return
     code = (
         "from pathlib import Path; "
-        "from app.providers_real import ChatterboxMultilingualVoiceProvider; "
-        f"ChatterboxMultilingualVoiceProvider(device='cpu').synthesize({text!r}, "
+        "from app.providers_real import VoxCPM2VoiceProvider; "
+        f"VoxCPM2VoiceProvider(device='cpu').synthesize({text!r}, "
         f"reference_voice=Path({str(reference_voice)!r}), language={language!r}, "
         f"output_path=Path({str(output_path)!r}))"
     )
-    environment = dict(os.environ, PYTHONPATH=str(BACKEND), CHATTERBOX_DEVICE=os.getenv("CHATTERBOX_DEVICE", "cpu"))
+    environment = dict(os.environ, PYTHONPATH=str(BACKEND), VOXCPM_DEVICE=os.getenv("VOXCPM_DEVICE", "cpu"), VOXCPM_DTYPE=os.getenv("VOXCPM_DTYPE", "bfloat16"))
     subprocess.run([python_path, "-c", code], cwd=str(ROOT), env=environment, check=True, timeout=3600)
     validate_output(output_path, "audio")
 
@@ -98,7 +98,7 @@ def main() -> None:
     parser.add_argument("--target-language", default="es")
     parser.add_argument("--source-language")
     parser.add_argument("--translated-segments", type=Path, help="JSON array of translated texts for a deterministic local fixture")
-    parser.add_argument("--chatterbox-python", help="Optional compatible Python executable for a benchmark-only secondary voice runtime")
+    parser.add_argument("--voxcpm-python", help="Optional compatible Python executable for a benchmark-only secondary voice runtime")
     parser.add_argument("--output", type=Path, default=Path("dubbed-benchmark.mp4"))
     parser.add_argument("--json", dest="json_output", type=Path, default=Path("dubbed-benchmark.json"))
     args = parser.parse_args()
@@ -163,9 +163,9 @@ def main() -> None:
             clips: list[Path] = []
             for index, segment in enumerate(translated):
                 clip = work / f"segment-{index:04d}.wav"
-                synthesize_voice(str(segment["text"]), reference_voice=args.reference_voice, language=args.target_language, output_path=clip, python_path=args.chatterbox_python)
+                synthesize_voice(str(segment["text"]), reference_voice=args.reference_voice, language=args.target_language, output_path=clip, python_path=args.voxcpm_python)
                 clips.append(clip)
-            stages["synthesis"] = {"status": "completed", "wall_clock_seconds": round(time.monotonic() - started, 4), "segment_count": len(clips), "output_bytes": sum(path.stat().st_size for path in clips), "runtime": args.chatterbox_python or sys.executable}
+            stages["synthesis"] = {"status": "completed", "wall_clock_seconds": round(time.monotonic() - started, 4), "segment_count": len(clips), "output_bytes": sum(path.stat().st_size for path in clips), "runtime": args.voxcpm_python or sys.executable, "provider": "voxcpm2"}
 
             started = time.monotonic()
             inputs: list[str] = []

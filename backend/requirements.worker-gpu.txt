@@ -1,8 +1,7 @@
 -r requirements.worker-common.txt
-# Chatterbox 0.1.7 declares vulnerable exact pins for several optional/UI
-# dependencies. The backend uses chatterbox.mtl_tts only, so install the
-# package itself with --no-deps in Dockerfile.worker and audit these runtime
-# dependencies independently at secure versions.
+# VoxCPM2 is the sole production voice-cloning provider. Keep this exact
+# release aligned with the pinned Hugging Face checkpoint in app/config.py.
+voxcpm==2.0.3
 torch==2.10.0
 torchaudio==2.10.0
 transformers==5.16.1

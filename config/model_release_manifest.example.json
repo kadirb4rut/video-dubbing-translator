@@ -30,13 +30,13 @@
       "downstream_notices": "replace-with-audited-notices"
     },
     {
-      "provider": "chatterbox",
-      "model": "multilingual-v3",
-      "checkpoint_snapshot": "replace-with-exact-checkpoint-snapshot",
+      "provider": "voxcpm2",
+      "model": "openbmb/VoxCPM2",
+      "checkpoint_snapshot": "32279effe8c19989596f05d353d1447f51d9e915",
       "commercial_status": "pending",
       "license": "MIT-upstream-model-card-review-required",
-      "source_url": "https://huggingface.co/ResembleAI/chatterbox",
-      "downstream_notices": "watermark-and-dependency-review-required"
+      "source_url": "https://huggingface.co/openbmb/VoxCPM2",
+      "downstream_notices": "replace-with-audited-notices"
     }
   ]
 }

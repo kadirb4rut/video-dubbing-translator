@@ -90,7 +90,10 @@ services:
       AWS_ACCESS_KEY_ID: lingowave
       AWS_SECRET_ACCESS_KEY: lingowave-local-only
       AWS_REGION: eu-central-1
-      CHATTERBOX_DEVICE: cpu
+      VOXCPM_DEVICE: cpu
+      VOXCPM_DTYPE: bfloat16
+      VOXCPM_MODEL: openbmb/VoxCPM2
+      VOXCPM_MODEL_REVISION: 32279effe8c19989596f05d353d1447f51d9e915
       WORKER_TYPE: local-ml
     depends_on:
       api:

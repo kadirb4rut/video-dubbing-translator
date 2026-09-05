@@ -9,12 +9,12 @@ from app.config import settings
 from app.media import inspect_media, validate_upload
 from app.providers_real import (
     AwsTranslateProvider,
-    ChatterboxMultilingualVoiceProvider,
     DeepFilterNetNoiseProvider,
     FixtureTranslationProvider,
     GoogleDeepTranslatorProvider,
     HyMT2TranslationProvider,
     ProviderUnavailable,
+    VoxCPM2VoiceProvider,
     WhisperTranscriptionProvider,
     translation_provider,
 )
@@ -42,8 +42,8 @@ def test_cpu_worker_contract_includes_deepfilter_native_runtime():
     assert "transformers==5.16.1" in full_contents
     assert "--extra-index-url https://download.pytorch.org/whl/cpu" in full_contents
     dockerfile = (backend_dir / "Dockerfile.worker").read_text(encoding="utf-8")
-    assert "INSTALL_CHATTERBOX=true" not in dockerfile
-    assert "ARG INSTALL_CHATTERBOX=false" in dockerfile
+    assert "INSTALL_" not in dockerfile
+    assert "voxcpm==2.0.3" in full_contents
 
 
 def test_gpu_worker_contract_scales_to_zero_and_reuses_live_host_model_cache():
@@ -61,19 +61,24 @@ def test_stage_provider_release_evicts_in_memory_models(monkeypatch):
     released = []
     monkeypatch.setattr("app.providers_real._release_torch_memory", lambda: released.append(True))
     whisper_model = object()
-    chatterbox_model = object()
+    voxcpm_model = object()
     WhisperTranscriptionProvider._models["small"] = whisper_model
-    ChatterboxMultilingualVoiceProvider._models[("cuda", "v3")] = chatterbox_model
+    VoxCPM2VoiceProvider._models[("cuda", "float16", "openbmb/VoxCPM2", "revision")] = voxcpm_model
 
     try:
         WhisperTranscriptionProvider("small").release()
-        ChatterboxMultilingualVoiceProvider("cuda").release()
+        provider = VoxCPM2VoiceProvider.__new__(VoxCPM2VoiceProvider)
+        provider.device = "cuda"
+        provider.dtype = "float16"
+        provider.model_id = "openbmb/VoxCPM2"
+        provider.revision = "revision"
+        provider.release()
         assert "small" not in WhisperTranscriptionProvider._models
-        assert ("cuda", "v3") not in ChatterboxMultilingualVoiceProvider._models
+        assert ("cuda", "float16", "openbmb/VoxCPM2", "revision") not in VoxCPM2VoiceProvider._models
         assert released == [True, True]
     finally:
         WhisperTranscriptionProvider._models.pop("small", None)
-        ChatterboxMultilingualVoiceProvider._models.pop(("cuda", "v3"), None)
+        VoxCPM2VoiceProvider._models.pop(("cuda", "float16", "openbmb/VoxCPM2", "revision"), None)
 
 
 def test_noise_removal_requires_explicit_dev_fallback(monkeypatch, tmp_path):

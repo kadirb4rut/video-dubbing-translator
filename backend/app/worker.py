@@ -40,10 +40,10 @@ from .models import (
     now,
 )
 from .providers_real import (
-    ChatterboxMultilingualVoiceProvider,
     DeepFilterNetNoiseProvider,
     DemucsStemSeparationProvider,
     ProviderUnavailable,
+    VoxCPM2VoiceProvider,
     WhisperTranscriptionProvider,
     translation_provider,
     translation_refinement_provider,
@@ -281,9 +281,15 @@ class JobWorker:
         text = options.get("text")
         if not text:
             raise ProviderUnavailable("tts jobs require text")
-        provider = ChatterboxMultilingualVoiceProvider()
+        provider = VoxCPM2VoiceProvider()
         try:
-            result = provider.synthesize(text, reference_voice=self._reference(db, job, work), language=options.get("target_language") or "en", output_path=output)
+            result = provider.synthesize(
+                text,
+                reference_voice=self._reference(db, job, work),
+                language=options.get("target_language") or "en",
+                output_path=output,
+                reference_transcript=options.get("voice_reference_transcript"),
+            )
             self._model_load_seconds += provider.last_model_load_seconds
             validate_output(result, "audio")
             return result
@@ -328,9 +334,9 @@ class JobWorker:
             if callable(release_provider):
                 release_provider()
         source_duration = inspect_media(source)["duration_seconds"]
-        with self._stage(db, job, JobState.SYNTHESIZING.value, "Synthesizing translated speech with Chatterbox Multilingual"):
+        with self._stage(db, job, JobState.SYNTHESIZING.value, "Synthesizing translated speech with VoxCPM2"):
             reference = self._reference(db, job, work) if options.get("preserve_voice", True) else None
-            voice_provider = ChatterboxMultilingualVoiceProvider()
+            voice_provider = VoxCPM2VoiceProvider()
             clips: list[Path] = []
             duration_metrics: list[dict[str, object]] = []
             refinement_provider = None
@@ -343,7 +349,13 @@ class JobWorker:
                     next_start = float(segments[index + 1]["start"]) if index + 1 < len(segments) else source_duration
                     window_seconds = max(0.05, min(source_duration, max(start + 0.05, next_start)) - start)
                     original_text = segment["text"]
-                    voice_provider.synthesize(original_text, reference_voice=reference, language=target_language, output_path=clip)
+                    voice_provider.synthesize(
+                        original_text,
+                        reference_voice=reference,
+                        language=target_language,
+                        output_path=clip,
+                        reference_transcript=options.get("voice_reference_transcript"),
+                    )
                     before_seconds = inspect_media(clip)["duration_seconds"]
                     after_seconds = before_seconds
                     rewritten = False
@@ -369,7 +381,13 @@ class JobWorker:
                                 )
                                 if rewritten_text.strip() and rewritten_text.strip() != original_text.strip():
                                     segment["text"] = rewritten_text.strip()
-                                    voice_provider.synthesize(segment["text"], reference_voice=reference, language=target_language, output_path=clip)
+                                    voice_provider.synthesize(
+                                        segment["text"],
+                                        reference_voice=reference,
+                                        language=target_language,
+                                        output_path=clip,
+                                        reference_transcript=options.get("voice_reference_transcript"),
+                                    )
                                     after_seconds = inspect_media(clip)["duration_seconds"]
                                     rewritten = True
                                     refinement_count += 1
@@ -414,6 +432,12 @@ class JobWorker:
                 "refinement_triggered": refinement_count > 0,
                 "refinement_wall_clock_seconds": round(refinement_wall_clock_seconds, 4),
                 "duration_segments": duration_metrics,
+                "tts_provider": voice_provider.name,
+                "tts_model": settings.voxcpm_model,
+                "tts_model_revision": settings.voxcpm_model_revision,
+                "tts_device": voice_provider.device,
+                "tts_dtype": voice_provider.dtype,
+                "tts_metrics": voice_provider.last_metrics,
             })
         if not clips:
             raise ProviderUnavailable("Transcription returned no speech segments")
@@ -456,12 +480,12 @@ class JobWorker:
         primary = "google-deep-translator:GoogleTranslator" if settings.translation_provider in {"google", "deep-translator", "google-deep-translator"} else f"{settings.translation_provider}:{settings.translation_model}"
         refinement = f"refinement:{settings.translation_refinement_provider}:{settings.translation_model}"
         return {
-            "dubbing": f"whisper+demucs+{primary}+{refinement}+chatterbox-multilingual-v3",
+            "dubbing": f"whisper+demucs+{primary}+{refinement}+voxcpm2",
             "transcription": "whisper",
             "subtitle_translation": f"whisper+{primary}",
             "stems": "demucs",
             "noise": "deepfilternet",
-            "tts": "chatterbox-multilingual-v3",
+            "tts": f"voxcpm2:{settings.voxcpm_model}@{settings.voxcpm_model_revision}",
         }.get(operation, "unknown")
 
     def _model_manifest(self, operation: str) -> dict[str, str]:
@@ -472,7 +496,7 @@ class JobWorker:
             "translation_refinement": f"{settings.translation_refinement_provider}:{settings.translation_model}",
             "separation": f"demucs:{settings.demucs_model}",
             "denoising": "deepfilternet:DeepFilterNet3",
-            "tts": "chatterbox-tts:multilingual-v3",
+            "tts": f"voxcpm2:{settings.voxcpm_model}@{settings.voxcpm_model_revision}",
             "mux": "ffmpeg-runtime",
         }
         if operation == "transcription":
@@ -687,7 +711,7 @@ class JobWorker:
                 elif operation == "tts":
                     with self._stage(db, job, JobState.DOWNLOADING.value, "Preparing consented voice reference"):
                         pass
-                    with self._stage(db, job, JobState.SYNTHESIZING.value, "Synthesizing with Chatterbox Multilingual"):
+                    with self._stage(db, job, JobState.SYNTHESIZING.value, "Synthesizing with VoxCPM2"):
                         output = self._tts(db, job, work, work / "speech.wav")
                     artifacts.append((output, "speech", "audio/wav"))
                 elif operation == "dubbing":

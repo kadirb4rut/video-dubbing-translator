@@ -41,7 +41,16 @@ class TranslationProvider(Protocol):
 class VoiceProvider(Protocol):
     name: str
 
-    def synthesize(self, text: str, *, reference_voice: Path | None, language: str, output_path: Path) -> Path: ...
+    def synthesize(
+        self,
+        text: str,
+        *,
+        reference_voice: Path | None,
+        language: str,
+        output_path: Path,
+        reference_transcript: str | None = None,
+        seed: int = 42,
+    ) -> Path: ...
 
 
 class StemSeparationProvider(Protocol):
@@ -78,7 +87,7 @@ def provider_registry() -> dict[str, str]:
         "transcription": "whisper (cached model adapter)",
         "translation": "google-deep-translator:GoogleTranslator",
         "translation_refinement": "hymt2:tencent/Hy-MT2-1.8B (duration-triggered, max one pass)",
-        "voice": "chatterbox-multilingual-v3",
+        "voice": "voxcpm2:openbmb/VoxCPM2@32279effe8c19989596f05d353d1447f51d9e915",
         "stem_separation": "demucs",
         "noise_removal": "deepfilternet",
         "speaker_diarization": "single-speaker-default; external diarization adapter not enabled",

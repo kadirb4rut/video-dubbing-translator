@@ -84,7 +84,7 @@ test('voice studio stores consent, synthesizes speech, and deletes the reference
   await page.getByRole('button', { name: /Store reference securely/i }).click();
   await expect(page.getByText('Browser consented voice')).toBeVisible();
   await page.getByPlaceholder('Enter text to synthesize').fill('This is a real browser voice test.');
-  await page.getByRole('button', { name: /Generate with Chatterbox/i }).click();
+  await page.getByRole('button', { name: /Generate with VoxCPM2/i }).click();
   await waitForCompletion(page, 'speech.wav');
   await page.getByRole('button', { name: 'Delete reference' }).click();
   await expect(page.getByText('Browser consented voice')).toHaveCount(0);

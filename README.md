@@ -11,7 +11,7 @@ The original local dubbing application remains in this repository as a legacy co
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![FFmpeg](https://img.shields.io/badge/FFmpeg-Required-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)
 ![Whisper](https://img.shields.io/badge/Whisper-Transcription-111827?style=for-the-badge)
-![Chatterbox](https://img.shields.io/badge/Chatterbox_Multilingual-Voice_Generation-8A2BE2?style=for-the-badge)
+![VoxCPM2](https://img.shields.io/badge/VoxCPM2-Voice_Cloning-8A2BE2?style=for-the-badge)
 ![Production SaaS](https://img.shields.io/badge/Production--oriented_SaaS-2563EB?style=for-the-badge)
 
 [SaaS Quick Start](#-lingowave-saas-quick-start) · [Legacy Pipeline](#-legacy-local-pipeline) · [Tech Stack](#-tech-stack) · [Operations](docs/operations.md)
@@ -22,7 +22,7 @@ The original local dubbing application remains in this repository as a legacy co
 
 - Authenticated accounts, persistent projects/history, password-reset mail abstraction, and account deletion.
 - Private local/S3-compatible media storage with FFprobe validation, signed downloads, retention cleanup, and direct browser uploads in production.
-- Asynchronous, credit-reserved jobs for video dubbing, transcription/subtitle export, Demucs stem separation, DeepFilterNet noise removal, and consented Chatterbox TTS.
+- Asynchronous, credit-reserved jobs for video dubbing, transcription/subtitle export, Demucs stem separation, DeepFilterNet noise removal, and consented VoxCPM2 TTS.
 - Real artifacts with playable previews, downloads, editable text artifacts, cancellation, retry, usage telemetry, and operator controls.
 - Lip sync is explicitly unavailable until a commercially cleared provider is configured. Stripe subscriptions, credit packs, and the customer portal are implemented behind deployment configuration.
 - Production deployment foundations: Docker Compose, CI, PostgreSQL migrations, SQS, private S3, and Terraform GPU capacity that scales to zero.
@@ -238,7 +238,7 @@ Generated folders such as `uploads/`, `original_wav/`, `transcripts/`, `speaker_
 | Storage and queue | Private S3-compatible objects, SQS, local fallbacks |
 | Transcription | Whisper |
 | Translation | Configured translation API adapter; deterministic fixture only for tests |
-| Voice generation | Chatterbox Multilingual provider |
+| Voice generation | VoxCPM2 provider (`openbmb/VoxCPM2`, pinned revision) |
 | Stem separation | Demucs |
 | Noise removal | DeepFilterNet |
 | Media processing | FFmpeg / FFprobe |
