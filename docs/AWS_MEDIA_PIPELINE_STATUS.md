@@ -3,7 +3,8 @@
 Date: 2026-09-05  
 Environment: \`eu-north-1\`  
 Public application: \`https://d3ncg3eqih0ccj.cloudfront.net\`  
-Current repository commit: \`01412e5\` (Hy-MT2 load-time telemetry and benchmark cost fields)
+Current code commit: \`01412e5\` (Hy-MT2 load-time telemetry and benchmark cost fields)
+Current status-document commit: \`46efe43\`
 Live application commit: \`a0cfc97\` (older deployed API; latest CPU worker rollout is still pending)
 Current API task revision: \`20\`
 Current GPU worker task revision: \`15\`
