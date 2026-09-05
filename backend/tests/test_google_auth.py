@@ -31,7 +31,7 @@ def configure_google(monkeypatch):
 
 
 def start_google(client: TestClient) -> tuple[str, str]:
-    response = client.get("/api/auth/google/start", follow_redirects=False)
+    response = client.get("/api/auth/google/login", follow_redirects=False)
     assert response.status_code == 303, response.text
     query = parse_qs(urlparse(response.headers["location"]).query)
     return query["state"][0], query["nonce"][0]
@@ -155,6 +155,7 @@ def test_google_oauth_is_disabled_without_secret(monkeypatch):
     monkeypatch.setattr(main_module, "settings", replace(main_module.settings, google_client_id=None, google_client_secret=None, google_redirect_uri=None))
     with TestClient(app) as client:
         assert client.get("/api/auth/google/config").json() == {"enabled": False}
+        assert client.get("/api/auth/google/login").status_code == 503
         assert client.get("/api/auth/google/start").status_code == 503
 
 

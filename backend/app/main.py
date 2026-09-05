@@ -182,7 +182,8 @@ def google_config() -> dict:
     return {"enabled": google_auth_configured(settings)}
 
 
-@app.get("/api/auth/google/start")
+@app.get("/api/auth/google/login")
+@app.get("/api/auth/google/start", include_in_schema=False)
 def google_start(db: Session = Depends(get_db)):
     if not google_auth_configured(settings):
         raise HTTPException(status_code=503, detail="Google authentication is not configured")

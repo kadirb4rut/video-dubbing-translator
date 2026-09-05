@@ -140,12 +140,12 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
-  count = length(concat(values(var.worker_secrets), values(var.api_secrets))) > 0 ? 1 : 0
+  count = length(local.secret_value_froms) > 0 ? 1 : 0
   role  = aws_iam_role.ecs_task_execution.id
   policy = jsonencode({ Version = "2012-10-17", Statement = [{
     Effect   = "Allow"
     Action   = ["secretsmanager:GetSecretValue"]
-    Resource = distinct(concat(values(var.worker_secrets), values(var.api_secrets)))
+    Resource = local.secret_policy_arns
   }] })
 }
 resource "aws_iam_role" "ecs_task_worker" {
