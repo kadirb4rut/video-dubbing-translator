@@ -13,7 +13,7 @@
 
 The API tests use deterministic provider doubles. For real media checks, use the worker image or a matching isolated environment and run `PYTHONPATH=backend python scripts/benchmarks/benchmark_providers.py <media>`. The complete dubbing benchmark is `PYTHONPATH=backend python scripts/benchmarks/benchmark_dubbing.py <video> --reference-voice <voice.wav>`, which records stage timings, runtime GPU/instance metadata when supplied or detected, an optional measured `$ / processed minute`, and validates the final MP4. Use `--voxcpm-python <compatible-python>` only when a workstation needs a separate benchmark runtime; production workers use the in-process VoxCPM2 adapter. The live CPU acceptance evidence and exact timings are maintained in `docs/AWS_MEDIA_PIPELINE_STATUS.md`.
 
-Whisper and Demucs can run on CPU. DeepFilterNet is pinned to `0.5.6` and remains the default production noise provider, so its worker image must include the native `libdf` dependency. In a constrained development environment only, set `NOISE_REMOVAL_FALLBACK=ffmpeg-afftdn` to use FFmpeg's real `afftdn` filter explicitly; this is a deterministic audio fallback, not an ML noise-removal claim.
+Whisper and Demucs can run on CPU. DeepFilterNet is pinned to `0.5.6` and remains the default production noise provider, so its worker image must include the native `libdf` dependency. In a constrained development environment only, set `NOISE_REMOVAL_FALLBACK=ffmpeg-afftdn` to use FFmpeg's real `afftdn` filter explicitly when the provider is missing or fails at runtime; this is a deterministic audio fallback, not an ML noise-removal claim.
 
 ## ML worker images
 

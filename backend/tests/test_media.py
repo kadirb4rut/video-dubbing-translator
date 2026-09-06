@@ -98,6 +98,30 @@ def test_noise_removal_requires_explicit_dev_fallback(monkeypatch, tmp_path):
     assert inspect_media(output)["duration_seconds"] > 0
 
 
+def test_noise_removal_fallback_handles_provider_runtime_failure(monkeypatch, tmp_path):
+    source = tmp_path / "source.wav"
+    output = tmp_path / "enhanced.wav"
+    subprocess.run(
+        ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-ac", "1", "-ar", "16000", str(source)],
+        check=True,
+    )
+    real_run = subprocess.run
+
+    def fail_deepfilter(command, *args, **kwargs):
+        if command[0] == "/usr/local/bin/deepFilter":
+            raise subprocess.CalledProcessError(1, command)
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr("app.providers_real.shutil.which", lambda name: "/usr/local/bin/deepFilter" if name == "deepFilter" else real_run(["which", name], capture_output=True, text=True, check=True).stdout.strip())
+    monkeypatch.setattr("app.providers_real.subprocess.run", fail_deepfilter)
+    monkeypatch.setenv("NOISE_REMOVAL_FALLBACK", "ffmpeg-afftdn")
+
+    result = DeepFilterNetNoiseProvider().enhance(source, output_path=output)
+
+    assert result == output
+    assert inspect_media(output)["duration_seconds"] > 0
+
+
 def test_fixture_translation_is_explicit_and_preserves_segment_timing():
     segments = [{"start": 0, "end": 1.25, "text": "Hello world"}]
     translated = FixtureTranslationProvider().translate(segments, source="en", target="es")

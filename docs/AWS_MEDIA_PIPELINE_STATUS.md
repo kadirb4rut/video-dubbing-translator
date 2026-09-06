@@ -64,6 +64,14 @@ The immutable CPU image was published successfully. Earlier acceptance attempts 
 
 Each segment records original duration, first and refined TTS durations, before/after deviation, refinement usage, refined text, and final speed ratio. Worker stage metrics record wall time; usage telemetry records model load, peak RAM/VRAM, CPU utilization, total job time, and estimated cost.
 
+## Live Chrome UX validation
+
+On 2026-09-06 the production CloudFront application was tested in Chrome with a real Google-authenticated test user. The 15-second video `input-highlight-15s.mp4` completed the real API → S3 → SQS → CPU worker → Whisper → Google translation → VoxCPM2 → FFmpeg → S3 artifact path and rendered a completed `dubbed.mp4` result with a working signed download/open action. The real 12.8-second SampleLib audio was used for consented Voice Studio reference creation, Stem Splitter, Voice Studio speech generation, and the initial media-processing checks. A separate 12-second public-domain speech WAV was used for successful Transcription and Noise Remover validation.
+
+The following live product flows passed: Google login, video upload and FFprobe inspection, dubbing progress/status, downloadable dubbed result, four-stem export, speech transcription with editable subtitle preview, consented voice storage, VoxCPM2 speech generation, and Noise Remover original/enhanced audio comparison. A music-only input correctly produced an empty-transcript failure; the speech asset then produced valid SRT/VTT/TXT artifacts. DeepFilterNet initially exposed a real `torchaudio.backend` compatibility failure; the provider now falls back to real FFmpeg `afftdn` processing only when the explicit fallback setting is enabled, while the default DeepFilterNet production path remains unchanged.
+
+UI fixes deployed to CloudFront: media-required actions are disabled until a file is uploaded, consented voice is required before dubbing, measured-pricing failures remain visible in the cost panel, Noise Remover is labelled for audio or video, and error/warning toasts no longer use a misleading green success check. The production UI had no Chrome console errors or warnings during the final pass. The mobile Playwright check at 390×844 passed with no horizontal overflow; desktop session/reload persistence also passed.
+
 ## Required final evidence
 
 The completed run must record:
@@ -142,10 +150,10 @@ INFRA:
 - GPU worker/ASG state: 0/0/0
 - GPU quota: CASE_OPENED, quota remains 0
 - expensive compute currently running: no
-- tests: 69 passed locally; CI image build passed; live E2E passed
+- tests: 70 backend tests passed locally; frontend production build passed; Chrome live E2E passed; mobile and desktop Playwright checks passed
 - Terraform: fmt/validate passed locally; temporary acceptance policy removed after run
-- security checks: Bandit API scope passed; pip-audit dev requirements passed
-- repo status: clean and pushed at commit `fad1f8c`; Google Auth production deployment completed
+- security checks: changed Python files pass Ruff; pip-audit found no known vulnerabilities; full-repository Ruff/Bandit still report pre-existing migration/subprocess baseline findings
+- repo status: clean after commit and push; Google Auth production deployment completed
 
 GOOGLE AUTH:
 - implementation: PASS

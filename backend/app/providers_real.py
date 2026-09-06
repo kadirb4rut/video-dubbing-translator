@@ -656,23 +656,31 @@ class DemucsStemSeparationProvider:
 class DeepFilterNetNoiseProvider:
     name = "deepfilternet"
 
+    def _ffmpeg_fallback(self, audio_path: Path, output_path: Path) -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+        subprocess.run(
+            [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", str(audio_path), "-af", "afftdn=nf=-25", str(output_path)],
+            check=True,
+            timeout=3600,
+        )
+        validate_output(output_path, "audio")
+        return output_path
+
     def enhance(self, audio_path: Path, *, output_path: Path) -> Path:
+        fallback = os.getenv("NOISE_REMOVAL_FALLBACK", settings.noise_removal_fallback)
         command = shutil.which(settings.deepfilter_command)
         if not command:
-            fallback = os.getenv("NOISE_REMOVAL_FALLBACK", settings.noise_removal_fallback)
             if fallback == "ffmpeg-afftdn":
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
-                subprocess.run(
-                    [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", str(audio_path), "-af", "afftdn=nf=-25", str(output_path)],
-                    check=True,
-                    timeout=3600,
-                )
-                validate_output(output_path, "audio")
-                return output_path
+                return self._ffmpeg_fallback(audio_path, output_path)
             raise ProviderUnavailable(f"{settings.deepfilter_command} is not installed in this worker image")
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run([command, "-m", "DeepFilterNet3", "-o", str(output_path.parent), str(audio_path)], check=True, timeout=3600)
+        try:
+            subprocess.run([command, "-m", "DeepFilterNet3", "-o", str(output_path.parent), str(audio_path)], check=True, timeout=3600)
+        except (OSError, subprocess.CalledProcessError) as error:
+            if fallback == "ffmpeg-afftdn":
+                return self._ffmpeg_fallback(audio_path, output_path)
+            raise ProviderUnavailable(f"DeepFilterNet failed to enhance audio: {error}") from error
         produced = output_path.parent / audio_path.name
         if produced != output_path and produced.is_file():
             produced.replace(output_path)
