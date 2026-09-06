@@ -137,6 +137,32 @@ resource "terraform_data" "worker_runtime_configuration" {
     }
   }
 }
+
+moved {
+  from = aws_appautoscaling_target.worker
+  to   = aws_appautoscaling_target.worker[0]
+}
+
+moved {
+  from = aws_appautoscaling_policy.worker_scale_out
+  to   = aws_appautoscaling_policy.worker_scale_out[0]
+}
+
+moved {
+  from = aws_appautoscaling_policy.worker_scale_in
+  to   = aws_appautoscaling_policy.worker_scale_in[0]
+}
+
+moved {
+  from = aws_cloudwatch_metric_alarm.worker_queue_nonempty
+  to   = aws_cloudwatch_metric_alarm.worker_queue_nonempty[0]
+}
+
+moved {
+  from = aws_cloudwatch_metric_alarm.worker_queue_empty
+  to   = aws_cloudwatch_metric_alarm.worker_queue_empty[0]
+}
+
 resource "aws_iam_role" "worker" {
   name               = "${var.name}-worker"
   assume_role_policy = jsonencode({ Version = "2012-10-17", Statement = [{ Effect = "Allow", Principal = { Service = "ec2.amazonaws.com" }, Action = "sts:AssumeRole" }] })
