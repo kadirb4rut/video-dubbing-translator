@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useState } from 'react';
 import { apiFetch, apiUrl, uploadMedia } from './api';
 
 const languages = { English: 'en', Spanish: 'es', French: 'fr', German: 'de', Portuguese: 'pt', Japanese: 'ja', Turkish: 'tr' };
@@ -98,7 +98,18 @@ function JobStatus({ job, onDownload, onPreview, onCancel, sourceFile }) {
 }
 
 function UploadCard({ file, busy, onFile, onRemove, title = 'Drop your media here' }) {
-  return <section className={`upload-card ${file ? 'has-file' : ''}`}><label className="dropzone"><input type="file" accept="video/*,audio/*" onChange={e => onFile(e.target.files)} disabled={busy} />{file ? <><div className="media-preview" style={file.media_kind === 'audio' ? { backgroundImage: `url(${file.local})` } : undefined}>{file.media_kind === 'video' ? <video controls preload="metadata" src={file.local} aria-label="Selected source video" /> : <div className="video-scene"><div className="person" /><div className="mic" /></div>}</div><div className="file-meta"><span className="file-icon">▤</span><div><strong>{file.name}</strong><small>{Math.round(file.duration_seconds)}s · FFprobe inspected</small></div><button className="remove-file" onClick={e => { e.preventDefault(); onRemove(); }}>×</button></div><p className="browse-copy">Drop another file or <span>click to browse</span></p></> : <><div className="upload-icon">↑</div><h3>{title}</h3><p>or <span>click to browse</span></p><small>MP4, MOV, WEBM, WAV · up to 4GB</small></>}</label>{file?.media_kind === 'audio' && <audio className="inline-audio" controls src={file.local} aria-label="Selected source audio" />}</section>;
+  const inputId = useId();
+  return <section className={`upload-card ${file ? 'has-file' : ''}`}>
+    <input id={inputId} className="media-input" type="file" accept="video/*,audio/*" onChange={e => onFile(e.target.files)} disabled={busy} />
+    {file ? <>
+      <div className="media-preview" style={file.media_kind === 'audio' ? { backgroundImage: `url(${file.local})` } : undefined}>
+        {file.media_kind === 'video' ? <video controls preload="metadata" src={file.local} aria-label="Selected source video" onClick={event => event.stopPropagation()} /> : <div className="video-scene"><div className="person" /><div className="mic" /></div>}
+      </div>
+      <div className="file-meta"><span className="file-icon">▤</span><div><strong>{file.name}</strong><small>{Math.round(file.duration_seconds)}s · FFprobe inspected</small></div><button type="button" className="remove-file" onClick={event => { event.preventDefault(); event.stopPropagation(); onRemove(); }} aria-label="Remove selected media">×</button></div>
+      <label className="browse-copy" htmlFor={inputId}>Drop another file or <span>click to browse</span></label>
+    </> : <label className="dropzone" htmlFor={inputId}><div className="upload-icon">↑</div><h3>{title}</h3><p>or <span>click to browse</span></p><small>MP4, MOV, WEBM, WAV · up to 4GB</small></label>}
+    {file?.media_kind === 'audio' && <audio className="inline-audio" controls src={file.local} aria-label="Selected source audio" />}
+  </section>;
 }
 
 function DownloadableResult({ job, onDownload, onPreview, onCancel, sourceFile }) {
@@ -185,7 +196,7 @@ export function RealAppShell({ onExit, initialUser }) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <button className="app-brand" onClick={onExit}>Lingo<span>Wave</span></button>
+        <button className="app-brand" onClick={onExit}><span className="app-brand-mark" aria-hidden="true"><i /><i /><i /></span><span>Lingo<span>Wave</span></span></button>
         <div className="side-nav">
           {[["video", "Video Translator"], ["voice", "Voice Studio"], ["stems", "Stem Splitter"], ["noise", "Noise Remover"], ["transcript", "Transcription"]].map(([icon, label]) => (
             <button key={label} className={activeTool === label ? "active" : ""} onClick={() => selectTool(label)}><Glyph type={icon} />{label}</button>
@@ -202,6 +213,7 @@ export function RealAppShell({ onExit, initialUser }) {
         <header className="app-header">
           <div className="mobile-brand"><b>LingoWave</b></div>
           <div className="credit-pill"><span>◉</span>{credits} credits</div>
+          <div className="account-summary"><strong>{initialUser?.display_name || initialUser?.email?.split('@')[0] || 'Workspace'}</strong><small>Personal workspace</small></div>
           <button className="avatar" aria-label="Log out" onClick={() => apiFetch("/api/auth/logout", { method: "POST" }).finally(onExit)}>{userInitials}</button>
         </header>
         <main className="workspace">

@@ -124,3 +124,118 @@ a { color:inherit; text-decoration:none; }
 .billing-plan { display:grid; gap:12px; padding:18px; border:1px solid var(--line); border-radius:10px; background:#fbfcff; }.billing-plan.featured { border-color:#96aaf5; background:#f2f5ff; }.billing-plan strong { font:600 23px 'Space Grotesk',sans-serif; }.billing-plan strong small { color:var(--muted); font:500 11px 'DM Sans',sans-serif; }.billing-plan p { margin:0; }.billing-plan .button { min-height:41px; font-size:13px; }.billing-note { margin:17px 0 0; padding:12px; border-radius:8px; background:#fff7e8; color:#866329; }
 .credit-pack { display:grid; gap:5px; padding:16px; text-align:left; border:1px solid #cdd4de; border-radius:9px; color:var(--ink); background:#fff; }.credit-pack:hover { border-color:var(--blue); background:#f7f9ff; }.credit-pack strong { color:var(--blue); font:600 21px 'Space Grotesk',sans-serif; }.credit-pack span { color:var(--muted); font-size:12px; text-transform:capitalize; }.billing-row { display:flex; justify-content:space-between; padding:12px 0; border-top:1px solid var(--line); color:#4e5b70; font-size:13px; }.billing-row em { color:#178e82; font-style:normal; }
 @media (max-width:800px) { .billing-summary { align-items:flex-start; flex-direction:column; }.billing-plan-grid, .credit-pack-grid { grid-template-columns:1fr; }.billing-card { padding:17px; } }
+
+/* Workspace polish and media containment. Keep the existing product IA, but make every
+   surface feel like one system and keep native media controls inside their cards. */
+.app-shell { background:linear-gradient(135deg,#f5f8fc 0%,#edf3fa 100%); }
+.sidebar { width:240px; flex-basis:240px; padding:28px 16px 22px; background:linear-gradient(180deg,#0d1729 0%,#101c30 58%,#0c1525 100%); }
+.app-brand { gap:11px; padding:0 10px; margin-bottom:52px; letter-spacing:-.07em; }
+.app-brand > span:last-child { color:#f3f7fb; }
+.app-brand > span:last-child > span { color:#58d2ca; }
+.app-brand-mark { width:28px; height:28px; display:flex; align-items:center; justify-content:center; gap:2px; transform:skewY(-12deg); }
+.app-brand-mark i { display:block; width:4px; border-radius:99px; background:#3d6df1; }
+.app-brand-mark i:nth-child(1) { height:11px; }.app-brand-mark i:nth-child(2) { height:22px; background:#46c9cc; }.app-brand-mark i:nth-child(3) { height:14px; background:#6ad8ce; }
+.side-nav, .side-bottom { gap:7px; }
+.side-nav button, .side-bottom button { min-height:44px; border-radius:11px; padding:12px 14px; transition:background .2s,color .2s,transform .2s; }
+.side-nav button:hover, .side-bottom button:hover { transform:translateX(2px); }
+.side-nav button.active { background:linear-gradient(135deg,#4568f2,#3658d7); }
+.side-bottom { padding-top:20px; border-top-color:rgba(186,204,235,.18); }
+.app-header { height:78px; padding:0 clamp(22px,4vw,52px); background:rgba(255,255,255,.9); backdrop-filter:blur(16px); }
+.credit-pill { border-radius:12px; padding:11px 15px; box-shadow:0 4px 18px rgba(28,48,77,.05); }
+.credit-pill span { color:#4769ed; }
+.account-summary { display:grid; gap:2px; margin-left:3px; text-align:right; }
+.account-summary strong { color:var(--ink); font-size:13px; }
+.account-summary small { color:var(--muted); font-size:11px; }
+.avatar { box-shadow:0 0 0 4px #f0f3f7; transition:transform .2s,box-shadow .2s; }
+.avatar:hover { transform:translateY(-1px); box-shadow:0 0 0 5px #e1e8f5; }
+.workspace { width:min(1240px,calc(100% - 80px)); padding:44px 0 84px; }
+.workspace-title { margin-bottom:32px; }
+.workspace-title h1 { font-size:clamp(32px,3.2vw,42px); letter-spacing:-.07em; }
+.workspace-title p { max-width:650px; font-size:15px; line-height:1.5; }
+.help-button { width:34px; height:34px; border-color:#cbd5e3; transition:background .2s,color .2s,border-color .2s; }
+.help-button:hover { color:var(--blue); border-color:#9eb2ee; background:#f2f5ff; }
+.workflow-steps { gap:14px; margin-bottom:22px; font-size:14px; }
+.workflow-steps b { width:34px; height:34px; font-size:13px; }
+.workflow-steps i { width:clamp(32px,15vw,190px); }
+.workspace-grid { grid-template-columns:minmax(0,1fr) 320px; gap:22px; }
+.upload-card, .config-rail, .voice-card, .voice-list, .project-history, .settings-card, .operator-card, .billing-card { border-color:#dfe6ef; border-radius:18px; box-shadow:0 14px 42px rgba(42,66,103,.06); }
+.upload-card { min-width:0; padding:18px; }
+.dropzone { min-height:284px; display:grid; place-items:center; align-content:center; padding:32px 24px; border-color:#c7d2e0; background:linear-gradient(180deg,#fcfdff,#f8faff); transition:border-color .2s,background .2s,box-shadow .2s; }
+.dropzone:hover { border-color:#8fa8ee; background:#f7f9ff; box-shadow:inset 0 0 0 3px rgba(66,100,237,.05); }
+.media-input { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+.upload-icon { margin:0 auto 16px; }
+.media-preview { height:auto; min-height:220px; max-height:460px; aspect-ratio:16 / 9; border-radius:13px; background:#0b1219; }
+.media-preview video { object-fit:contain; }
+.file-meta { padding:16px 4px 5px; }
+.file-meta strong { font-size:14px; }
+.browse-copy { padding:5px 4px 3px; cursor:pointer; text-align:center; color:#687487; }
+.browse-copy span { text-decoration:underline; text-underline-offset:2px; }
+.config-rail { position:sticky; top:20px; padding:24px 22px; }
+.config-group select, .voice-card select, .project-controls select, .project-controls input, .settings-card input, .operator-search, .operator-credit-form select, .operator-credit-form input { min-height:44px; border-color:#d1dae6; border-radius:10px; transition:border-color .2s,box-shadow .2s; }
+.config-group select:focus, .voice-card select:focus, .project-controls select:focus, .project-controls input:focus, .settings-card input:focus, .operator-search:focus { outline:none; border-color:#8da7ee; box-shadow:0 0 0 3px rgba(66,100,237,.12); }
+.toggle-row { min-height:28px; }
+.cost-box { border-radius:13px; background:linear-gradient(135deg,#f2f5ff,#f7f9ff); border-color:#cad7fb; padding:16px; }
+.start-button { min-height:50px; border-radius:11px; }
+.job-status { padding:22px; border-radius:18px; background:linear-gradient(180deg,#f7f9ff,#f4f7fd); border-color:#d2ddf7; box-shadow:0 12px 30px rgba(52,83,156,.05); }
+.job-status-heading { font-size:14px; }
+.job-stage-message { padding:10px 12px; border:1px solid #dce5f7; border-radius:10px; background:#fff; }
+.artifact-list { gap:0; margin-top:18px; }
+.artifact-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; min-width:0; gap:10px 14px; padding:16px 0 2px; }
+.artifact-row > span { grid-column:1 / -1; min-width:0; overflow-wrap:anywhere; color:var(--ink); font-size:13px; font-weight:700; }
+.artifact-row > audio, .artifact-row > video { grid-column:1 / -1; width:min(100%,760px); max-width:100%; margin:4px 0 6px; }
+.artifact-row > video { display:block; height:auto; max-height:430px; aspect-ratio:16 / 9; object-fit:contain; border-radius:13px; background:#0b1219; box-shadow:0 8px 20px rgba(14,27,44,.12); }
+.artifact-row > audio { width:min(100%,560px); }
+.artifact-row > div { grid-column:1 / -1; display:flex; justify-content:flex-end; gap:8px; }
+.artifact-row button, .voice-row button { min-height:34px; border:1px solid #d2dcf0; border-radius:9px; padding:6px 11px; background:#fff; font-weight:700; }
+.artifact-row button:hover, .voice-row button:hover { background:#f1f4ff; border-color:#a9b9eb; }
+.voice-workspace, .billing-workspace, .settings-workspace, .operator-workspace { gap:24px; }
+.voice-columns, .operator-columns { gap:18px; }
+.voice-card, .voice-list, .project-history, .settings-card, .operator-card, .billing-card { padding:25px; }
+.voice-card h2, .voice-list h2, .history-heading h2, .settings-card h2, .operator-card h2, .billing-card h2 { letter-spacing:-.04em; }
+.voice-card input:not([type='checkbox']), .voice-card textarea { border-color:#d1dae6; border-radius:10px; }
+.voice-card input:not([type='checkbox']):focus, .voice-card textarea:focus { outline:none; border-color:#8da7ee; box-shadow:0 0 0 3px rgba(66,100,237,.12); }
+.project-controls { padding:18px 0; }
+.history-row, .voice-row, .operator-row, .billing-row { padding:14px 0; }
+.history-row em { border-radius:8px; }
+.billing-summary { background:linear-gradient(135deg,#fff,#f3f6ff); }
+.billing-plan, .credit-pack { border-radius:13px; }
+.billing-plan.featured { box-shadow:0 10px 24px rgba(66,100,237,.09); }
+.toast { right:28px; bottom:28px; border-radius:12px; }
+
+@media (max-width:1100px) {
+  .workspace { width:min(100% - 48px,1000px); }
+  .workspace-grid { grid-template-columns:minmax(0,1fr) 290px; }
+  .account-summary { display:none; }
+}
+@media (max-width:800px) {
+  .sidebar { width:70px; flex-basis:70px; padding:24px 9px; }
+  .app-brand { margin-bottom:44px; padding:0; justify-content:center; }
+  .app-brand > span:last-child, .side-nav button, .side-bottom button { font-size:0; }
+  .app-brand-mark { width:34px; height:34px; border-radius:11px; background:#3e62ec; transform:none; }
+  .app-brand-mark i { width:3px; }
+  .app-brand-mark i:nth-child(1) { height:9px; }.app-brand-mark i:nth-child(2) { height:18px; }.app-brand-mark i:nth-child(3) { height:12px; }
+  .side-nav button, .side-bottom button { justify-content:center; padding:11px 7px; }
+  .workspace { width:calc(100% - 30px); padding:28px 0 54px; }
+  .workspace-title { margin-bottom:24px; }
+  .workspace-grid { grid-template-columns:1fr; gap:16px; }
+  .config-rail { position:static; order:-1; }
+  .upload-card { padding:13px; }
+  .media-preview { min-height:180px; }
+  .artifact-row > video { max-height:320px; }
+  .voice-card, .voice-list, .project-history, .settings-card, .operator-card, .billing-card { padding:18px; }
+  .metric-grid { gap:9px; }
+  .toast { right:14px; bottom:14px; left:14px; justify-content:center; }
+}
+@media (max-width:520px) {
+  .app-header { height:68px; padding:0 14px; }
+  .mobile-brand { display:flex; font-size:18px; }
+  .credit-pill { padding:9px 10px; font-size:12px; }
+  .credit-pill span { font-size:15px; }
+  .workspace-title h1 { font-size:30px; }
+  .workflow-steps { gap:7px; font-size:11px; }
+  .workflow-steps i { width:16px; }
+  .workflow-steps b { width:28px; height:28px; }
+  .dropzone { min-height:220px; }
+  .artifact-row > div { justify-content:stretch; }
+  .artifact-row > div button { flex:1; }
+}

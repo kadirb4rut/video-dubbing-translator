@@ -25,6 +25,18 @@ function fixturePath() {
   return file;
 }
 
+function videoFixturePath() {
+  const file = path.join(os.tmpdir(), 'lingowave-playwright-fixture.mp4');
+  execFileSync('ffmpeg', [
+    '-y', '-hide_banner', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', 'color=c=0x28446e:s=320x180:d=1',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1',
+    '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac',
+    '-movflags', '+faststart', file,
+  ]);
+  return file;
+}
+
 async function createAccount(page) {
   const email = `e2e-${crypto.randomUUID()}@example.test`;
   await page.getByRole('button', { name: /Start creating/i }).first().click();
@@ -81,4 +93,14 @@ test('mobile workspace keeps navigation and content within the viewport', async 
 
   await page.getByRole('button', { name: 'Projects' }).click();
   await expect(page.locator('.project-history')).toBeVisible();
+});
+
+test('selected video controls stay outside the file-picker label', async ({ page }) => {
+  await page.goto('/');
+  await createAccount(page);
+  await page.locator('input[type="file"]').setInputFiles(videoFixturePath());
+  await expect(page.getByText(/FFprobe inspected/)).toBeVisible();
+
+  const mediaControlIsPickerIndependent = await page.locator('video[aria-label="Selected source video"]').evaluate(video => !video.closest('label'));
+  expect(mediaControlIsPickerIndependent).toBe(true);
 });
