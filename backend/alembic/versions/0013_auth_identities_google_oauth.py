@@ -4,7 +4,9 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision = "0013_auth_identities_google_oauth"
+# Keep the Alembic revision within PostgreSQL's existing alembic_version
+# varchar(32) column. The filename remains the descriptive migration name.
+revision = "0013_google_oauth_identities"
 down_revision = "0012_cpu_telemetry"
 branch_labels = None
 depends_on = None
