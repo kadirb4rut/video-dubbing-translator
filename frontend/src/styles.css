@@ -67,6 +67,7 @@ a { color:inherit; text-decoration:none; }
 .job-status { margin-top:18px; padding:17px; border:1px solid #cfdbf7; border-radius:10px; background:#f7f9ff; }
 .job-status-heading { display:flex; justify-content:space-between; align-items:center; color:#42526c; font-size:13px; text-transform:capitalize; }
 .job-status-heading strong { color:var(--blue); }
+.job-stage-message { margin:10px 0 0; color:#65758b; font-size:12px; line-height:1.45; }
 .noise-comparison { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:14px 0; }
 .noise-comparison > div { display:grid; gap:7px; padding:12px; border:1px solid var(--line); border-radius:8px; background:#fff; }
 .noise-comparison span { color:var(--muted); font-size:12px; font-weight:600; }

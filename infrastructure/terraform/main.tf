@@ -114,6 +114,29 @@ resource "aws_sqs_queue" "jobs" {
 resource "aws_ecs_cluster" "workers" {
   name = "${var.name}-workers"
 }
+locals {
+  gpu_worker_autoscaling_enabled = var.worker_compute_mode == "gpu"
+  cpu_worker_autoscaling_enabled = var.worker_compute_mode == "cpu" && var.cpu_worker_image != ""
+}
+
+resource "terraform_data" "worker_runtime_configuration" {
+  input = {
+    compute_mode = var.worker_compute_mode
+    worker_image = var.worker_image
+    cpu_image    = var.cpu_worker_image
+  }
+
+  lifecycle {
+    precondition {
+      condition     = var.worker_compute_mode != "gpu" || var.worker_image != ""
+      error_message = "worker_image must be set when worker_compute_mode is gpu."
+    }
+    precondition {
+      condition     = var.worker_compute_mode != "cpu" || var.cpu_worker_image != ""
+      error_message = "cpu_worker_image must be set when worker_compute_mode is cpu."
+    }
+  }
+}
 resource "aws_iam_role" "worker" {
   name               = "${var.name}-worker"
   assume_role_policy = jsonencode({ Version = "2012-10-17", Statement = [{ Effect = "Allow", Principal = { Service = "ec2.amazonaws.com" }, Action = "sts:AssumeRole" }] })
@@ -423,6 +446,10 @@ resource "aws_ecs_service" "worker" {
     weight            = 1
   }
   depends_on = [aws_ecs_cluster_capacity_providers.workers]
+
+  lifecycle {
+    ignore_changes = [desired_count]
+  }
 }
 
 resource "aws_ecs_task_definition" "cpu_worker" {
@@ -487,6 +514,10 @@ resource "aws_ecs_service" "cpu_worker" {
     subnets          = local.effective_worker_subnet_ids
     security_groups  = [local.effective_worker_security_group_id]
     assign_public_ip = true
+  }
+
+  lifecycle {
+    ignore_changes = [desired_count]
   }
 }
 
@@ -628,76 +659,210 @@ resource "aws_ecs_service" "api" {
   depends_on = [aws_lb_listener.api, aws_lb_listener.api_tls]
 }
 resource "aws_appautoscaling_target" "worker" {
-  max_capacity       = 10
+  count              = local.gpu_worker_autoscaling_enabled ? 1 : 0
+  max_capacity       = var.worker_max_count
   min_capacity       = 0
   resource_id        = "service/${aws_ecs_cluster.workers.name}/${aws_ecs_service.worker.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }
+
 resource "aws_appautoscaling_policy" "worker_scale_out" {
+  count              = local.gpu_worker_autoscaling_enabled ? 1 : 0
   name               = "${var.name}-queue-scale-out"
   policy_type        = "StepScaling"
-  resource_id        = aws_appautoscaling_target.worker.resource_id
-  scalable_dimension = aws_appautoscaling_target.worker.scalable_dimension
-  service_namespace  = aws_appautoscaling_target.worker.service_namespace
+  resource_id        = aws_appautoscaling_target.worker[0].resource_id
+  scalable_dimension = aws_appautoscaling_target.worker[0].scalable_dimension
+  service_namespace  = aws_appautoscaling_target.worker[0].service_namespace
   step_scaling_policy_configuration {
     adjustment_type         = "ChangeInCapacity"
-    cooldown                = 60
+    cooldown                = var.worker_scale_out_cooldown_seconds
     metric_aggregation_type = "Maximum"
     step_adjustment {
       metric_interval_lower_bound = 0
-      metric_interval_upper_bound = 4
+      metric_interval_upper_bound = 2
       scaling_adjustment          = 1
     }
     step_adjustment {
-      metric_interval_lower_bound = 4
+      metric_interval_lower_bound = 2
+      metric_interval_upper_bound = 5
       scaling_adjustment          = 2
+    }
+    step_adjustment {
+      metric_interval_lower_bound = 5
+      scaling_adjustment          = 4
     }
   }
 }
 
 resource "aws_appautoscaling_policy" "worker_scale_in" {
+  count              = local.gpu_worker_autoscaling_enabled ? 1 : 0
   name               = "${var.name}-queue-scale-in"
   policy_type        = "StepScaling"
-  resource_id        = aws_appautoscaling_target.worker.resource_id
-  scalable_dimension = aws_appautoscaling_target.worker.scalable_dimension
-  service_namespace  = aws_appautoscaling_target.worker.service_namespace
+  resource_id        = aws_appautoscaling_target.worker[0].resource_id
+  scalable_dimension = aws_appautoscaling_target.worker[0].scalable_dimension
+  service_namespace  = aws_appautoscaling_target.worker[0].service_namespace
   step_scaling_policy_configuration {
     adjustment_type         = "ChangeInCapacity"
-    cooldown                = 300
+    cooldown                = var.worker_scale_in_cooldown_seconds
     metric_aggregation_type = "Maximum"
     step_adjustment {
       metric_interval_upper_bound = 0
-      scaling_adjustment          = -10
+      scaling_adjustment          = -var.worker_max_count
     }
   }
 }
 
 resource "aws_cloudwatch_metric_alarm" "worker_queue_nonempty" {
+  count               = local.gpu_worker_autoscaling_enabled ? 1 : 0
   alarm_name          = "${var.name}-queue-nonempty"
-  alarm_description   = "Scale ECS worker tasks out when jobs are visible in SQS."
+  alarm_description   = "Scale the active GPU worker service out when jobs are waiting visibly in SQS."
   namespace           = "AWS/SQS"
   metric_name         = "ApproximateNumberOfMessagesVisible"
   statistic           = "Maximum"
   period              = 60
-  evaluation_periods  = 2
+  evaluation_periods  = 1
   comparison_operator = "GreaterThanOrEqualToThreshold"
   threshold           = 1
   treat_missing_data  = "notBreaching"
-  alarm_actions       = [aws_appautoscaling_policy.worker_scale_out.arn]
+  alarm_actions       = [aws_appautoscaling_policy.worker_scale_out[0].arn]
   dimensions = {
     QueueName = aws_sqs_queue.jobs.name
   }
 }
 
 resource "aws_cloudwatch_metric_alarm" "worker_queue_empty" {
+  count               = local.gpu_worker_autoscaling_enabled ? 1 : 0
   alarm_name          = "${var.name}-queue-empty"
-  alarm_description   = "Scale ECS worker tasks in after visible and in-flight queue messages have been absent."
-  evaluation_periods  = 15
+  alarm_description   = "Scale the active GPU worker service toward zero after visible and in-flight jobs have drained."
+  evaluation_periods  = var.worker_scale_in_evaluation_periods
   comparison_operator = "LessThanThreshold"
   threshold           = 1
   treat_missing_data  = "notBreaching"
-  alarm_actions       = [aws_appautoscaling_policy.worker_scale_in.arn]
+  alarm_actions       = [aws_appautoscaling_policy.worker_scale_in[0].arn]
+
+  metric_query {
+    id          = "active"
+    expression  = "visible + inflight"
+    label       = "Visible and in-flight SQS messages"
+    return_data = true
+  }
+
+  metric_query {
+    id          = "visible"
+    return_data = false
+
+    metric {
+      metric_name = "ApproximateNumberOfMessagesVisible"
+      namespace   = "AWS/SQS"
+      period      = 60
+      stat        = "Maximum"
+      dimensions = {
+        QueueName = aws_sqs_queue.jobs.name
+      }
+    }
+  }
+
+  metric_query {
+    id          = "inflight"
+    return_data = false
+
+    metric {
+      metric_name = "ApproximateNumberOfMessagesNotVisible"
+      namespace   = "AWS/SQS"
+      period      = 60
+      stat        = "Maximum"
+      dimensions = {
+        QueueName = aws_sqs_queue.jobs.name
+      }
+    }
+  }
+}
+
+resource "aws_appautoscaling_target" "cpu_worker" {
+  count              = local.cpu_worker_autoscaling_enabled ? 1 : 0
+  max_capacity       = var.worker_max_count
+  min_capacity       = 0
+  resource_id        = "service/${aws_ecs_cluster.workers.name}/${aws_ecs_service.cpu_worker[0].name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+}
+
+resource "aws_appautoscaling_policy" "cpu_worker_scale_out" {
+  count              = local.cpu_worker_autoscaling_enabled ? 1 : 0
+  name               = "${var.name}-cpu-queue-scale-out"
+  policy_type        = "StepScaling"
+  resource_id        = aws_appautoscaling_target.cpu_worker[0].resource_id
+  scalable_dimension = aws_appautoscaling_target.cpu_worker[0].scalable_dimension
+  service_namespace  = aws_appautoscaling_target.cpu_worker[0].service_namespace
+
+  step_scaling_policy_configuration {
+    adjustment_type         = "ChangeInCapacity"
+    cooldown                = var.worker_scale_out_cooldown_seconds
+    metric_aggregation_type = "Maximum"
+    step_adjustment {
+      metric_interval_lower_bound = 0
+      metric_interval_upper_bound = 2
+      scaling_adjustment          = 1
+    }
+    step_adjustment {
+      metric_interval_lower_bound = 2
+      metric_interval_upper_bound = 5
+      scaling_adjustment          = 2
+    }
+    step_adjustment {
+      metric_interval_lower_bound = 5
+      scaling_adjustment          = 4
+    }
+  }
+}
+
+resource "aws_appautoscaling_policy" "cpu_worker_scale_in" {
+  count              = local.cpu_worker_autoscaling_enabled ? 1 : 0
+  name               = "${var.name}-cpu-queue-scale-in"
+  policy_type        = "StepScaling"
+  resource_id        = aws_appautoscaling_target.cpu_worker[0].resource_id
+  scalable_dimension = aws_appautoscaling_target.cpu_worker[0].scalable_dimension
+  service_namespace  = aws_appautoscaling_target.cpu_worker[0].service_namespace
+
+  step_scaling_policy_configuration {
+    adjustment_type         = "ChangeInCapacity"
+    cooldown                = var.worker_scale_in_cooldown_seconds
+    metric_aggregation_type = "Maximum"
+    step_adjustment {
+      metric_interval_upper_bound = 0
+      scaling_adjustment          = -var.worker_max_count
+    }
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "cpu_worker_queue_nonempty" {
+  count               = local.cpu_worker_autoscaling_enabled ? 1 : 0
+  alarm_name          = "${var.name}-cpu-queue-nonempty"
+  alarm_description   = "Scale the active CPU worker service out when jobs are waiting visibly in SQS."
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  statistic           = "Maximum"
+  period              = 60
+  evaluation_periods  = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  threshold           = 1
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_appautoscaling_policy.cpu_worker_scale_out[0].arn]
+  dimensions = {
+    QueueName = aws_sqs_queue.jobs.name
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "cpu_worker_queue_empty" {
+  count               = local.cpu_worker_autoscaling_enabled ? 1 : 0
+  alarm_name          = "${var.name}-cpu-queue-empty"
+  alarm_description   = "Scale the active CPU worker service toward zero after visible and in-flight jobs have drained."
+  evaluation_periods  = var.worker_scale_in_evaluation_periods
+  comparison_operator = "LessThanThreshold"
+  threshold           = 1
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_appautoscaling_policy.cpu_worker_scale_in[0].arn]
 
   metric_query {
     id          = "active"

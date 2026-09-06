@@ -214,6 +214,51 @@ variable "worker_desired_count" {
   type    = number
   default = 0
 }
+variable "worker_compute_mode" {
+  description = "Queue-backed worker fleet to autoscale. Use cpu while the GPU quota is pending, then switch to gpu after measured GPU capacity is available. Only one fleet consumes the shared queue at a time."
+  type        = string
+  default     = "gpu"
+  validation {
+    condition     = contains(["disabled", "cpu", "gpu"], var.worker_compute_mode)
+    error_message = "worker_compute_mode must be disabled, cpu, or gpu."
+  }
+}
+variable "worker_max_count" {
+  description = "Maximum number of concurrent queue workers for the active compute fleet. Each worker claims one job at a time."
+  type        = number
+  default     = 10
+  validation {
+    condition     = var.worker_max_count >= 1 && var.worker_max_count <= 100
+    error_message = "worker_max_count must be between 1 and 100."
+  }
+}
+variable "worker_scale_out_cooldown_seconds" {
+  description = "Cooldown between queue-driven scale-out actions."
+  type        = number
+  default     = 60
+  validation {
+    condition     = var.worker_scale_out_cooldown_seconds >= 0
+    error_message = "worker_scale_out_cooldown_seconds must be zero or greater."
+  }
+}
+variable "worker_scale_in_cooldown_seconds" {
+  description = "Cooldown after the active queue has drained before scaling workers toward zero."
+  type        = number
+  default     = 300
+  validation {
+    condition     = var.worker_scale_in_cooldown_seconds >= 60
+    error_message = "worker_scale_in_cooldown_seconds must be at least 60 seconds."
+  }
+}
+variable "worker_scale_in_evaluation_periods" {
+  description = "Consecutive one-minute empty-queue periods required before scale-in."
+  type        = number
+  default     = 5
+  validation {
+    condition     = var.worker_scale_in_evaluation_periods >= 1 && var.worker_scale_in_evaluation_periods <= 60
+    error_message = "worker_scale_in_evaluation_periods must be between 1 and 60."
+  }
+}
 variable "cpu_worker_image" {
   description = "Optional CPU worker image used for temporary or low-cost validation. Leave empty to keep the CPU service absent."
   type        = string

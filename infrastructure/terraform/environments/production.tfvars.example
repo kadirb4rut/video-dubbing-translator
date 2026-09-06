@@ -12,6 +12,11 @@ frontend_origin      = "https://replace-with-the-frontend-origin"
 api_desired_count    = 1
 worker_desired_count = 0
 worker_instance_type = "g4dn.xlarge"
+# Use the CPU Fargate worker while GPU quota is pending. Queue alarms start it
+# on demand and return it to zero after visible and in-flight work drains.
+worker_compute_mode = "cpu"
+worker_max_count    = 10
+cpu_worker_image    = ""
 enable_rds           = true
 translation_provider = "google-deep-translator"
 translation_refinement_provider = "hymt2"

@@ -15,6 +15,17 @@ function stageLabel(state) {
   return `Stage ${progress.position} of ${progress.total}`;
 }
 
+function stageMessage(state) {
+  const messages = {
+    queued: 'Starting an on-demand processing worker…',
+    provisioning: 'Worker is readying the processing environment…',
+    downloading: 'Worker is downloading your media securely…',
+    synthesizing: 'Generating the translated voice track…',
+    uploading: 'Finalizing your downloadable result…',
+  };
+  return messages[state] || 'The worker is reporting each real processing stage…';
+}
+
 function Glyph({ type }) {
   const symbols = { video: '▣', voice: '◉', stems: '∿', noise: '⌁', transcript: '▤', folder: '□', card: '▭', settings: '⚙' };
   return <span className="glyph" aria-hidden="true">{symbols[type] || '·'}</span>;
@@ -83,7 +94,7 @@ function JobStatus({ job, onDownload, onPreview, onCancel, sourceFile }) {
   const progress = stageProgress(job.state);
   const terminalLabel = job.state === 'completed' ? 'Complete' : terminalStates.includes(job.state) ? 'Stopped' : stageLabel(job.state);
   const width = job.state === 'completed' ? 100 : `${(progress.position / progress.total) * 100}%`;
-  return <div className="job-status"><div className="job-status-heading"><span>{job.state.replaceAll('_', ' ')}</span><strong>{terminalLabel}</strong></div><div className="progress-bar" aria-label={`Processing ${terminalLabel}`}><i style={{ width }} /></div>{job.error_message && <p className="job-error">{job.error_message}</p>}{job.operation === 'noise' && sourceFile?.local && enhanced && <div className="noise-comparison"><div><span>Original</span><audio controls preload="metadata" src={sourceFile.local} /></div><div><span>Enhanced</span><audio controls preload="metadata" src={`${apiUrl}/api/jobs/${job.id}/artifacts/${enhanced.id}/download`} /></div></div>}{job.artifacts?.length > 0 && <div className="artifact-list">{job.artifacts.map(artifact => <div className="artifact-row" key={artifact.id}><span>{artifact.filename}</span>{artifact.content_type.startsWith('audio/') && <audio controls preload="none" src={`${apiUrl}/api/jobs/${job.id}/artifacts/${artifact.id}/download`} />}{artifact.content_type.startsWith('video/') && <video controls preload="metadata" src={`${apiUrl}/api/jobs/${job.id}/artifacts/${artifact.id}/download`} /> }<div><button onClick={() => artifact.content_type.startsWith('text/') || artifact.content_type.includes('subrip') ? onPreview(artifact) : onDownload(artifact)}> {artifact.content_type.startsWith('text/') || artifact.content_type.includes('subrip') ? 'Preview' : 'Download'} </button><button onClick={() => onDownload(artifact)}>↓</button></div></div>)}</div>}{onCancel && !terminalStates.includes(job.state) && <button className="cancel-job" onClick={() => onCancel(job.id)}>Cancel job</button>}</div>;
+  return <div className="job-status"><div className="job-status-heading"><span>{job.state.replaceAll('_', ' ')}</span><strong>{terminalLabel}</strong></div><div className="progress-bar" aria-label={`Processing ${terminalLabel}`}><i style={{ width }} /></div>{!terminalStates.includes(job.state) && <p className="job-stage-message">{stageMessage(job.state)}</p>}{job.error_message && <p className="job-error">{job.error_message}</p>}{job.operation === 'noise' && sourceFile?.local && enhanced && <div className="noise-comparison"><div><span>Original</span><audio controls preload="metadata" src={sourceFile.local} /></div><div><span>Enhanced</span><audio controls preload="metadata" src={`${apiUrl}/api/jobs/${job.id}/artifacts/${enhanced.id}/download`} /></div></div>}{job.artifacts?.length > 0 && <div className="artifact-list">{job.artifacts.map(artifact => <div className="artifact-row" key={artifact.id}><span>{artifact.filename}</span>{artifact.content_type.startsWith('audio/') && <audio controls preload="none" src={`${apiUrl}/api/jobs/${job.id}/artifacts/${artifact.id}/download`} />}{artifact.content_type.startsWith('video/') && <video controls preload="metadata" src={`${apiUrl}/api/jobs/${job.id}/artifacts/${artifact.id}/download`} /> }<div><button onClick={() => artifact.content_type.startsWith('text/') || artifact.content_type.includes('subrip') ? onPreview(artifact) : onDownload(artifact)}> {artifact.content_type.startsWith('text/') || artifact.content_type.includes('subrip') ? 'Preview' : 'Download'} </button><button onClick={() => onDownload(artifact)}>↓</button></div></div>)}</div>}{onCancel && !terminalStates.includes(job.state) && <button className="cancel-job" onClick={() => onCancel(job.id)}>Cancel job</button>}</div>;
 }
 
 function UploadCard({ file, busy, onFile, onRemove, title = 'Drop your media here' }) {
@@ -160,7 +171,7 @@ export function RealAppShell({ onExit, initialUser }) {
     setEstimate(nextEstimate); setEstimateError('');
     if (credits < nextEstimate.credits) throw new Error(`You need ${nextEstimate.credits} credits; your balance is ${credits}.`);
     const created = await apiFetch('/api/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ ...estimatePayload, project_id: selectedProjectId || null, media_asset_id: file?.id || null, preserve_voice: preserveVoice, keep_background: keepBackground, lip_sync: lipSync, voice_profile_id: jobOptions.voice_profile_id || (activeTool === 'Video Translator' ? voiceId : null), text: jobOptions.text, stems: stemCount }) });
-    setJob(created); setPreviewText(''); setPreviewArtifactId(null); showToast('Job queued — the worker will report each real processing stage.');
+    setJob(created); setPreviewText(''); setPreviewArtifactId(null); showToast('Job queued — an on-demand worker will start automatically.');
   };
   const start = async () => { if (!file && activeTool !== 'Voice Studio') return showToast('Choose media first.'); if (activeTool === 'Video Translator' && !voiceId) return showToast('Create or choose a consented voice profile before starting.'); if (activeTool === 'Voice Studio' && (!voiceId || !voiceText.trim())) return showToast('Choose a voice and enter text first.'); setBusy(true); try { await requestJob(activeTool === 'Voice Studio' ? { text: voiceText, voice_profile_id: voiceId } : {}); } catch (error) { const message = readableEstimateError(error); setEstimateError(message); showToast(message); } finally { setBusy(false); } };
   const createVoice = async (event) => { event.preventDefault(); if (!voiceReference) return showToast('Choose a 3–90 second reference sample.'); setBusy(true); try { const form = new FormData(); form.append('name', voiceName); form.append('declaration', voiceDeclaration); form.append('authorized', String(voiceAuthorized)); form.append('upload', voiceReference); const created = await apiFetch('/api/voices', { method: 'POST', body: form }); setVoices(current => [created, ...current]); setVoiceId(created.id); setVoiceName(''); setVoiceDeclaration(''); setVoiceReference(null); showToast('Consent recorded and voice profile secured.'); } catch (error) { showToast(error.message); } finally { setBusy(false); } };
