@@ -1,6 +1,6 @@
 # AWS Media Pipeline Status
 
-Date: 2026-09-05
+Date: 2026-09-06
 Environment: `eu-north-1`
 Public application: `https://d3ncg3eqih0ccj.cloudfront.net`
 GPU quota: `Running On-Demand G/VT instances = 0`, request `CASE_OPENED`, untouched
@@ -19,6 +19,24 @@ The existing API, S3, SQS/DLQ, RDS, telemetry, retries, credit ledger, artifact 
 The exact voice model is `openbmb/VoxCPM2`, revision `32279effe8c19989596f05d353d1447f51d9e915`, package `voxcpm==2.0.3`, with 48 kHz output validation. CPU uses a runtime-selected or configured CPU-safe dtype; the planned NVIDIA T4 path uses FP16 rather than assuming BF16 support.
 
 The real Hy-MT2 CPU benchmark also completed independently: `tencent/Hy-MT2-1.8B`, revision `9a341cd1b679d3efd23b46e847b01745a71ed792`, Transformers in-process, CPU bfloat16, 156.5701 seconds for one segment. The adapter handled a plain model response through its bounded single-segment fallback; no mock translation was used.
+
+## Google Auth production deployment
+
+Google OAuth is live on the production CloudFront origin. The ECS API task reads `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` from the Secrets Manager secret `lingowave/production/google-oauth` through Terraform `api_secrets` JSON-key selectors. The ECS execution role has only `secretsmanager:GetSecretValue` for the database secret and Google OAuth secret base ARNs.
+
+Production migration `0013_google_oauth_identities` is applied. The revision ID is intentionally shorter than the migration filename because PostgreSQL's existing `alembic_version.version_num` column is `varchar(32)`. API ECS task revision 24 is stable at desired/running/pending `1/1/0`.
+
+Live verification passed:
+
+- `/api/auth/google/config` returned `{"enabled":true}`;
+- `/api/auth/google/login` returned a Google 303 redirect;
+- the callback returned successfully to the application;
+- a real Google account created a new LingoWave user;
+- repeated login with the linked Google identity worked;
+- the same verified email linked safely to an existing local account;
+- email/password login, reload session, logout invalidation, and cancelled OAuth were verified.
+
+No OAuth secret values were printed, committed, or exposed. No manual user action remains for this integration. Test user records created during live validation remain in the production database unless explicitly cleaned up later.
 
 ## Validation status
 
@@ -124,10 +142,27 @@ INFRA:
 - GPU worker/ASG state: 0/0/0
 - GPU quota: CASE_OPENED, quota remains 0
 - expensive compute currently running: no
-- tests: 63 passed locally; CI image build passed; live E2E passed
+- tests: 69 passed locally; CI image build passed; live E2E passed
 - Terraform: fmt/validate passed locally; temporary acceptance policy removed after run
 - security checks: Bandit API scope passed; pip-audit dev requirements passed
-- repo status: live acceptance artifacts downloaded; follow-up docs/Terraform changes pending commit
+- repo status: clean and pushed at commit `fad1f8c`; Google Auth production deployment completed
+
+GOOGLE AUTH:
+- implementation: PASS
+- live Google login: PASS
+- new Google user: PASS
+- account linking: PASS
+- email/password login: PASS
+- session: PASS
+- logout: PASS
+- database migration: PASS (`0013_google_oauth_identities`)
+- secrets exposed: NO
+- frontend build: PASS
+- backend tests: PASS (69 passed)
+- security checks: PASS
+- Terraform: PASS
+- live API: PASS (ECS revision 24, `1/1/0`)
+- manual user action still required: NONE
 
 LICENSE REVIEW:
 NOT PERFORMED — USER WILL REVIEW BEFORE PRODUCTION
