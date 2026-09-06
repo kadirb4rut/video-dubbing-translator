@@ -104,3 +104,18 @@ test('selected video controls stay outside the file-picker label', async ({ page
   const mediaControlIsPickerIndependent = await page.locator('video[aria-label="Selected source video"]').evaluate(video => !video.closest('label'));
   expect(mediaControlIsPickerIndependent).toBe(true);
 });
+
+test('workspace help is dismissible and closes when navigating', async ({ page }) => {
+  await page.goto('/');
+  await createAccount(page);
+
+  await page.getByRole('button', { name: 'Open workspace help' }).click();
+  await expect(page.getByRole('dialog', { name: 'Workspace help' })).toBeVisible();
+  await page.getByRole('button', { name: 'Got it' }).click();
+  await expect(page.getByRole('dialog', { name: 'Workspace help' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Open workspace help' }).click();
+  await page.getByRole('button', { name: 'Projects' }).click();
+  await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Workspace help' })).toHaveCount(0);
+});

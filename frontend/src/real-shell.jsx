@@ -146,6 +146,7 @@ export function RealAppShell({ onExit, initialUser }) {
   const [credits, setCredits] = useState(0);
   const [toast, setToast] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const userInitials = (initialUser?.display_name || initialUser?.email || 'LW').slice(0, 2).toUpperCase();
   const showToast = (message) => {
     const text = String(message);
@@ -192,7 +193,7 @@ export function RealAppShell({ onExit, initialUser }) {
   const cancelJob = async id => { try { const next = await apiFetch(`/api/jobs/${id}/cancel`, { method: 'POST' }); setJob(next); await refreshWorkspace(); showToast('Job cancelled and reserved credits accounted for.'); } catch (error) { showToast(error.message); } };
   const revokeVoice = async (id) => { try { await apiFetch(`/api/voices/${id}`, { method: 'DELETE' }); setVoices(current => current.filter(voice => voice.id !== id)); if (voiceId === id) setVoiceId(''); showToast('Voice reference deleted.'); } catch (error) { showToast(error.message); } };
   const createProject = async name => { try { const project = await apiFetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }); setProjects(current => [project, ...current]); setSelectedProjectId(project.id); showToast('Project created.'); } catch (error) { showToast(error.message); } };
-  const selectTool = (tool) => { setActiveTool(tool); setFile(null); setEstimate(null); setEstimateError(''); setJob(null); setPreviewText(''); setPreviewArtifactId(null); };
+  const selectTool = (tool) => { setHelpOpen(false); setActiveTool(tool); setFile(null); setEstimate(null); setEstimateError(''); setJob(null); setPreviewText(''); setPreviewArtifactId(null); };
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -203,8 +204,8 @@ export function RealAppShell({ onExit, initialUser }) {
           ))}
         </div>
         <div className="side-bottom">
-          <button onClick={() => { setActiveTool("Projects"); setJob(null); }}><Glyph type="folder" />Projects</button>
-          <button onClick={() => { setActiveTool("Billing"); setJob(null); }}><Glyph type="card" />Billing</button>
+          <button onClick={() => { setHelpOpen(false); setActiveTool("Projects"); setJob(null); }}><Glyph type="folder" />Projects</button>
+          <button onClick={() => { setHelpOpen(false); setActiveTool("Billing"); setJob(null); }}><Glyph type="card" />Billing</button>
           <button onClick={() => selectTool("Settings")}><Glyph type="settings" />Settings</button>
           {(initialUser?.role === 'admin' || initialUser?.role === 'operator') && <button onClick={() => selectTool("Operations")}><Glyph type="settings" />Operations</button>}
         </div>
@@ -219,7 +220,7 @@ export function RealAppShell({ onExit, initialUser }) {
         <main className="workspace">
           <div className="workspace-title">
             <div><h1>{activeTool}</h1><p>{activeTool === "Video Translator" ? "Translate and dub your next story without losing its character." : activeTool === "Projects" ? "Your persisted jobs and downloadable artifacts." : activeTool === "Billing" ? "Manage your plan, credits, and secure Stripe checkout." : "A focused workspace for your next media project."}</p></div>
-            <button className="help-button">?</button>
+            <div className="help-wrap"><button className="help-button" aria-label="Open workspace help" aria-expanded={helpOpen} onClick={() => setHelpOpen(open => !open)}>?</button>{helpOpen && <div className="help-popover" role="dialog" aria-label="Workspace help"><strong>Need a hand?</strong><p>Upload media, choose your languages and voice, review the estimate, then start. Completed files appear below the source preview.</p><button type="button" onClick={() => setHelpOpen(false)}>Got it</button></div>}</div>
           </div>
           {activeTool === "Projects" ? (
             <ProjectHistory jobs={recentJobs} projects={projects} selectedProjectId={selectedProjectId} onSelectProject={setSelectedProjectId} onCreateProject={createProject} />
