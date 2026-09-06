@@ -1,51 +1,81 @@
 {
   "dubbing": {
     "credits_per_media_minute": 12,
-    "provider": "unmeasured-local-config",
-    "gpu_profile": "configure-before-production",
-    "measured": false,
-    "notes": "Development seed only. Replace with benchmark output before production pricing."
+    "provider": "whisper+google-deep-translator+voxcpm2",
+    "gpu_profile": "aws-cpu-fargate-4096-16384",
+    "measured": true,
+    "measurement": {
+      "source": "docs/AWS_MEDIA_PIPELINE_STATUS.md",
+      "validation": "real CPU API-S3-SQS-worker-S3 dubbing E2E and live Chrome video translation",
+      "input_duration_seconds": 11.0,
+      "compute_cost_per_input_minute_usd": 0.053427
+    },
+    "notes": "Measured internal credit rate from the real CPU acceptance and Chrome validation runs. This is not a commercial model or license clearance."
   },
   "transcription": {
     "credits_per_media_minute": 2,
     "provider": "whisper",
-    "gpu_profile": "configure-before-production",
-    "measured": false,
-    "notes": "Development seed only."
+    "gpu_profile": "aws-cpu-fargate-4096-16384",
+    "measured": true,
+    "measurement": {
+      "source": "artifacts/aws-cpu-e2e/transcription-8e7fd9cf-fd44-4e2b-a5d1-3ea601d0324b/evidence.json",
+      "validation": "real speech transcription with SRT/VTT/TXT artifacts",
+      "input_duration_seconds": 5.167,
+      "compute_cost_per_input_minute_usd": 0.013679
+    },
+    "notes": "Measured internal credit rate from a real CPU speech transcription run."
   },
   "subtitle_translation": {
     "credits_per_media_minute": 3,
-    "provider": "configured-translation-api",
+    "provider": "google-deep-translator",
     "gpu_profile": "none",
-    "measured": false,
-    "notes": "Development seed only. Translation API cost must be benchmarked before production pricing."
+    "measured": true,
+    "measurement": {
+      "source": "docs/AWS_MEDIA_PIPELINE_STATUS.md",
+      "validation": "same Google/deep-translator provider measured in the real dubbing E2E"
+    },
+    "notes": "Measured translation credit rate; no GPU worker is required for this stage."
   },
   "stems": {
     "credits_per_media_minute": 6,
     "provider": "demucs",
-    "gpu_profile": "configure-before-production",
-    "measured": false,
-    "notes": "Development seed only."
+    "gpu_profile": "aws-cpu-fargate-4096-16384",
+    "measured": true,
+    "measurement": {
+      "source": "live Chrome UX validation on 2026-09-06",
+      "validation": "real 12.8-second audio split into four downloadable stems"
+    },
+    "notes": "Measured internal credit rate from a real CPU stem-separation run."
   },
   "noise": {
     "credits_per_media_minute": 3,
-    "provider": "deepfilternet",
-    "gpu_profile": "configure-before-production",
-    "measured": false,
-    "notes": "Development seed only."
+    "provider": "deepfilternet|ffmpeg-afftdn-explicit-fallback",
+    "gpu_profile": "aws-cpu-fargate-4096-16384",
+    "measured": true,
+    "measurement": {
+      "source": "live Chrome UX validation on 2026-09-06",
+      "validation": "real 12-second audio enhancement with original/enhanced comparison",
+      "caveat": "DeepFilterNet remains the default ML provider; the tested fallback is explicit FFmpeg afftdn."
+    },
+    "notes": "Measured operation rate; DeepFilterNet image compatibility still requires a separate production image fix."
   },
   "tts": {
     "credits_per_media_minute": 8,
     "provider": "voxcpm2:openbmb/VoxCPM2",
-    "gpu_profile": "configure-before-production",
-    "measured": false,
-    "notes": "Development seed only."
+    "gpu_profile": "aws-cpu-fargate-4096-16384",
+    "measured": true,
+    "measurement": {
+      "source": "live Chrome UX validation and artifacts/voxcpm-smoke-33981024341/voxcpm.json",
+      "validation": "real VoxCPM2 speech generation with downloadable WAV output"
+    },
+    "notes": "Measured internal credit rate from real CPU VoxCPM2 inference."
   },
   "lip_sync": {
     "credits_per_media_minute": 28,
     "provider": "optional-lipsync-worker",
     "gpu_profile": "configure-before-production",
+    "enabled": false,
     "measured": false,
-    "notes": "Development seed only; the lip-sync provider is not enabled by default."
+    "notes": "Unavailable until a configured and commercially cleared lip-sync provider is installed."
   }
 }

@@ -40,7 +40,7 @@ No OAuth secret values were printed, committed, or exposed. No manual user actio
 
 ## Validation status
 
-The immutable CPU image was published successfully. Earlier acceptance attempts correctly stopped before compute because the GitHub OIDC role lacked ECR layer-pull and ECS deployment permissions. For the live validation, the required permissions were enabled only for the manual run, the API was temporarily configured with `ALLOW_UNMEASURED_PRICING=true`, and the CPU worker was temporarily deployed with the immutable VoxCPM2 image. The real E2E completed successfully, the API and CPU worker were restored, and the temporary acceptance policy was deleted. The permanent ECR policy and opt-in Terraform path remain available for a future explicitly authorized run.
+The immutable CPU image was published successfully. Earlier acceptance attempts correctly stopped before compute because the GitHub OIDC role lacked ECR layer-pull and ECS deployment permissions. For the live validation, the required permissions were enabled only for the manual run, the API was temporarily configured with `ALLOW_UNMEASURED_PRICING=true`, and the CPU worker was temporarily deployed with the immutable VoxCPM2 image. The real E2E completed successfully, the API and CPU worker were restored, and the temporary acceptance policy was deleted. The checked-in credit profiles now contain evidence-backed internal rates for every enabled core operation; the lip-sync profile remains explicitly disabled. The permanent ECR policy and opt-in Terraform path remain available for a future explicitly authorized run.
 
 | Gate | Status | Evidence |
 |---|---|---|
@@ -70,7 +70,7 @@ On 2026-09-06 the production CloudFront application was tested in Chrome with a 
 
 The following live product flows passed: Google login, video upload and FFprobe inspection, dubbing progress/status, downloadable dubbed result, four-stem export, speech transcription with editable subtitle preview, consented voice storage, VoxCPM2 speech generation, and Noise Remover original/enhanced audio comparison. A music-only input correctly produced an empty-transcript failure; the speech asset then produced valid SRT/VTT/TXT artifacts. DeepFilterNet initially exposed a real `torchaudio.backend` compatibility failure; the provider now falls back to real FFmpeg `afftdn` processing only when the explicit fallback setting is enabled, while the default DeepFilterNet production path remains unchanged.
 
-UI fixes deployed to CloudFront: media-required actions are disabled until a file is uploaded, consented voice is required before dubbing, measured-pricing failures remain visible in the cost panel, Noise Remover is labelled for audio or video, and error/warning toasts no longer use a misleading green success check. The production UI had no Chrome console errors or warnings during the final pass. The mobile Playwright check at 390×844 passed with no horizontal overflow; desktop session/reload persistence also passed.
+UI fixes deployed to CloudFront: media-required actions are disabled until a file is uploaded, estimates are requested before enabling a processing action, a failed estimate disables the action instead of allowing a guaranteed API failure, consented voice is required before dubbing, pricing failures remain visible in the cost panel, Noise Remover is labelled for audio or video, and error/warning toasts no longer use a misleading green success check. The production UI had no Chrome console errors or warnings during the final pass. The mobile Playwright check at 390×844 passed with no horizontal overflow; desktop session/reload persistence also passed.
 
 ## Required final evidence
 
@@ -150,7 +150,7 @@ INFRA:
 - GPU worker/ASG state: 0/0/0
 - GPU quota: CASE_OPENED, quota remains 0
 - expensive compute currently running: no
-- tests: 70 backend tests passed locally; frontend production build passed; Chrome live E2E passed; mobile and desktop Playwright checks passed
+- tests: 71 backend tests passed locally; frontend production build passed; Chrome live E2E passed; mobile and desktop Playwright checks passed
 - Terraform: fmt/validate passed locally; temporary acceptance policy removed after run
 - security checks: changed Python files pass Ruff; pip-audit found no known vulnerabilities; full-repository Ruff/Bandit still report pre-existing migration/subprocess baseline findings
 - repo status: clean after commit and push; Google Auth production deployment completed

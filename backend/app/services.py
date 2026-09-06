@@ -36,6 +36,8 @@ def _credit_rate(operation: str) -> float:
     profile = cost_profiles().get(operation)
     if not profile:
         raise HTTPException(status_code=503, detail=f"No configured cost profile for {operation}")
+    if profile.get("enabled", True) is False:
+        raise HTTPException(status_code=503, detail=f"The {operation} operation is not enabled in this deployment")
     if (
         not profile.get("measured", False)
         and not settings.database_url.startswith("sqlite")

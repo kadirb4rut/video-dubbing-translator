@@ -2,7 +2,7 @@
 
 This project keeps provider code behind adapters so a model can be disabled without changing the API contract. The current voice provider is pinned VoxCPM2 (`openbmb/VoxCPM2`) at revision `32279effe8c19989596f05d353d1447f51d9e915`. This file records integration metadata only; it is not a commercial-use clearance.
 
-The repository deliberately does not bundle model weights. `config/cost_profiles.json` is marked `measured: false` and is a development seed, not a production price or performance claim. The current provider inventory is:
+The repository deliberately does not bundle model weights. `config/cost_profiles.json` contains evidence-backed internal credit rates from the real CPU acceptance/Chrome validation runs; those rates are not commercial price, margin, model-performance, or license-clearance claims. The optional lip-sync profile is explicitly disabled until a provider is configured. The current provider inventory is:
 
 - Whisper: exact downloaded checkpoint and runtime dependency notices must be recorded per release.
 - Demucs: code and each downloaded checkpoint/model bundle require separate review.

@@ -43,12 +43,20 @@ def test_unmeasured_pricing_fails_closed_for_production_database(monkeypatch):
     previous_database_url = settings.database_url
     object.__setattr__(settings, "database_url", "postgresql+psycopg://lingowave@db/lingowave")
     monkeypatch.delenv("ALLOW_UNMEASURED_PRICING", raising=False)
+    monkeypatch.setattr("app.services.cost_profiles", lambda: {"transcription": {"credits_per_media_minute": 2, "measured": False}})
     try:
         with pytest.raises(HTTPException) as error:
             estimate_for_duration(60, "transcription")
         assert error.value.status_code == 503
     finally:
         object.__setattr__(settings, "database_url", previous_database_url)
+
+
+def test_disabled_operation_fails_before_credit_estimation(monkeypatch):
+    monkeypatch.setattr("app.services.cost_profiles", lambda: {"lip_sync": {"credits_per_media_minute": 28, "enabled": False, "measured": False}})
+    with pytest.raises(HTTPException) as error:
+        estimate_for_duration(60, "lip_sync")
+    assert error.value.status_code == 503
 
 
 def test_user_job_serialization_does_not_expose_internal_worker_errors():

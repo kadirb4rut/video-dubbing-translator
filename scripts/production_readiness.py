@@ -65,8 +65,11 @@ def collect_checks() -> list[dict[str, object]]:
     profiles, profile_error = _load_json(profile_path)
     profiles_ok = isinstance(profiles, dict) and bool(profiles)
     _check(checks, "pricing-profiles-present", profiles_ok and profile_error is None, "cost profile file must contain an object")
-    measured = profiles_ok and all(isinstance(profile, dict) and profile.get("measured") is True for profile in profiles.values())
-    _check(checks, "pricing-profiles-measured", measured, "every production credit profile must be measured")
+    measured = profiles_ok and all(
+        isinstance(profile, dict) and (profile.get("enabled", True) is False or profile.get("measured") is True)
+        for profile in profiles.values()
+    )
+    _check(checks, "pricing-profiles-measured", measured, "every enabled production credit profile must be measured")
 
     manifest_path = Path(os.getenv("MODEL_RELEASE_MANIFEST", str(ROOT / "config" / "model_release_manifest.json")))
     manifest, manifest_error = _load_json(manifest_path) if manifest_path.exists() else (None, "file does not exist")
