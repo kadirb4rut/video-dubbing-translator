@@ -121,6 +121,43 @@ class GoogleDeepTranslatorProvider:
         module = _require("deep_translator")
         return module.GoogleTranslator(source=source, target=target)
 
+    @staticmethod
+    def _is_retryable_error(error: Exception) -> bool:
+        """Recognize transient/adapter-level Google misses without importing the optional package."""
+        error_name = type(error).__name__
+        message = str(error).lower()
+        return error_name in {"TranslationNotFound", "RequestError", "TooManyRequests"} or "no translation was found" in message
+
+    def _translate_one(self, source_text: str, *, source: str, target: str) -> tuple[str, int]:
+        """Translate one segment with one bounded adapter retry.
+
+        deep-translator can intermittently return TranslationNotFound for a
+        perfectly valid phrase. A fresh adapter using source=auto is a safe,
+        bounded recovery path; it does not change the configured primary
+        provider or create an unbounded retry loop.
+        """
+        max_retries = max(0, int(settings.translation_max_retries))
+        last_error: Exception | None = None
+        for attempt in range(max_retries + 1):
+            translator_source = source if attempt == 0 else "auto"
+            try:
+                translator = self._translator(source=translator_source, target=target)
+                text = str(translator.translate(source_text) or "").strip()
+                if text:
+                    return text, attempt
+                last_error = ProviderUnavailable("GoogleTranslator returned empty text")
+            except ProviderUnavailable:
+                raise
+            except Exception as exc:  # noqa: BLE001 - optional adapter surfaces provider-specific exceptions
+                last_error = exc
+                if not self._is_retryable_error(exc) or attempt >= max_retries:
+                    break
+        if isinstance(last_error, ProviderUnavailable):
+            raise last_error
+        if last_error is not None and self._is_retryable_error(last_error):
+            raise ProviderUnavailable("GoogleTranslator returned no translation") from last_error
+        raise ProviderUnavailable("GoogleTranslator request failed") from last_error
+
     def translate(self, segments: Sequence[dict], *, source: str, target: str) -> Sequence[dict]:
         return self.translate_segments(segments, source=source, target=target)
 
@@ -141,22 +178,16 @@ class GoogleDeepTranslatorProvider:
         if not normalized_target:
             raise ProviderUnavailable("Google translation requires a target language")
         started = time.monotonic()
+        retry_count = 0
         if normalized_source == normalized_target:
             translated = [{**segment, "source_text": segment["text"], "text": segment["text"]} for segment in validated]
         else:
-            try:
-                translator = self._translator(source=normalized_source, target=normalized_target)
-                translated = []
-                for segment in validated:
-                    source_text = segment["text"].strip()
-                    text = str(translator.translate(source_text) or "").strip()
-                    if not text:
-                        raise ProviderUnavailable("GoogleTranslator returned empty text")
-                    translated.append({**segment, "source_text": source_text, "text": text})
-            except ProviderUnavailable:
-                raise
-            except Exception as exc:  # deep-translator surfaces network/provider errors directly
-                raise ProviderUnavailable("GoogleTranslator request failed") from exc
+            translated = []
+            for segment in validated:
+                source_text = segment["text"].strip()
+                text, attempts = self._translate_one(source_text, source=normalized_source, target=normalized_target)
+                retry_count += attempts
+                translated.append({**segment, "source_text": source_text, "text": text})
         self.last_metrics = {
             "provider": self.name,
             "runtime": "deep-translator.GoogleTranslator",
@@ -165,6 +196,7 @@ class GoogleDeepTranslatorProvider:
             "segment_count": len(validated),
             "translated_segment_count": len(translated),
             "wall_clock_seconds": round(time.monotonic() - started, 4),
+            "retry_count": retry_count,
             "context_provided": bool(context),
             "glossary_entry_count": len(glossary or []),
             "duration_aware": duration_aware,

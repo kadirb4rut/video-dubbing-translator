@@ -192,6 +192,33 @@ def test_google_deep_translator_preserves_source_and_timing():
     assert provider.last_metrics["duration_aware"] is True
 
 
+def test_google_deep_translator_retries_transient_translation_miss_with_auto_source(monkeypatch):
+    monkeypatch.setattr("app.providers_real.settings", replace(settings, translation_max_retries=1))
+    calls = []
+    TranslationNotFound = type("TranslationNotFound", (Exception,), {})
+
+    class FlakyGoogleTranslator:
+        def __init__(self, source):
+            self.source = source
+
+        def translate(self, text):
+            calls.append((self.source, text))
+            if self.source == "en":
+                raise TranslationNotFound("No translation was found")
+            return "Bienvenido a Inglés en un Minuto."
+
+    provider = GoogleDeepTranslatorProvider(translator_factory=lambda *, source, target: FlakyGoogleTranslator(source))
+    translated = provider.translate(
+        [{"start": 0, "end": 1, "text": "Welcome to English in a Minute."}],
+        source="en",
+        target="es",
+    )
+
+    assert translated[0]["text"] == "Bienvenido a Inglés en un Minuto."
+    assert calls == [("en", "Welcome to English in a Minute."), ("auto", "Welcome to English in a Minute.")]
+    assert provider.last_metrics["retry_count"] == 1
+
+
 @pytest.mark.parametrize("result", ["", None])
 def test_google_deep_translator_rejects_empty_result(result):
     class EmptyTranslator:
