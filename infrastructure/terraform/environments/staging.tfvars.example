@@ -1,15 +1,21 @@
 aws_region = "eu-north-1"
 name       = "lingowave-staging"
+# Staging is intentionally off by default. Switch to serverless only for an
+# explicitly requested, fully populated on-demand test deployment.
+deployment_mode = "legacy"
 
 # Fill these with immutable image digests from the staging registry before apply.
 worker_image = ""
 api_image    = ""
+lambda_api_image = ""
 
 create_network       = true
 frontend_enabled     = false
 enable_rds           = false
+enable_aurora_serverless = false
 worker_desired_count = 0
 api_desired_count    = 0
+worker_compute_mode  = "disabled"
 mail_provider        = "dev"
 translation_provider = "google-deep-translator"
 translation_refinement_provider = "hymt2"

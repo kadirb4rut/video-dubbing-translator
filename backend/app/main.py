@@ -87,6 +87,7 @@ from .schemas import (
     PasswordResetRequest,
     ProjectRequest,
     SignupRequest,
+    VoicePresignRequest,
     VoiceSynthesisRequest,
 )
 from .security import (
@@ -100,10 +101,12 @@ from .security import (
 from .services import (
     asset_for_user,
     complete_presigned_asset,
+    complete_presigned_voice_profile,
     create_job,
     create_voice_profile,
     estimate_for_duration,
     presign_asset,
+    presign_voice_profile,
     serialize_artifact,
     serialize_asset,
     serialize_job,
@@ -890,9 +893,35 @@ def voice_create(name: str = Form(...), declaration: str = Form(...), authorized
     return {"id": profile.id, "name": profile.name, "status": profile.status, "consent_id": profile.consent_id, "created_at": profile.created_at.isoformat()}
 
 
+@app.post("/api/voices/presign")
+def voice_presign(payload: VoicePresignRequest, user: User = Depends(current_user), db: Session = Depends(get_db), _limit: None = Depends(rate_limited("voice-presign", 10))):
+    profile, url = presign_voice_profile(
+        db,
+        user,
+        name=payload.name,
+        declaration=payload.declaration,
+        authorized=payload.authorized,
+        filename=payload.filename,
+        content_type=payload.content_type,
+        size_bytes=payload.size_bytes,
+    )
+    return {
+        "voice": {"id": profile.id, "name": profile.name, "status": profile.status, "consent_id": profile.consent_id, "created_at": profile.created_at.isoformat()},
+        "upload_url": url,
+        "method": "PUT",
+        "headers": {"Content-Type": payload.content_type, "x-amz-server-side-encryption": "AES256", "x-amz-tagging": "lingowave-category=voices"},
+    }
+
+
+@app.post("/api/voices/{voice_id}/complete")
+def voice_complete(voice_id: str, user: User = Depends(current_user), db: Session = Depends(get_db), _limit: None = Depends(rate_limited("voice-complete", 10))):
+    profile = complete_presigned_voice_profile(db, user, voice_id)
+    return {"id": profile.id, "name": profile.name, "status": profile.status, "consent_id": profile.consent_id, "created_at": profile.created_at.isoformat()}
+
+
 @app.get("/api/voices")
 def voices(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    rows = db.scalars(select(VoiceProfile).where(VoiceProfile.user_id == user.id, VoiceProfile.deleted_at.is_(None)).order_by(VoiceProfile.created_at.desc())).all()
+    rows = db.scalars(select(VoiceProfile).where(VoiceProfile.user_id == user.id, VoiceProfile.status == "active", VoiceProfile.deleted_at.is_(None)).order_by(VoiceProfile.created_at.desc())).all()
     return [{"id": row.id, "name": row.name, "status": row.status, "consent_id": row.consent_id, "created_at": row.created_at.isoformat()} for row in rows]
 
 

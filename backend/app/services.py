@@ -15,7 +15,7 @@ from .billing import plan
 from .config import cost_profiles, settings
 from .domain import JobState
 from .ledger import balance, release, reserve
-from .media import inspect_media, validate_upload
+from .media import inspect_media, inspect_media_url, validate_upload
 from .models import (
     AuditEvent,
     Job,
@@ -151,15 +151,21 @@ def complete_presigned_asset(db: Session, user: User, asset_id: str) -> MediaAss
             remote = head(asset.object_key)
             if int(remote.get("ContentLength", -1)) != asset.size_bytes:
                 raise ValueError("Uploaded object size does not match the presigned request")
-        with tempfile.NamedTemporaryFile(suffix=Path(asset.original_filename).suffix, delete=False) as temp:
-            temp_path = Path(temp.name)
-        try:
-            store.download(asset.object_key, temp_path)
-            if not head and temp_path.stat().st_size != asset.size_bytes:
-                raise ValueError("Uploaded object size does not match the presigned request")
-            metadata = inspect_media(temp_path)
-        finally:
-            temp_path.unlink(missing_ok=True)
+        if settings.media_inspection_mode == "presigned-url" and getattr(store, "presigned_get", None):
+            # Lambda/API Gateway must not download a multi-gigabyte object into a
+            # short-lived request. FFprobe reads container metadata through S3
+            # range requests; the worker performs full-file validation later.
+            metadata = inspect_media_url(store.presigned_get(asset.object_key, expires=300))
+        else:
+            with tempfile.NamedTemporaryFile(suffix=Path(asset.original_filename).suffix, delete=False) as temp:
+                temp_path = Path(temp.name)
+            try:
+                store.download(asset.object_key, temp_path)
+                if not head and temp_path.stat().st_size != asset.size_bytes:
+                    raise ValueError("Uploaded object size does not match the presigned request")
+                metadata = inspect_media(temp_path)
+            finally:
+                temp_path.unlink(missing_ok=True)
     except (ValueError, RuntimeError, OSError) as exc:
         store.delete(asset.object_key)
         asset.status = "rejected"
@@ -260,6 +266,109 @@ def create_voice_profile(db: Session, user: User, name: str, declaration: str, a
     profile = VoiceProfile(user_id=user.id, name=name, reference_object_key=key, consent_id=consent.id)
     db.add(profile)
     db.add(AuditEvent(user_id=user.id, event_type="voice.consent.created", metadata_json=json.dumps({"consent_id": consent.id, "profile_name": name})))
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+def _validate_voice_upload(filename: str, content_type: str, size_bytes: int) -> None:
+    validate_upload(filename, content_type, size_bytes)
+    if not content_type.lower().startswith("audio/"):
+        raise ValueError("Reference voice must be an audio file")
+
+
+def _voice_profile_count(db: Session, user: User) -> int:
+    return db.scalar(select(func.count(VoiceProfile.id)).where(VoiceProfile.user_id == user.id, VoiceProfile.deleted_at.is_(None))) or 0
+
+
+def presign_voice_profile(
+    db: Session,
+    user: User,
+    *,
+    name: str,
+    declaration: str,
+    authorized: bool,
+    filename: str,
+    content_type: str,
+    size_bytes: int,
+) -> tuple[VoiceProfile, str]:
+    name = name.strip()
+    declaration = declaration.strip()
+    if not name or not declaration:
+        raise HTTPException(status_code=422, detail="Voice name and authorization declaration are required")
+    if not authorized:
+        raise HTTPException(status_code=422, detail="Explicit voice authorization is required")
+    if _voice_profile_count(db, user) >= plan(user.plan_key).max_voice_profiles:
+        raise HTTPException(status_code=403, detail="Voice profile limit reached")
+    try:
+        _validate_voice_upload(filename, content_type, size_bytes)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    store = object_store()
+    presigned_put = getattr(store, "presigned_put", None)
+    if not presigned_put:
+        raise HTTPException(status_code=409, detail="Direct browser uploads require S3 storage")
+
+    key = object_key(user.id, "voices", filename)
+    consent = VoiceConsent(user_id=user.id, declaration=declaration, authorized=True)
+    db.add(consent)
+    db.flush()
+    profile = VoiceProfile(user_id=user.id, name=name, reference_object_key=key, consent_id=consent.id, status="pending")
+    db.add(profile)
+    try:
+        url = presigned_put(key, content_type=content_type, size_bytes=size_bytes)
+        db.commit()
+        db.refresh(profile)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Storage could not create an upload URL") from exc
+    return profile, url
+
+
+def complete_presigned_voice_profile(db: Session, user: User, voice_id: str) -> VoiceProfile:
+    profile = db.scalar(select(VoiceProfile).where(VoiceProfile.id == voice_id, VoiceProfile.user_id == user.id, VoiceProfile.deleted_at.is_(None)))
+    if not profile:
+        raise HTTPException(status_code=404, detail="Voice profile not found")
+    if profile.status == "active":
+        return profile
+    if profile.status != "pending":
+        raise HTTPException(status_code=409, detail="Voice profile is no longer uploadable")
+
+    store = object_store()
+    try:
+        head = getattr(store, "head", None)
+        if head:
+            remote = head(profile.reference_object_key)
+            size_bytes = int(remote.get("ContentLength", -1))
+            if size_bytes <= 0:
+                raise ValueError("Uploaded voice reference is empty")
+        if settings.media_inspection_mode == "presigned-url" and getattr(store, "presigned_get", None):
+            metadata = inspect_media_url(store.presigned_get(profile.reference_object_key, expires=300))
+        else:
+            with tempfile.NamedTemporaryFile(suffix=Path(profile.reference_object_key).suffix, delete=False) as temp:
+                temp_path = Path(temp.name)
+            try:
+                store.download(profile.reference_object_key, temp_path)
+                metadata = inspect_media(temp_path)
+            finally:
+                temp_path.unlink(missing_ok=True)
+        duration = metadata.get("duration_seconds") or 0
+        if metadata.get("media_kind") != "audio" or duration < settings.min_voice_seconds or duration > settings.max_voice_seconds:
+            raise ValueError(f"Reference voice must be audio between {settings.min_voice_seconds} and {settings.max_voice_seconds} seconds")
+    except Exception as exc:
+        try:
+            store.delete(profile.reference_object_key)
+        finally:
+            consent = db.get(VoiceConsent, profile.consent_id)
+            db.delete(profile)
+            if consent:
+                db.delete(consent)
+            db.commit()
+        detail = str(exc) or "Voice reference could not be inspected"
+        raise HTTPException(status_code=422, detail=detail) from exc
+
+    profile.status = "active"
+    db.add(AuditEvent(user_id=user.id, event_type="voice.consent.created", metadata_json=json.dumps({"consent_id": profile.consent_id, "profile_name": profile.name})))
     db.commit()
     db.refresh(profile)
     return profile

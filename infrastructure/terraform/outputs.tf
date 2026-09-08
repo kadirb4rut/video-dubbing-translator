@@ -15,7 +15,7 @@ output "worker_cluster_name" {
 }
 
 output "worker_service_name" {
-  value = aws_ecs_service.worker.name
+  value = local.gpu_worker_autoscaling_enabled ? aws_ecs_service.worker[0].name : null
 }
 
 output "cpu_worker_service_name" {
@@ -35,7 +35,7 @@ output "worker_security_group_id" {
 }
 
 output "api_url" {
-  value = var.api_image != "" ? (var.api_certificate_arn != "" ? "https://${aws_lb.api[0].dns_name}" : "https://${aws_cloudfront_distribution.app[0].domain_name}") : null
+  value = local.api_enabled ? (local.serverless_api_enabled ? (var.frontend_enabled ? "https://${aws_cloudfront_distribution.app[0].domain_name}" : aws_apigatewayv2_api.serverless[0].api_endpoint) : (var.api_certificate_arn != "" ? "https://${aws_lb.api[0].dns_name}" : "https://${aws_cloudfront_distribution.app[0].domain_name}")) : null
 }
 
 output "frontend_url" {
@@ -48,6 +48,14 @@ output "api_cluster_name" {
 
 output "api_service_name" {
   value = var.api_image != "" ? aws_ecs_service.api[0].name : null
+}
+
+output "serverless_api_gateway_url" {
+  value = local.serverless_api_enabled ? aws_apigatewayv2_api.serverless[0].api_endpoint : null
+}
+
+output "aurora_cluster_arn" {
+  value = local.serverless_db_enabled ? aws_rds_cluster.aurora[0].arn : null
 }
 
 output "github_actions_ecr_role_arn" {

@@ -5,6 +5,46 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+
+def _load_ssm_parameters() -> None:
+    """Load optional runtime configuration from SSM without storing values in Terraform.
+
+    The mapping is intentionally names-only: Terraform supplies parameter ARNs/names and
+    the Lambda role supplies the values at cold start. Local and ECS deployments keep their
+    existing environment-variable behavior.
+    """
+    mapping_raw = os.getenv("SSM_PARAMETER_MAP", "")
+    if not mapping_raw or not os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+        return
+    try:
+        mapping = json.loads(mapping_raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("SSM_PARAMETER_MAP must be valid JSON") from exc
+    if not isinstance(mapping, dict) or not mapping:
+        return
+
+    import boto3
+
+    client = boto3.client("ssm", region_name=os.getenv("AWS_REGION", "eu-north-1"))
+    names = [str(value) for value in mapping.values()]
+    values: dict[str, str] = {}
+    # GetParameters accepts at most ten names per call. Keep the loader safe as
+    # the production configuration grows beyond the initial small mapping.
+    for offset in range(0, len(names), 10):
+        response = client.get_parameters(Names=names[offset : offset + 10], WithDecryption=True)
+        for item in response.get("Parameters", []):
+            values[item["Name"]] = item["Value"]
+            if item.get("ARN"):
+                values[item["ARN"]] = item["Value"]
+    missing = [name for name in names if name not in values]
+    if missing:
+        raise RuntimeError(f"SSM parameters were not found: {', '.join(missing)}")
+    for env_name, parameter_name in mapping.items():
+        os.environ.setdefault(str(env_name), values[str(parameter_name)])
+
+
+_load_ssm_parameters()
+
 _CONFIG_MODULE = Path(__file__).resolve()
 BASE_DIR = next(
     (parent for parent in _CONFIG_MODULE.parents if (parent / "config").is_dir()),
@@ -28,6 +68,8 @@ class Settings:
     sqs_queue_url: str | None = os.getenv("SQS_QUEUE_URL") or None
     sqs_endpoint_url: str | None = os.getenv("SQS_ENDPOINT_URL") or None
     sqs_visibility_timeout_seconds: int = int(os.getenv("SQS_VISIBILITY_TIMEOUT_SECONDS", "3600"))
+    db_pool_mode: str = os.getenv("DB_POOL_MODE", "auto")
+    media_inspection_mode: str = os.getenv("MEDIA_INSPECTION_MODE", "download")
     session_cookie_name: str = os.getenv("SESSION_COOKIE_NAME", "lingowave_session")
     session_ttl_days: int = int(os.getenv("SESSION_TTL_DAYS", "30"))
     cookie_secure: bool = _bool("COOKIE_SECURE", False)

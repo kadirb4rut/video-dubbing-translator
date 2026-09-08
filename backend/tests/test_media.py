@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from app.config import settings
-from app.media import inspect_media, validate_upload
+from app.media import inspect_media, inspect_media_url, validate_upload
 from app.providers_real import (
     AwsTranslateProvider,
     DeepFilterNetNoiseProvider,
@@ -26,6 +26,25 @@ def test_api_container_contract_includes_ffmpeg_for_upload_inspection():
     contents = dockerfile.read_text(encoding="utf-8")
     assert "apt-get install -y --no-install-recommends ffmpeg" in contents
     assert "rm -rf /var/lib/apt/lists/*" in contents
+
+
+def test_serverless_media_inspection_uses_signed_url_without_downloading(monkeypatch):
+    calls = []
+
+    class Result:
+        stdout = '{"streams":[{"codec_type":"audio","codec_name":"aac","sample_rate":"48000","channels":2}],"format":{"duration":"3.5"}}'
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return Result()
+
+    monkeypatch.setattr("app.media.subprocess.run", fake_run)
+    metadata = inspect_media_url("https://signed.example/object.mp4")
+
+    assert metadata["media_kind"] == "audio"
+    assert metadata["duration_seconds"] == 3.5
+    assert calls[0][0][-1] == "https://signed.example/object.mp4"
+    assert calls[0][1]["timeout"] == 25
 
 
 def test_cpu_worker_contract_includes_deepfilter_native_runtime():

@@ -45,4 +45,42 @@ export async function uploadMedia(file) {
   return apiFetch('/api/media/upload', { method: 'POST', body: form });
 }
 
+export async function uploadVoice(file, { name, declaration, authorized }) {
+  try {
+    const presigned = await apiFetch('/api/voices/presign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: file.name,
+        content_type: file.type || 'audio/wav',
+        size_bytes: file.size,
+        name,
+        declaration,
+        authorized,
+      }),
+    });
+    const upload = await fetch(presigned.upload_url, {
+      method: presigned.method || 'PUT',
+      headers: presigned.headers || {},
+      body: file,
+    });
+    if (!upload.ok) {
+      const error = new Error(`Direct voice upload failed (${upload.status})`);
+      error.status = upload.status;
+      throw error;
+    }
+    return apiFetch(`/api/voices/${presigned.voice.id}/complete`, { method: 'POST' });
+  } catch (error) {
+    // LocalObjectStore intentionally has no presigned URL. Keep local development
+    // usable while making S3 the normal browser path in production.
+    if (error.status !== 409) throw error;
+  }
+  const form = new FormData();
+  form.append('name', name);
+  form.append('declaration', declaration);
+  form.append('authorized', String(authorized));
+  form.append('upload', file);
+  return apiFetch('/api/voices', { method: 'POST', body: form });
+}
+
 export const apiUrl = API_URL;

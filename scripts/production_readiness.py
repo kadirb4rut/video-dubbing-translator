@@ -54,7 +54,15 @@ def _load_json(path: Path) -> tuple[object | None, str | None]:
 def collect_checks() -> list[dict[str, object]]:
     checks: list[dict[str, object]] = []
     database_url = os.getenv("DATABASE_URL", "")
-    _check(checks, "postgresql", database_url.startswith(("postgresql://", "postgresql+psycopg://")), "DATABASE_URL must use PostgreSQL")
+    aurora_data_api = database_url.startswith("postgresql+auroradataapi://")
+    postgres_ok = database_url.startswith(("postgresql://", "postgresql+psycopg://", "postgresql+auroradataapi://"))
+    _check(checks, "postgresql", postgres_ok, "DATABASE_URL must use PostgreSQL or the Aurora Data API dialect")
+    _check(
+        checks,
+        "aurora-data-api",
+        not aurora_data_api or (_present("AURORA_CLUSTER_ARN") and _present("AURORA_SECRET_ARN") and os.getenv("DB_POOL_MODE") == "null"),
+        "Aurora Data API deployments require cluster/secret ARNs and a null connection pool",
+    )
     _check(checks, "private-storage", os.getenv("STORAGE_BACKEND") == "s3" and _present("S3_BUCKET"), "S3 storage and bucket must be configured")
     _check(checks, "queue", _present("SQS_QUEUE_URL"), "SQS_QUEUE_URL must be configured")
     _check(checks, "secure-cookies", os.getenv("COOKIE_SECURE", "").lower() in {"1", "true", "yes", "on"}, "COOKIE_SECURE must be true")

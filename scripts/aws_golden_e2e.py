@@ -105,6 +105,15 @@ def download_to(client: ApiClient, endpoint: str, destination: Path) -> int:
     return len(response.body)
 
 
+def presigned_upload(client: ApiClient, path: str, file: Path, *, content_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+    request_payload = {"filename": file.name, "content_type": content_type, "size_bytes": file.stat().st_size, **payload}
+    presign = response_json(json_request(client, "POST", path, request_payload), expected={200})
+    upload = client.request("PUT", presign["upload_url"], body=file.read_bytes(), headers=presign.get("headers") or {})
+    if upload.status_code not in {200, 201, 204}:
+        raise E2EError(f"Presigned upload failed with HTTP {upload.status_code}: {upload.text[:300]}")
+    return presign
+
+
 def ffprobe(path: Path) -> dict[str, Any]:
     command = [
         "ffprobe",
@@ -155,26 +164,24 @@ def main() -> int:
     client = ApiClient(api_url)
     authenticate(client, args.email, args.password)
 
-    media_body, media_content_type = multipart_body({}, "upload", media.name, media.read_bytes(), "video/mp4")
-    media_response = client.request("POST", "/api/media/upload", body=media_body, headers={"Content-Type": media_content_type})
-    asset = response_json(media_response, expected={200})
+    media_upload = presigned_upload(client, "/api/media/presign", media, content_type="video/mp4", payload={})
+    asset = response_json(client.request("POST", f"/api/media/{media_upload['asset']['id']}/complete"), expected={200})
 
     media_download = response_json(client.request("GET", f"/api/media/{asset['id']}/download"), expected={200})
     input_download_bytes = download_to(client, media_download["url"], output_dir / f"input-verified-{asset['id']}{media.suffix.lower()}")
 
-    voice_body, voice_content_type = multipart_body(
-        {
+    voice_upload = presigned_upload(
+        client,
+        "/api/voices/presign",
+        voice,
+        content_type="audio/wav",
+        payload={
             "name": "AWS Golden E2E Reference",
             "declaration": "I own or am authorized to use this voice.",
-            "authorized": "true",
+            "authorized": True,
         },
-        "upload",
-        voice.name,
-        voice.read_bytes(),
-        "audio/wav",
     )
-    voice_response = client.request("POST", "/api/voices", body=voice_body, headers={"Content-Type": voice_content_type})
-    voice_profile = response_json(voice_response, expected={200})
+    voice_profile = response_json(client.request("POST", f"/api/voices/{voice_upload['voice']['id']}/complete"), expected={200})
 
     idempotency_key = f"aws-golden-e2e-{uuid.uuid4()}"
     job_payload = {

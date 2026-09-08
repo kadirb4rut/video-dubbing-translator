@@ -22,19 +22,37 @@ def validate_upload(filename: str, content_type: str | None, size_bytes: int) ->
         raise ValueError("Only audio and video uploads are supported")
 
 
-def ffprobe(path: Path) -> dict:
-    command = ["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", str(path)]
+def _ffprobe_input(source: str, *, timeout: int = 120) -> dict:
+    command = ["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", source]
     try:
-        result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=120)
+        result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=timeout)
     except (OSError, subprocess.SubprocessError) as exc:
         raise RuntimeError("FFprobe is required to inspect media") from exc
     return json.loads(result.stdout)
 
 
+def ffprobe(path: Path) -> dict:
+    return _ffprobe_input(str(path))
+
+
+def inspect_media_url(url: str) -> dict:
+    """Inspect a private S3 object through a short-lived signed URL.
+
+    This is used by the Lambda control plane so a multi-gigabyte upload does not
+    have to be downloaded into a 30-second API invocation. FFprobe can issue
+    HTTP range requests for container metadata; the worker still validates the
+    complete media file before processing it.
+    """
+    return _inspect_metadata(_ffprobe_input(url, timeout=25))
+
+
 def inspect_media(path: Path) -> dict:
     if not path.is_file():
         raise FileNotFoundError(path)
-    metadata = ffprobe(path)
+    return _inspect_metadata(ffprobe(path))
+
+
+def _inspect_metadata(metadata: dict) -> dict:
     streams = metadata.get("streams", [])
     video = next((s for s in streams if s.get("codec_type") == "video"), None)
     audio = next((s for s in streams if s.get("codec_type") == "audio"), None)

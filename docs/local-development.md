@@ -27,7 +27,7 @@ Dubbing fits each generated clip into the available segment window, pads shorter
 
 SQLite is a local fallback only. For PostgreSQL, set `DATABASE_URL` and run `cd backend && alembic upgrade head`. For the default root-level SQLite database, run `DATABASE_URL=sqlite:////absolute/path/to/My-SaaS/data/lingowave.db PYTHONPATH=. alembic upgrade head` from `backend/`. The migration is the source of truth; `create_tables()` exists only to make a fresh local SQLite checkout usable.
 
-The browser uses `/api/media/presign` plus a direct `PUT` when S3-compatible storage is configured, then calls `/complete` for FFprobe inspection. Local storage returns `409` from the presign endpoint and intentionally falls back to the multipart API upload.
+The browser uses `/api/media/presign` plus a direct `PUT` when S3-compatible storage is configured, then calls `/complete` for FFprobe inspection. Voice references use the same `/api/voices/presign` → direct `PUT` → `/complete` flow, so large uploads never pass through API Gateway. Local storage returns `409` from either presign endpoint and intentionally falls back to the multipart API upload.
 
 Browser acceptance coverage lives in `frontend/e2e/lingowave.spec.js` and uses Playwright against a running frontend and API. Run `cd frontend && npm run test:e2e`; set `E2E_FRONTEND_URL` when the frontend is not at `http://127.0.0.1:5173`. Media-provider workflows require an eligible worker and model cache and are intentionally not part of the fast unit-test job. The manual `.github/workflows/browser-e2e.yml` workflow runs the suite against an externally started/deployed stack and uploads Playwright traces and reports.
 

@@ -5,6 +5,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from app import main as main_module
+from app.db import SessionLocal, create_tables
 from app.main import app
 from app.models import Job, JobArtifact, User
 from app.worker import JobWorker
@@ -22,6 +24,25 @@ def fixture_video() -> Path:
     path = TEST_ROOT / "fixture.mp4"
     subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=0x24364b:s=320x240:r=24:d=3.5", "-f", "lavfi", "-i", "sine=frequency=440:duration=3.5", "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(path)], check=True)
     return path
+
+
+class FakePresignedVoiceStore:
+    def __init__(self):
+        self.objects = {}
+        self.last_key = None
+
+    def presigned_put(self, object_key, *, content_type, size_bytes):
+        self.last_key = object_key
+        return f"https://uploads.local/{object_key}"
+
+    def head(self, object_key):
+        return {"ContentLength": len(self.objects[object_key])}
+
+    def download(self, object_key, destination):
+        destination.write_bytes(self.objects[object_key])
+
+    def delete(self, object_key):
+        self.objects.pop(object_key, None)
 
 
 def test_signup_upload_estimate_and_idempotent_job():
@@ -60,6 +81,39 @@ def test_signup_upload_estimate_and_idempotent_job():
         assert failed.json()["error_code"] == "PROVIDER_FAILURE"
         credits = client.get("/api/credits")
         assert credits.json()["balance"] == 30
+
+
+def test_presigned_voice_upload_completes_after_s3_object_is_present(monkeypatch):
+    store = FakePresignedVoiceStore()
+    monkeypatch.setattr("app.services.object_store", lambda: store)
+    create_tables()
+    user = User(email="presigned-voice@example.com", password_hash="test-hash", display_name="Presigned")
+    with SessionLocal() as db:
+        db.add(user)
+        db.commit()
+    app.dependency_overrides[main_module.current_user] = lambda: user
+    try:
+        with TestClient(app) as client:
+            source = fixture_audio()
+            presign = client.post(
+                "/api/voices/presign",
+                json={
+                    "filename": "reference.wav",
+                    "content_type": "audio/wav",
+                    "size_bytes": source.stat().st_size,
+                    "name": "Presigned voice",
+                    "declaration": "I own or am authorized to use this voice.",
+                    "authorized": True,
+                },
+            )
+            assert presign.status_code == 200, presign.text
+            assert presign.json()["voice"]["status"] == "pending"
+            store.objects[store.last_key] = source.read_bytes()
+            complete = client.post(f"/api/voices/{presign.json()['voice']['id']}/complete")
+            assert complete.status_code == 200, complete.text
+            assert complete.json()["status"] == "active"
+    finally:
+        app.dependency_overrides.pop(main_module.current_user, None)
 
 
 def test_successful_transcription_worker_lifecycle(monkeypatch):

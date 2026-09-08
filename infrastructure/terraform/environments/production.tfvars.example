@@ -1,23 +1,40 @@
 aws_region = "eu-north-1"
 name       = "lingowave"
+deployment_mode = "serverless"
 
 # Fill these with immutable ECR image digests before apply.
 worker_image = ""
 api_image    = ""
+lambda_api_image = ""
+# Existing production migration phase only: set retain_legacy_api=true and
+# api_image to the current legacy digest, plus api_secrets, until Lambda is
+# validated. Set both retain flags to false only in the later cleanup phase.
+retain_legacy_api = true
 
 create_network       = true
 frontend_enabled     = true
-frontend_dist_dir    = "../frontend/dist"
+frontend_dist_dir    = "../../frontend/dist"
 frontend_origin      = "https://replace-with-the-frontend-origin"
 api_desired_count    = 1
 worker_desired_count = 0
+cost_alert_email     = "replace-with-cost-alert-email@example.com"
+monthly_cost_budget_usd = 5
 worker_instance_type = "g4dn.xlarge"
-# Use the CPU Fargate worker while GPU quota is pending. Queue alarms start it
-# on demand and return it to zero after visible and in-flight work drains.
-worker_compute_mode = "cpu"
+# Keep on-demand until Spot interruption recovery is accepted in the target region.
+gpu_market_type      = "on-demand"
+# Keep the fleet absent until an immutable worker image has been published.
+# Set worker_compute_mode="cpu" and cpu_worker_image to the published digest
+# for the first on-demand CPU acceptance run; set it back to disabled after.
+worker_compute_mode = "disabled"
 worker_max_count    = 10
+cpu_worker_max_count = 1 # Current account evidence shows a 4096-CPU Fargate task; raise only after quota verification.
 cpu_worker_image    = ""
-enable_rds           = true
+enable_rds           = false
+retain_legacy_rds   = true # Existing production migration phase only; set false after Aurora is verified.
+enable_aurora_serverless = true
+aurora_engine_version = "16.8"
+aurora_max_acu = 1
+aurora_auto_pause_seconds = 300
 translation_provider = "google-deep-translator"
 translation_refinement_provider = "hymt2"
 
@@ -26,7 +43,25 @@ mail_provider = "ses"
 mail_from     = "replace-with-a-verified-sender"
 ses_identity_arn = "replace-with-the-verified-ses-identity-arn"
 
-# Keep secret values out of tfvars. Supply these maps with real Secrets Manager
-# ARNs and pass the RDS password through TF_VAR_database_password at apply time.
+# Keep secret values out of tfvars. Serverless Lambda loads these names from
+# SSM Parameter Store Standard at cold start. The Aurora-managed DB credential
+# remains in Secrets Manager because the RDS Data API requires its secret ARN.
 worker_secrets = {}
 api_secrets    = {}
+ssm_parameter_map = {
+  GOOGLE_CLIENT_ID              = "/lingowave/production/google-client-id"
+  GOOGLE_CLIENT_SECRET          = "/lingowave/production/google-client-secret"
+  GOOGLE_REDIRECT_URI           = "/lingowave/production/google-redirect-uri"
+  STRIPE_SECRET_KEY             = "/lingowave/production/stripe-secret-key"
+  STRIPE_WEBHOOK_SECRET         = "/lingowave/production/stripe-webhook-secret"
+  STRIPE_SUCCESS_URL            = "/lingowave/production/stripe-success-url"
+  STRIPE_CANCEL_URL             = "/lingowave/production/stripe-cancel-url"
+  STRIPE_BILLING_PORTAL_RETURN_URL = "/lingowave/production/stripe-portal-return-url"
+  STRIPE_PRICE_CREATOR          = "/lingowave/production/stripe-price-creator"
+  STRIPE_PRICE_PRO              = "/lingowave/production/stripe-price-pro"
+  STRIPE_PRICE_STUDIO           = "/lingowave/production/stripe-price-studio"
+  STRIPE_PRICE_CREDITS_STARTER  = "/lingowave/production/stripe-price-credits-starter"
+  STRIPE_PRICE_CREDITS_GROWTH   = "/lingowave/production/stripe-price-credits-growth"
+  STRIPE_PRICE_CREDITS_SCALE    = "/lingowave/production/stripe-price-credits-scale"
+}
+ssm_parameter_arns = []

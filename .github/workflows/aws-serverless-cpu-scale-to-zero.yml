@@ -1,0 +1,199 @@
+name: AWS Serverless CPU Scale-to-Zero E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Published CPU worker image tag"
+        required: true
+        type: string
+      api_url:
+        description: "Deployed serverless API or CloudFront URL"
+        required: true
+        type: string
+      target_language:
+        description: "Target language for the real dubbing job"
+        required: true
+        type: string
+        default: "es"
+      timeout_seconds:
+        description: "Maximum API job wait time"
+        required: true
+        type: string
+        default: "3600"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: aws-serverless-cpu-scale-to-zero
+  cancel-in-progress: false
+
+jobs:
+  scale-to-zero-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      AWS_REGION: eu-north-1
+      ECS_CLUSTER: lingowave-workers
+      ECS_SERVICE: lingowave-cpu-worker
+      TASK_FAMILY: lingowave-cpu-worker
+      IMAGE_TAG: ${{ inputs.image_tag }}
+      LINGOWAVE_API_URL: ${{ inputs.api_url }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+          role-session-name: github-actions-serverless-cpu-e2e
+
+      - name: Install media tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Resolve immutable CPU image and require an idle worker baseline
+        id: image
+        run: |
+          set -euo pipefail
+          repository_uri="$(aws ecr describe-repositories --repository-names lingowave-worker --query 'repositories[0].repositoryUri' --output text)"
+          digest="$(aws ecr describe-images --repository-name lingowave-worker --image-ids imageTag="${IMAGE_TAG}-cpu" --query 'imageDetails[0].imageDigest' --output text)"
+          test -n "$digest" -a "$digest" != "None"
+          image_uri="${repository_uri}@${digest}"
+          echo "image_uri=$image_uri" >> "$GITHUB_OUTPUT"
+          aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --output json > "$RUNNER_TEMP/service-before.json"
+          previous_desired_count="$(jq -r '.services[0].desiredCount' "$RUNNER_TEMP/service-before.json")"
+          test "$previous_desired_count" = "0"
+          jq -r '.services[0].taskDefinition' "$RUNNER_TEMP/service-before.json" > "$RUNNER_TEMP/previous-task-definition"
+          printf '%s\n' "$previous_desired_count" > "$RUNNER_TEMP/previous-desired-count"
+          echo "Using immutable CPU image ${IMAGE_TAG}-cpu (${digest}); worker baseline is desired=0"
+
+      - name: Prepare real spoken media fixture
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/aws-serverless-cpu-e2e
+          curl --fail --location --retry 3 --max-time 60 \
+            --output artifacts/aws-serverless-cpu-e2e/source.flac \
+            https://raw.githubusercontent.com/openai/whisper/main/tests/jfk.flac
+          ffmpeg -hide_banner -loglevel error -y \
+            -i artifacts/aws-serverless-cpu-e2e/source.flac \
+            -ac 1 -ar 22050 -c:a pcm_s16le \
+            artifacts/aws-serverless-cpu-e2e/reference-voice.wav
+          ffmpeg -hide_banner -loglevel error -y \
+            -f lavfi -i color=c=black:s=640x360:r=25 \
+            -i artifacts/aws-serverless-cpu-e2e/reference-voice.wav \
+            -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart \
+            artifacts/aws-serverless-cpu-e2e/input.mp4
+          ffprobe -v error -show_entries format=duration,size,format_name \
+            -show_entries stream=codec_name,codec_type -of json \
+            artifacts/aws-serverless-cpu-e2e/input.mp4 \
+            > artifacts/aws-serverless-cpu-e2e/input-ffprobe.json
+
+      - name: Register the immutable worker task definition and hold service at zero
+        id: deploy
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.image_uri }}
+        run: |
+          set -euo pipefail
+          aws ecs describe-task-definition --task-definition "$TASK_FAMILY" \
+            --query taskDefinition --output json > "$RUNNER_TEMP/current-task-definition.json"
+          jq --arg image "$IMAGE_URI" '
+            if (any(.containerDefinitions[]; .name == "cpu-worker") | not) then
+              error("cpu-worker container is missing from the task definition")
+            else
+              del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
+              | .containerDefinitions |= map(if .name == "cpu-worker" then .image = $image else . end)
+            end
+          ' "$RUNNER_TEMP/current-task-definition.json" > "$RUNNER_TEMP/serverless-cpu-task-definition.json"
+          task_definition="$(aws ecs register-task-definition \
+            --cli-input-json file://$RUNNER_TEMP/serverless-cpu-task-definition.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)"
+          printf '%s\n' "$task_definition" > "$RUNNER_TEMP/test-task-definition"
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" \
+            --task-definition "$task_definition" --desired-count 0 --force-new-deployment \
+            --output json > artifacts/aws-serverless-cpu-e2e/service-held-at-zero.json
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+
+      - name: Run real serverless API to S3 to SQS path and observe scale-out
+        env:
+          TARGET_LANGUAGE: ${{ inputs.target_language }}
+          JOB_TIMEOUT_SECONDS: ${{ inputs.timeout_seconds }}
+        run: |
+          set +e
+          mkdir -p artifacts/aws-serverless-cpu-e2e
+          email="aws-serverless-cpu-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.com"
+          password="$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | head -c 24)"
+          echo "::add-mask::$password"
+          python3 scripts/aws_golden_e2e.py \
+            --api-url "$LINGOWAVE_API_URL" \
+            --media artifacts/aws-serverless-cpu-e2e/input.mp4 \
+            --voice artifacts/aws-serverless-cpu-e2e/reference-voice.wav \
+            --email "$email" \
+            --password "$password" \
+            --target-language "$TARGET_LANGUAGE" \
+            --timeout-seconds "$JOB_TIMEOUT_SECONDS" \
+            --poll-seconds 15 \
+            --output-dir artifacts/aws-serverless-cpu-e2e > artifacts/aws-serverless-cpu-e2e/e2e.log 2>&1 &
+          e2e_pid=$!
+          printf '%s\n' "$e2e_pid" > "$RUNNER_TEMP/e2e-pid"
+
+          scale_seen=false
+          for _ in $(seq 1 120); do
+            aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
+              --output json >> artifacts/aws-serverless-cpu-e2e/scale-observations.ndjson 2>&1
+            desired_count="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].desiredCount' --output text 2>/dev/null)"
+            running_count="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].runningCount' --output text 2>/dev/null)"
+            if [ "${desired_count:-0}" -gt 0 ] || [ "${running_count:-0}" -gt 0 ]; then
+              scale_seen=true
+              break
+            fi
+            if ! kill -0 "$e2e_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 15
+          done
+
+          wait "$e2e_pid"
+          e2e_rc=$?
+          if [ "$scale_seen" != "true" ]; then
+            echo "The queue-driven ECS service never scaled above zero" >&2
+            e2e_rc=1
+          fi
+          exit "$e2e_rc"
+
+      - name: Capture service and worker logs
+        if: always()
+        run: |
+          set +e
+          aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
+            --output json > artifacts/aws-serverless-cpu-e2e/service-before-restore.json
+          aws logs tail "/ecs/lingowave/worker" --since 180m --format short \
+            > artifacts/aws-serverless-cpu-e2e/worker-cloudwatch.log 2>&1
+
+      - name: Restore previous immutable worker task definition and zero baseline
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -f "$RUNNER_TEMP/previous-task-definition" ]; then
+            previous_task_definition="$(cat "$RUNNER_TEMP/previous-task-definition")"
+            previous_desired_count="$(cat "$RUNNER_TEMP/previous-desired-count")"
+            aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" \
+              --task-definition "$previous_task_definition" \
+              --desired-count "$previous_desired_count" --force-new-deployment \
+              --output json > artifacts/aws-serverless-cpu-e2e/service-restore.json
+            aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+            aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
+              --output json > artifacts/aws-serverless-cpu-e2e/service-after-restore.json
+          fi
+
+      - name: Upload E2E evidence and generated media
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aws-serverless-cpu-scale-to-zero-${{ github.run_id }}
+          path: artifacts/aws-serverless-cpu-e2e
+          if-no-files-found: warn

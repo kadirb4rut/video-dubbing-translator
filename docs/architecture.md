@@ -2,7 +2,7 @@
 
 ## Product boundary
 
-The existing `Video_Translator.py` and local `web_gui.py` remain available for local development and output comparison. The SaaS surface is a separate React application and an API boundary; GPU code does not run in the web process. `backend/app/main.py` owns auth, media inspection, jobs, credits, and consent records; `backend/app/worker.py` owns media execution.
+The existing `Video_Translator.py` and local `web_gui.py` remain available for local development and output comparison. The SaaS surface is a separate React application and an API boundary; GPU code does not run in the web process. In serverless mode, API Gateway invokes `backend/app/lambda_handler.py`; `backend/app/main.py` still owns auth, media inspection, jobs, credits, and consent records, while `backend/app/worker.py` owns media execution outside Lambda.
 
 ## Provider boundary
 
@@ -20,6 +20,10 @@ Credits are an auditable ledger, not a mutable balance supplied by the browser. 
 - Enforce upload MIME/size validation and safe subprocess argument arrays.
 - Keep database-backed rate limits, abuse reporting, public-figure review policy, and private signed downloads enabled before launch; automated identity verification is intentionally outside the current credential boundary.
 - Keep worker telemetry honest: output duration, model time, provider/model version, retry count, input/output bytes, and wall-clock time are recorded. Estimated and actual compute cost remain null until a measured GPU profile matches the worker; expiring worker leases provide the active-worker count without inferring it from queue depth.
+
+## Serverless database boundary
+
+Aurora Serverless v2 is accessed through the RDS Data API using the `aurora_data_api` SQLAlchemy dialect. The Lambda process uses `NullPool` so warm execution environments do not hold open PostgreSQL connections and prevent Aurora auto-pause. The Aurora-managed Secrets Manager credential is intentionally retained because the Data API requires a secret ARN; ordinary application secrets use SSM Parameter Store Standard and are loaded only at Lambda cold start. The migration Lambda runs Alembic on demand rather than during every API invocation.
 
 ## Verification boundary
 

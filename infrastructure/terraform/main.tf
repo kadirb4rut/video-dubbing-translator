@@ -115,8 +115,10 @@ resource "aws_ecs_cluster" "workers" {
   name = "${var.name}-workers"
 }
 locals {
-  gpu_worker_autoscaling_enabled = var.worker_compute_mode == "gpu"
-  cpu_worker_autoscaling_enabled = var.worker_compute_mode == "cpu" && var.cpu_worker_image != ""
+  gpu_worker_autoscaling_enabled    = var.worker_compute_mode == "gpu" && var.worker_image != ""
+  cpu_worker_autoscaling_enabled    = var.worker_compute_mode == "cpu" && var.cpu_worker_image != ""
+  worker_capacity_providers_enabled = local.gpu_worker_autoscaling_enabled || var.cpu_worker_image != ""
+  legacy_rds_enabled                = var.enable_rds || var.retain_legacy_rds
 }
 
 resource "terraform_data" "worker_runtime_configuration" {
@@ -134,6 +136,14 @@ resource "terraform_data" "worker_runtime_configuration" {
     precondition {
       condition     = var.worker_compute_mode != "cpu" || var.cpu_worker_image != ""
       error_message = "cpu_worker_image must be set when worker_compute_mode is cpu."
+    }
+    precondition {
+      condition     = var.worker_compute_mode != "disabled" || (var.worker_image == "" && var.cpu_worker_image == "")
+      error_message = "worker_compute_mode=disabled must not carry a GPU or CPU worker image; leave both fleets absent."
+    }
+    precondition {
+      condition     = var.worker_compute_mode != "gpu" || var.cpu_worker_image == ""
+      error_message = "worker_compute_mode=gpu must leave cpu_worker_image empty so only one worker fleet is active."
     }
   }
 }
@@ -161,6 +171,36 @@ moved {
 moved {
   from = aws_cloudwatch_metric_alarm.worker_queue_empty
   to   = aws_cloudwatch_metric_alarm.worker_queue_empty[0]
+}
+
+moved {
+  from = aws_launch_template.gpu_worker
+  to   = aws_launch_template.gpu_worker[0]
+}
+
+moved {
+  from = aws_autoscaling_group.gpu_worker
+  to   = aws_autoscaling_group.gpu_worker[0]
+}
+
+moved {
+  from = aws_ecs_capacity_provider.gpu
+  to   = aws_ecs_capacity_provider.gpu[0]
+}
+
+moved {
+  from = aws_ecs_cluster_capacity_providers.workers
+  to   = aws_ecs_cluster_capacity_providers.workers[0]
+}
+
+moved {
+  from = aws_ecs_task_definition.worker
+  to   = aws_ecs_task_definition.worker[0]
+}
+
+moved {
+  from = aws_ecs_service.worker
+  to   = aws_ecs_service.worker[0]
 }
 
 resource "aws_iam_role" "worker" {
@@ -244,11 +284,10 @@ data "aws_iam_policy_document" "github_actions_assume_role" {
       values   = ["sts.amazonaws.com"]
     }
     condition {
-      test     = "StringLike"
+      test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
-        "repo:${var.github_repository}:ref:refs/heads/*",
-        "repo:${var.github_repository}:pull_request",
+        "repo:${var.github_repository}:ref:refs/heads/${var.github_actions_branch}",
       ]
     }
   }
@@ -337,9 +376,16 @@ resource "aws_cloudwatch_log_group" "worker" {
 }
 
 resource "aws_launch_template" "gpu_worker" {
+  count         = local.gpu_worker_autoscaling_enabled ? 1 : 0
   name_prefix   = "${var.name}-gpu-"
   image_id      = data.aws_ami.ecs_gpu.id
   instance_type = var.worker_instance_type
+  dynamic "instance_market_options" {
+    for_each = var.gpu_market_type == "spot" ? [1] : []
+    content {
+      market_type = "spot"
+    }
+  }
   iam_instance_profile {
     name = aws_iam_instance_profile.worker.name
   }
@@ -354,13 +400,14 @@ resource "aws_launch_template" "gpu_worker" {
   )
 }
 resource "aws_autoscaling_group" "gpu_worker" {
+  count               = local.gpu_worker_autoscaling_enabled ? 1 : 0
   name                = "${var.name}-gpu-workers"
   min_size            = 0
   max_size            = 10
   desired_capacity    = 0
   vpc_zone_identifier = local.effective_worker_subnet_ids
   launch_template {
-    id      = aws_launch_template.gpu_worker.id
+    id      = aws_launch_template.gpu_worker[0].id
     version = "$Latest"
   }
   tag {
@@ -385,9 +432,10 @@ resource "aws_autoscaling_group" "gpu_worker" {
   }
 }
 resource "aws_ecs_capacity_provider" "gpu" {
-  name = "${var.name}-gpu"
+  count = local.gpu_worker_autoscaling_enabled ? 1 : 0
+  name  = "${var.name}-gpu"
   auto_scaling_group_provider {
-    auto_scaling_group_arn = aws_autoscaling_group.gpu_worker.arn
+    auto_scaling_group_arn = aws_autoscaling_group.gpu_worker[0].arn
     managed_scaling {
       status                    = "ENABLED"
       target_capacity           = 100
@@ -398,10 +446,12 @@ resource "aws_ecs_capacity_provider" "gpu" {
   }
 }
 resource "aws_ecs_cluster_capacity_providers" "workers" {
+  count              = local.worker_capacity_providers_enabled ? 1 : 0
   cluster_name       = aws_ecs_cluster.workers.name
-  capacity_providers = [aws_ecs_capacity_provider.gpu.name]
+  capacity_providers = concat(local.gpu_worker_autoscaling_enabled ? [aws_ecs_capacity_provider.gpu[0].name] : [], var.cpu_worker_image != "" ? ["FARGATE", "FARGATE_SPOT"] : [])
 }
 resource "aws_ecs_task_definition" "worker" {
+  count                    = local.gpu_worker_autoscaling_enabled ? 1 : 0
   family                   = "${var.name}-worker"
   requires_compatibilities = ["EC2"]
   # GPU workers run on ECS/EC2 hosts. Host networking lets the task use the
@@ -463,12 +513,13 @@ resource "aws_ecs_task_definition" "worker" {
   }
 }
 resource "aws_ecs_service" "worker" {
+  count           = local.gpu_worker_autoscaling_enabled ? 1 : 0
   name            = "${var.name}-worker"
   cluster         = aws_ecs_cluster.workers.id
-  task_definition = aws_ecs_task_definition.worker.arn
+  task_definition = aws_ecs_task_definition.worker[0].arn
   desired_count   = var.worker_desired_count
   capacity_provider_strategy {
-    capacity_provider = aws_ecs_capacity_provider.gpu.name
+    capacity_provider = aws_ecs_capacity_provider.gpu[0].name
     weight            = 1
   }
   depends_on = [aws_ecs_cluster_capacity_providers.workers]
@@ -534,13 +585,18 @@ resource "aws_ecs_service" "cpu_worker" {
   cluster         = aws_ecs_cluster.workers.id
   task_definition = aws_ecs_task_definition.cpu_worker[0].arn
   desired_count   = var.cpu_worker_desired_count
-  launch_type     = "FARGATE"
+  capacity_provider_strategy {
+    capacity_provider = "FARGATE_SPOT"
+    weight            = 1
+  }
 
   network_configuration {
     subnets          = local.effective_worker_subnet_ids
     security_groups  = [local.effective_worker_security_group_id]
     assign_public_ip = true
   }
+
+  depends_on = [aws_ecs_cluster_capacity_providers.workers]
 
   lifecycle {
     ignore_changes = [desired_count]
@@ -688,7 +744,7 @@ resource "aws_appautoscaling_target" "worker" {
   count              = local.gpu_worker_autoscaling_enabled ? 1 : 0
   max_capacity       = var.worker_max_count
   min_capacity       = 0
-  resource_id        = "service/${aws_ecs_cluster.workers.name}/${aws_ecs_service.worker.name}"
+  resource_id        = "service/${aws_ecs_cluster.workers.name}/${aws_ecs_service.worker[0].name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }
@@ -807,7 +863,7 @@ resource "aws_cloudwatch_metric_alarm" "worker_queue_empty" {
 
 resource "aws_appautoscaling_target" "cpu_worker" {
   count              = local.cpu_worker_autoscaling_enabled ? 1 : 0
-  max_capacity       = var.worker_max_count
+  max_capacity       = min(var.worker_max_count, var.cpu_worker_max_count)
   min_capacity       = 0
   resource_id        = "service/${aws_ecs_cluster.workers.name}/${aws_ecs_service.cpu_worker[0].name}"
   scalable_dimension = "ecs:service:DesiredCount"
@@ -929,7 +985,7 @@ resource "aws_cloudwatch_metric_alarm" "cpu_worker_queue_empty" {
 }
 
 resource "aws_db_subnet_group" "postgres" {
-  count      = var.enable_rds ? 1 : 0
+  count      = local.legacy_rds_enabled ? 1 : 0
   name       = "${var.name}-postgres"
   subnet_ids = local.effective_database_subnet_ids
   lifecycle {
@@ -940,7 +996,7 @@ resource "aws_db_subnet_group" "postgres" {
   }
 }
 resource "aws_db_instance" "postgres" {
-  count                     = var.enable_rds ? 1 : 0
+  count                     = local.legacy_rds_enabled ? 1 : 0
   identifier                = var.name
   engine                    = "postgres"
   engine_version            = "16"
@@ -952,6 +1008,7 @@ resource "aws_db_instance" "postgres" {
   db_subnet_group_name      = aws_db_subnet_group.postgres[0].name
   vpc_security_group_ids    = [local.effective_database_security_group_id]
   storage_encrypted         = true
+  backup_retention_period   = var.legacy_rds_backup_retention_days
   skip_final_snapshot       = false
   final_snapshot_identifier = "${var.name}-final"
   lifecycle {
@@ -961,6 +1018,10 @@ resource "aws_db_instance" "postgres" {
     precondition {
       condition     = local.effective_database_security_group_id != ""
       error_message = "Provide database_security_group_id when RDS is enabled and create_network is false."
+    }
+    precondition {
+      condition     = var.retain_legacy_rds || (var.database_password != null && var.database_password != "")
+      error_message = "database_password is required when creating a new legacy RDS instance; retain_legacy_rds may omit it only for an existing migration source."
     }
   }
 }

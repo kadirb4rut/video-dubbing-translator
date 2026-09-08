@@ -6,10 +6,28 @@ variable "name" {
   type    = string
   default = "lingowave"
 }
+variable "deployment_mode" {
+  description = "Use legacy ECS/RDS resources for rollback or the serverless control plane with Aurora Serverless v2."
+  type        = string
+  default     = "legacy"
+  validation {
+    condition     = contains(["legacy", "serverless"], var.deployment_mode)
+    error_message = "deployment_mode must be legacy or serverless."
+  }
+}
 variable "github_repository" {
   description = "GitHub owner/repository allowed to assume the image-publish role through OIDC."
   type        = string
   default     = "kadirb4rut/video-dubbing-translator"
+}
+variable "github_actions_branch" {
+  description = "Single production branch allowed to assume the image-publish OIDC role. Pull requests and other branches are intentionally excluded."
+  type        = string
+  default     = "codex/production-saas"
+  validation {
+    condition     = length(trimspace(var.github_actions_branch)) > 0 && !strcontains(var.github_actions_branch, "refs/")
+    error_message = "github_actions_branch must be a non-empty branch name without a refs/ prefix."
+  }
 }
 variable "github_actions_ecs_deploy" {
   description = "Grant the GitHub OIDC role least-privilege ECS permissions for the manual CPU acceptance workflow. Keep false unless that workflow is explicitly being run."
@@ -40,6 +58,16 @@ variable "worker_security_group_id" {
 variable "worker_image" { type = string }
 variable "api_image" {
   description = "Container image for the FastAPI service. Leave empty to provision worker/storage infrastructure only."
+  type        = string
+  default     = ""
+}
+variable "retain_legacy_api" {
+  description = "Migration guard: keep the existing ECS API and ALB while API Gateway/Lambda is validated. Requires api_image and legacy api_secrets during the migration window."
+  type        = bool
+  default     = false
+}
+variable "lambda_api_image" {
+  description = "Immutable Lambda-compatible API image URI/digest used when deployment_mode is serverless."
   type        = string
   default     = ""
 }
@@ -117,6 +145,16 @@ variable "api_secrets" {
   description = "Map of ECS API environment variable names to Secrets Manager secret or secret-version ARNs. ECS JSON-key selectors are supported (for example, SECRET_ARN:JSON_KEY::). DATABASE_URL is required when api_image is set; Google OAuth uses GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI when enabled."
   type        = map(string)
   default     = {}
+}
+variable "ssm_parameter_map" {
+  description = "Map of application environment variable names to SSM Parameter Store Standard parameter names. Values are loaded by Lambda at cold start."
+  type        = map(string)
+  default     = {}
+}
+variable "ssm_parameter_arns" {
+  description = "SSM parameter ARNs allowed for the serverless Lambda role. Keep this list explicit for least privilege."
+  type        = list(string)
+  default     = []
 }
 variable "mail_provider" {
   description = "API mail transport. Use ses with a verified sender and task-role permission, smtp for an external relay, or dev only for local SQLite."
@@ -201,6 +239,15 @@ variable "worker_instance_type" {
   type    = string
   default = "g4dn.xlarge"
 }
+variable "gpu_market_type" {
+  description = "GPU EC2 market for the optional ECS GPU fleet. Keep on-demand until Spot interruption recovery has been accepted in the target region."
+  type        = string
+  default     = "on-demand"
+  validation {
+    condition     = contains(["on-demand", "spot"], var.gpu_market_type)
+    error_message = "gpu_market_type must be on-demand or spot."
+  }
+}
 variable "worker_hourly_price_usd" {
   description = "On-demand hourly price used for approximate worker cost telemetry. Keep aligned with the selected instance type and region."
   type        = number
@@ -230,6 +277,15 @@ variable "worker_max_count" {
   validation {
     condition     = var.worker_max_count >= 1 && var.worker_max_count <= 100
     error_message = "worker_max_count must be between 1 and 100."
+  }
+}
+variable "cpu_worker_max_count" {
+  description = "Maximum number of concurrent Fargate Spot CPU workers. Keep this at or below the verified regional vCPU quota; one 4096-CPU task is the safe default for the current account."
+  type        = number
+  default     = 1
+  validation {
+    condition     = var.cpu_worker_max_count >= 1 && var.cpu_worker_max_count <= 100
+    error_message = "cpu_worker_max_count must be between 1 and 100."
   }
 }
 variable "worker_scale_out_cooldown_seconds" {
@@ -296,6 +352,53 @@ variable "enable_rds" {
   type    = bool
   default = false
 }
+variable "retain_legacy_rds" {
+  description = "Migration guard: keep the existing provisioned PostgreSQL instance while Aurora Serverless v2 is validated. Set true only for an existing RDS-backed state, then set false in a later cleanup apply."
+  type        = bool
+  default     = false
+}
+variable "enable_aurora_serverless" {
+  description = "Provision Aurora Serverless v2 with 0 ACU auto-pause for the serverless deployment mode."
+  type        = bool
+  default     = false
+}
+variable "aurora_engine_version" {
+  description = "Aurora PostgreSQL engine version verified for the selected region before apply."
+  type        = string
+  default     = "16.8"
+}
+variable "aurora_max_acu" {
+  description = "Maximum Aurora Serverless v2 capacity for the control-plane database."
+  type        = number
+  default     = 1
+  validation {
+    condition     = var.aurora_max_acu >= 0.5
+    error_message = "aurora_max_acu must be at least 0.5 ACU."
+  }
+}
+variable "aurora_auto_pause_seconds" {
+  description = "Idle seconds before Aurora Serverless v2 attempts to pause; AWS minimum is five minutes."
+  type        = number
+  default     = 300
+  validation {
+    condition     = var.aurora_auto_pause_seconds >= 300 && var.aurora_auto_pause_seconds <= 86400
+    error_message = "aurora_auto_pause_seconds must be between 300 and 86400 seconds."
+  }
+}
+variable "cost_alert_email" {
+  description = "Optional email for AWS Budget and Cost Anomaly Detection notifications. Leave empty to avoid creating email subscriptions."
+  type        = string
+  default     = ""
+}
+variable "monthly_cost_budget_usd" {
+  description = "Monthly AWS budget for baseline spend alerts. Actual user-driven compute is still metered separately."
+  type        = number
+  default     = 5
+  validation {
+    condition     = var.monthly_cost_budget_usd > 0
+    error_message = "monthly_cost_budget_usd must be positive."
+  }
+}
 variable "database_subnet_ids" {
   type    = list(string)
   default = []
@@ -315,4 +418,14 @@ variable "database_username" {
 variable "database_password" {
   type      = string
   sensitive = true
+  default   = null
+}
+variable "legacy_rds_backup_retention_days" {
+  description = "Automated backup retention for the legacy PostgreSQL source during rollback or migration."
+  type        = number
+  default     = 7
+  validation {
+    condition     = var.legacy_rds_backup_retention_days >= 0 && var.legacy_rds_backup_retention_days <= 35
+    error_message = "legacy_rds_backup_retention_days must be between 0 and 35 days."
+  }
 }

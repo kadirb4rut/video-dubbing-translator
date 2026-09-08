@@ -73,6 +73,17 @@ jobs:
           sbom: false
           tags: ${{ steps.ecr.outputs.api_repository_uri }}:${{ steps.ecr.outputs.image_tag }}
 
+      - name: Build and push Lambda API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile.lambda
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ steps.ecr.outputs.api_repository_uri }}:lambda-${{ steps.ecr.outputs.image_tag }}
+
       - name: Build and push GPU worker image
         uses: docker/build-push-action@v6
         with:
@@ -106,6 +117,7 @@ jobs:
         run: |
           aws ecr describe-images --repository-name lingowave-worker --image-ids imageTag="$IMAGE_TAG"
           aws ecr describe-images --repository-name lingowave-worker --image-ids imageTag="${IMAGE_TAG}-cpu"
+          aws ecr describe-images --repository-name lingowave-api --image-ids imageTag="lambda-${IMAGE_TAG}"
 
   cpu-golden-e2e:
     if: ${{ inputs.run_cpu_e2e == true }}

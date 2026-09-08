@@ -82,6 +82,15 @@ class MediaPresignRequest(BaseModel):
     size_bytes: int = Field(gt=0)
 
 
+class VoicePresignRequest(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    content_type: str = Field(min_length=3, max_length=120)
+    size_bytes: int = Field(gt=0)
+    name: str = Field(min_length=1, max_length=120)
+    declaration: str = Field(min_length=1, max_length=4000)
+    authorized: bool
+
+
 class ArtifactTextUpdateRequest(BaseModel):
     text: str = Field(max_length=2_000_000)
 
