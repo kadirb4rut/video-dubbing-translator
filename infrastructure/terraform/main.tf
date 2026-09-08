@@ -115,10 +115,20 @@ resource "aws_ecs_cluster" "workers" {
   name = "${var.name}-workers"
 }
 locals {
-  gpu_worker_autoscaling_enabled    = var.worker_compute_mode == "gpu" && var.worker_image != ""
+  # Keep the GPU task/ASG/service graph present while CPU is the active fleet.
+  # This preserves a zero-capacity rollback path without allowing both fleets
+  # to consume the shared queue at the same time.
+  gpu_worker_architecture_enabled   = var.worker_image != ""
+  gpu_worker_autoscaling_enabled    = var.worker_compute_mode == "gpu" && local.gpu_worker_architecture_enabled
   cpu_worker_autoscaling_enabled    = var.worker_compute_mode == "cpu" && var.cpu_worker_image != ""
-  worker_capacity_providers_enabled = local.gpu_worker_autoscaling_enabled || var.cpu_worker_image != ""
+  worker_capacity_providers_enabled = local.gpu_worker_architecture_enabled || var.cpu_worker_image != ""
   legacy_rds_enabled                = var.enable_rds || var.retain_legacy_rds
+  worker_database_environment = local.serverless_db_enabled ? [
+    { name = "DATABASE_URL", value = "postgresql+auroradataapi://:@/${var.database_name}" },
+    { name = "AURORA_CLUSTER_ARN", value = local.aurora_cluster_arn },
+    { name = "AURORA_SECRET_ARN", value = local.aurora_secret_arn },
+    { name = "DB_POOL_MODE", value = "null" },
+  ] : []
 }
 
 resource "terraform_data" "worker_runtime_configuration" {
@@ -246,7 +256,10 @@ resource "aws_iam_role_policy" "ecs_task_worker" {
   policy = jsonencode({ Version = "2012-10-17", Statement = concat([
     { Effect = "Allow", Action = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes", "sqs:ChangeMessageVisibility", "sqs:SendMessage"], Resource = aws_sqs_queue.jobs.arn },
     { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:PutObjectTagging", "s3:DeleteObject"], Resource = "${aws_s3_bucket.media.arn}/*" }
-  ], var.translation_provider == "aws-translate" ? [{ Effect = "Allow", Action = ["translate:TranslateText"], Resource = "*" }] : []) })
+    ], local.serverless_db_enabled ? [
+    { Effect = "Allow", Action = ["rds-data:BatchExecuteStatement", "rds-data:BeginTransaction", "rds-data:CommitTransaction", "rds-data:ExecuteStatement", "rds-data:RollbackTransaction"], Resource = local.aurora_cluster_arn },
+    { Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = local.aurora_secret_arn },
+  ] : [], var.translation_provider == "aws-translate" ? [{ Effect = "Allow", Action = ["translate:TranslateText"], Resource = "*" }] : []) })
 }
 
 resource "aws_iam_role" "ecs_task_api" {
@@ -376,7 +389,7 @@ resource "aws_cloudwatch_log_group" "worker" {
 }
 
 resource "aws_launch_template" "gpu_worker" {
-  count         = local.gpu_worker_autoscaling_enabled ? 1 : 0
+  count         = local.gpu_worker_architecture_enabled ? 1 : 0
   name_prefix   = "${var.name}-gpu-"
   image_id      = data.aws_ami.ecs_gpu.id
   instance_type = var.worker_instance_type
@@ -400,7 +413,7 @@ resource "aws_launch_template" "gpu_worker" {
   )
 }
 resource "aws_autoscaling_group" "gpu_worker" {
-  count               = local.gpu_worker_autoscaling_enabled ? 1 : 0
+  count               = local.gpu_worker_architecture_enabled ? 1 : 0
   name                = "${var.name}-gpu-workers"
   min_size            = 0
   max_size            = 10
@@ -432,7 +445,7 @@ resource "aws_autoscaling_group" "gpu_worker" {
   }
 }
 resource "aws_ecs_capacity_provider" "gpu" {
-  count = local.gpu_worker_autoscaling_enabled ? 1 : 0
+  count = local.gpu_worker_architecture_enabled ? 1 : 0
   name  = "${var.name}-gpu"
   auto_scaling_group_provider {
     auto_scaling_group_arn = aws_autoscaling_group.gpu_worker[0].arn
@@ -448,10 +461,10 @@ resource "aws_ecs_capacity_provider" "gpu" {
 resource "aws_ecs_cluster_capacity_providers" "workers" {
   count              = local.worker_capacity_providers_enabled ? 1 : 0
   cluster_name       = aws_ecs_cluster.workers.name
-  capacity_providers = concat(local.gpu_worker_autoscaling_enabled ? [aws_ecs_capacity_provider.gpu[0].name] : [], var.cpu_worker_image != "" ? ["FARGATE", "FARGATE_SPOT"] : [])
+  capacity_providers = concat(local.gpu_worker_architecture_enabled ? [aws_ecs_capacity_provider.gpu[0].name] : [], var.cpu_worker_image != "" ? ["FARGATE", "FARGATE_SPOT"] : [])
 }
 resource "aws_ecs_task_definition" "worker" {
-  count                    = local.gpu_worker_autoscaling_enabled ? 1 : 0
+  count                    = local.gpu_worker_architecture_enabled ? 1 : 0
   family                   = "${var.name}-worker"
   requires_compatibilities = ["EC2"]
   # GPU workers run on ECS/EC2 hosts. Host networking lets the task use the
@@ -472,7 +485,7 @@ resource "aws_ecs_task_definition" "worker" {
       type  = "GPU"
       value = "1"
     }]
-    environment = [
+    environment = concat([
       { name = "SQS_QUEUE_URL", value = aws_sqs_queue.jobs.url },
       { name = "SQS_VISIBILITY_TIMEOUT_SECONDS", value = tostring(var.sqs_visibility_timeout_seconds) },
       { name = "S3_BUCKET", value = aws_s3_bucket.media.bucket },
@@ -485,14 +498,15 @@ resource "aws_ecs_task_definition" "worker" {
       { name = "TRANSLATION_MODEL_REVISION", value = var.translation_model_revision },
       { name = "VOXCPM_MODEL", value = var.voxcpm_model },
       { name = "VOXCPM_MODEL_REVISION", value = var.voxcpm_model_revision },
+      { name = "VOXCPM_ALLOW_DOWNLOAD", value = tostring(var.voxcpm_allow_download) },
       { name = "VOXCPM_DEVICE", value = "cuda" },
       { name = "VOXCPM_DTYPE", value = var.voxcpm_gpu_dtype },
       { name = "WORKER_TYPE", value = "aws-gpu" },
       { name = "GPU_TYPE", value = var.worker_instance_type },
       { name = "GPU_HOURLY_PRICE_USD", value = tostring(var.worker_hourly_price_usd) },
       { name = "XDG_CACHE_HOME", value = "/home/lingowave/.cache" },
-    ]
-    secrets = [for name, value_from in var.worker_secrets : { name = name, valueFrom = value_from }]
+    ], local.worker_database_environment)
+    secrets = [for name, value_from in var.worker_secrets : { name = name, valueFrom = value_from } if !local.serverless_db_enabled || name != "DATABASE_URL"]
     mountPoints = [{
       sourceVolume  = "model-cache"
       containerPath = "/home/lingowave/.cache"
@@ -513,11 +527,11 @@ resource "aws_ecs_task_definition" "worker" {
   }
 }
 resource "aws_ecs_service" "worker" {
-  count           = local.gpu_worker_autoscaling_enabled ? 1 : 0
+  count           = local.gpu_worker_architecture_enabled ? 1 : 0
   name            = "${var.name}-worker"
   cluster         = aws_ecs_cluster.workers.id
   task_definition = aws_ecs_task_definition.worker[0].arn
-  desired_count   = var.worker_desired_count
+  desired_count   = var.worker_compute_mode == "gpu" ? var.worker_desired_count : 0
   capacity_provider_strategy {
     capacity_provider = aws_ecs_capacity_provider.gpu[0].name
     weight            = 1
@@ -543,7 +557,7 @@ resource "aws_ecs_task_definition" "cpu_worker" {
     image     = var.cpu_worker_image
     essential = true
     command   = ["sh", "-c", "mkdir -p /tmp/lingowave-home /tmp/lingowave-cache && exec python -m app.worker"]
-    environment = [
+    environment = concat([
       { name = "SQS_QUEUE_URL", value = aws_sqs_queue.jobs.url },
       { name = "SQS_VISIBILITY_TIMEOUT_SECONDS", value = tostring(var.sqs_visibility_timeout_seconds) },
       { name = "S3_BUCKET", value = aws_s3_bucket.media.bucket },
@@ -556,6 +570,7 @@ resource "aws_ecs_task_definition" "cpu_worker" {
       { name = "TRANSLATION_MODEL_REVISION", value = var.translation_model_revision },
       { name = "VOXCPM_MODEL", value = var.voxcpm_model },
       { name = "VOXCPM_MODEL_REVISION", value = var.voxcpm_model_revision },
+      { name = "VOXCPM_ALLOW_DOWNLOAD", value = tostring(var.voxcpm_allow_download) },
       { name = "WORKER_TYPE", value = "aws-cpu" },
       { name = "CPU_TYPE", value = "fargate-${var.cpu_worker_cpu}-${var.cpu_worker_memory}" },
       { name = "COMPUTE_HOURLY_PRICE_USD", value = tostring(var.cpu_worker_hourly_price_usd) },
@@ -566,8 +581,8 @@ resource "aws_ecs_task_definition" "cpu_worker" {
       { name = "XDG_CACHE_HOME", value = "/tmp/lingowave-cache" },
       { name = "TORCH_HOME", value = "/tmp/lingowave-cache/torch" },
       { name = "HF_HOME", value = "/tmp/lingowave-cache/huggingface" },
-    ]
-    secrets = [for name, value_from in var.worker_secrets : { name = name, valueFrom = value_from }]
+    ], local.worker_database_environment)
+    secrets = [for name, value_from in var.worker_secrets : { name = name, valueFrom = value_from } if !local.serverless_db_enabled || name != "DATABASE_URL"]
     logConfiguration = {
       logDriver = "awslogs"
       options = {

@@ -2,7 +2,7 @@
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy import inspect
+from app.migration_compat import table_columns
 
 revision = "0011_usage_language_models"
 down_revision = "0010_media_pipeline_telemetry"
@@ -11,7 +11,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    columns = {column["name"] for column in inspect(op.get_bind()).get_columns("usage_records")}
+    columns = set(table_columns(op.get_bind(), "usage_records"))
     additions = {
         "source_language": sa.String(length=16),
         "target_language": sa.String(length=16),

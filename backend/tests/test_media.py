@@ -70,7 +70,7 @@ def test_gpu_worker_contract_scales_to_zero_and_reuses_live_host_model_cache():
     contents = terraform.read_text(encoding="utf-8")
     assert "min_size            = 0" in contents
     assert "desired_capacity    = 0" in contents
-    assert 'desired_count   = var.worker_desired_count' in contents
+    assert 'desired_count   = var.worker_compute_mode == "gpu" ? var.worker_desired_count : 0' in contents
     assert "sourceVolume" in contents and '"model-cache"' in contents
     assert 'host_path = "/var/lib/lingowave/model-cache"' in contents
     assert 'XDG_CACHE_HOME", value = "/home/lingowave/.cache"' in contents

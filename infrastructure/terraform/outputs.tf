@@ -15,7 +15,7 @@ output "worker_cluster_name" {
 }
 
 output "worker_service_name" {
-  value = local.gpu_worker_autoscaling_enabled ? aws_ecs_service.worker[0].name : null
+  value = local.gpu_worker_architecture_enabled ? aws_ecs_service.worker[0].name : null
 }
 
 output "cpu_worker_service_name" {
@@ -55,7 +55,7 @@ output "serverless_api_gateway_url" {
 }
 
 output "aurora_cluster_arn" {
-  value = local.serverless_db_enabled ? aws_rds_cluster.aurora[0].arn : null
+  value = local.serverless_db_enabled ? local.aurora_cluster_arn : null
 }
 
 output "github_actions_ecr_role_arn" {

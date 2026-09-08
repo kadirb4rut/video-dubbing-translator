@@ -1,8 +1,8 @@
 """Track bounded job retries."""
 
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy import inspect
+from alembic import op
+from app.migration_compat import table_columns
 
 revision = "0003_job_retries"
 down_revision = "0002_artifacts_safety_metrics"
@@ -11,7 +11,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    if "retry_count" not in {column["name"] for column in inspect(op.get_bind()).get_columns("jobs")}:
+    if "retry_count" not in table_columns(op.get_bind(), "jobs"):
         with op.batch_alter_table("jobs") as batch:
             batch.add_column(sa.Column("retry_count", sa.Integer(), nullable=False, server_default="0"))
 

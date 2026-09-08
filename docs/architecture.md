@@ -23,7 +23,7 @@ Credits are an auditable ledger, not a mutable balance supplied by the browser. 
 
 ## Serverless database boundary
 
-Aurora Serverless v2 is accessed through the RDS Data API using the `aurora_data_api` SQLAlchemy dialect. The Lambda process uses `NullPool` so warm execution environments do not hold open PostgreSQL connections and prevent Aurora auto-pause. The Aurora-managed Secrets Manager credential is intentionally retained because the Data API requires a secret ARN; ordinary application secrets use SSM Parameter Store Standard and are loaded only at Lambda cold start. The migration Lambda runs Alembic on demand rather than during every API invocation.
+Aurora Serverless v2 is accessed through the RDS Data API using the `aurora_data_api` SQLAlchemy dialect. The Lambda process uses `NullPool` so warm execution environments do not hold open PostgreSQL connections and prevent Aurora auto-pause. The Aurora application credential is intentionally retained in Secrets Manager because the Data API requires a secret ARN; ordinary application secrets use SSM Parameter Store Standard and are loaded only at Lambda cold start. The migration Lambda runs Alembic on demand rather than during every API invocation. Idempotent migrations use information-schema helpers in `backend/app/migration_compat.py` because the Data API rejects PostgreSQL internal `CHAR` catalog result types that the standard SQLAlchemy inspector selects.
 
 ## Verification boundary
 

@@ -126,7 +126,20 @@ def main() -> int:
     }
 
     function = _find_lambda(clients["lambda"], args.name)
-    _check(results, "lambda_api", bool(function and function.get("PackageType") == "Image" and function.get("State") == "Active"), function or "missing")
+    function_config = None
+    if function:
+        try:
+            function_config = clients["lambda"].get_function_configuration(FunctionName=f"{args.name}-api")
+        except clients["lambda"].exceptions.ResourceNotFoundException:
+            function_config = None
+    lambda_ok = bool(
+        function
+        and function.get("PackageType") == "Image"
+        and function_config
+        and function_config.get("State") == "Active"
+        and function_config.get("LastUpdateStatus") == "Successful"
+    )
+    _check(results, "lambda_api", lambda_ok, function_config or function or "missing")
 
     api_gateway = _find_api_gateway(clients["apigatewayv2"], args.name)
     _check(results, "api_gateway_http", bool(api_gateway and api_gateway.get("ProtocolType") == "HTTP"), api_gateway or "missing")

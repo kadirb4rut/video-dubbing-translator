@@ -1,9 +1,8 @@
 """Create the LingoWave application schema."""
 
 from alembic import op
-
-from app.db import Base
 from app import models  # noqa: F401
+from app.db import Base
 
 revision = "0001_initial"
 down_revision = None

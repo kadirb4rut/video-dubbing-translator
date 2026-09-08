@@ -1,9 +1,7 @@
 """Persist API rate-limit windows across API replicas."""
 
 from alembic import op
-
-from app import models  # noqa: F401
-
+from app import models
 
 revision = "0007_rate_limit_buckets"
 down_revision = "0006_worker_leases"

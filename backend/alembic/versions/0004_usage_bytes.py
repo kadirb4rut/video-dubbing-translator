@@ -1,8 +1,8 @@
 """Record input and output bytes for usage accounting."""
 
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy import inspect
+from alembic import op
+from app.migration_compat import table_columns
 
 revision = "0004_usage_bytes"
 down_revision = "0003_job_retries"
@@ -11,7 +11,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    columns = {column["name"] for column in inspect(op.get_bind()).get_columns("usage_records")}
+    columns = set(table_columns(op.get_bind(), "usage_records"))
     with op.batch_alter_table("usage_records") as batch:
         if "input_bytes" not in columns:
             batch.add_column(sa.Column("input_bytes", sa.Integer(), nullable=True))

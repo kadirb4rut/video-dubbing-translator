@@ -1,9 +1,8 @@
 """Add per-job media pipeline telemetry fields."""
 
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy import inspect
-
+from alembic import op
+from app.migration_compat import table_columns
 
 revision = "0010_media_pipeline_telemetry"
 down_revision = "0009_billing_refunds"
@@ -12,7 +11,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    columns = {column["name"] for column in inspect(op.get_bind()).get_columns("usage_records")}
+    columns = set(table_columns(op.get_bind(), "usage_records"))
     additions = {
         "queue_wait_seconds": sa.Float(),
         "compute_startup_seconds": sa.Float(),

@@ -17,7 +17,8 @@ The live account still matches the legacy shape at this snapshot:
 - GPU Auto Scaling Group: desired `0`, min `0`, max `10`.
 - Application Load Balancer: active.
 - Provisioned PostgreSQL: `db.t4g.micro`, available.
-- Aurora Serverless v2 and API Gateway: not yet present.
+- Aurora Express/Serverless v2 Data API and API Gateway: live after Phase A;
+  CloudFront now routes API traffic to API Gateway.
 - NAT gateways and VPC endpoints: none found.
 
 The live CPU worker task definition is `4096 CPU / 16384 MiB`, and recent ECS
@@ -29,12 +30,12 @@ and avoidable failed placements.
 
 ECR inventory is materially larger than the cost CSV alone reveals: 68 API
 image manifests and 84 worker manifests, approximately 269 GiB of logical
-image sizes. A live read-only check on 2026-09-08 found no ECR lifecycle policy
-on either repository. The checked-in Terraform policy keeps explicitly tagged
-`release-*` images out of the catch-all cleanup rule, keeps only the newest five
-other manifests per repository, and expires untagged leftovers after one day;
-it must be previewed, applied, and then rechecked in ECR before treating the
-`$5` idle-baseline target as credible.
+image sizes. Phase A now has lifecycle policies live on both repositories. The
+Terraform policy keeps explicitly tagged `release-*` images out of the
+catch-all cleanup rule, keeps only the newest five other manifests per
+repository, and expires untagged leftovers after one day. Recheck actual ECR
+storage after the next lifecycle run before treating the `$5` idle-baseline
+target as credible.
 
 ## Target architecture
 
@@ -49,7 +50,11 @@ it must be previewed, applied, and then rechecked in ECR before treating the
 
 The first migration plan intentionally retains the old RDS instance through
 `retain_legacy_rds=true`. Data is copied and the new API is validated before a
-separate cleanup plan is allowed to remove the legacy database.
+separate cleanup plan is allowed to remove the legacy database. On the current
+AWS Free Plan, Aurora was created with the official Express configuration and
+is referenced by Terraform with `aurora_provisioning_mode="express-existing"`;
+the external cluster and application secret are not recreated or destroyed by
+Terraform.
 
 ## Expected idle cost
 

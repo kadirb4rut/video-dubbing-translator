@@ -69,6 +69,8 @@ class Settings:
     sqs_endpoint_url: str | None = os.getenv("SQS_ENDPOINT_URL") or None
     sqs_visibility_timeout_seconds: int = int(os.getenv("SQS_VISIBILITY_TIMEOUT_SECONDS", "3600"))
     db_pool_mode: str = os.getenv("DB_POOL_MODE", "auto")
+    aurora_resume_retry_attempts: int = int(os.getenv("AURORA_RESUME_RETRY_ATTEMPTS", "6"))
+    aurora_resume_retry_base_seconds: float = float(os.getenv("AURORA_RESUME_RETRY_BASE_SECONDS", "0.5"))
     media_inspection_mode: str = os.getenv("MEDIA_INSPECTION_MODE", "download")
     session_cookie_name: str = os.getenv("SESSION_COOKIE_NAME", "lingowave_session")
     session_ttl_days: int = int(os.getenv("SESSION_TTL_DAYS", "30"))

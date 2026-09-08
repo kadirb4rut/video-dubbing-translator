@@ -146,6 +146,11 @@ variable "voxcpm_cpu_dtype" {
     error_message = "voxcpm_cpu_dtype must be float16, bfloat16, or float32."
   }
 }
+variable "voxcpm_allow_download" {
+  description = "Allow workers to download the pinned VoxCPM2 checkpoint on first use. Keep false when the image or host cache is prewarmed."
+  type        = bool
+  default     = false
+}
 variable "api_secrets" {
   description = "Map of ECS API environment variable names to Secrets Manager secret or secret-version ARNs. ECS JSON-key selectors are supported (for example, SECRET_ARN:JSON_KEY::). DATABASE_URL is required when api_image is set; Google OAuth uses GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI when enabled."
   type        = map(string)
@@ -366,6 +371,25 @@ variable "enable_aurora_serverless" {
   description = "Provision Aurora Serverless v2 with 0 ACU auto-pause for the serverless deployment mode."
   type        = bool
   default     = false
+}
+variable "aurora_provisioning_mode" {
+  description = "Use terraform-vpc on a paid AWS plan, or express-existing for an AWS Free plan Aurora Express cluster created with the official bootstrap flow."
+  type        = string
+  default     = "terraform-vpc"
+  validation {
+    condition     = contains(["terraform-vpc", "express-existing"], var.aurora_provisioning_mode)
+    error_message = "aurora_provisioning_mode must be terraform-vpc or express-existing."
+  }
+}
+variable "aurora_external_cluster_arn" {
+  description = "Existing Aurora Express cluster ARN used when aurora_provisioning_mode=express-existing."
+  type        = string
+  default     = ""
+}
+variable "aurora_external_secret_arn" {
+  description = "Secrets Manager ARN containing the non-master Aurora Express application credentials."
+  type        = string
+  default     = ""
 }
 variable "aurora_engine_version" {
   description = "Aurora PostgreSQL engine version verified for the selected region before apply."

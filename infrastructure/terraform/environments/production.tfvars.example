@@ -23,21 +23,25 @@ monthly_cost_budget_usd = 5
 worker_instance_type = "g4dn.xlarge"
 # Keep on-demand until Spot interruption recovery is accepted in the target region.
 gpu_market_type      = "on-demand"
-# Keep the fleet absent until an immutable worker image has been published.
-# Set worker_compute_mode="cpu" and cpu_worker_image to the published digest
-# for the first on-demand CPU acceptance run; set it back to disabled after.
-worker_compute_mode = "disabled"
+# Phase A uses the measured CPU fleet. The GPU image remains present at
+# desired=0 so quota approval can later switch the active fleet without
+# deleting the GPU rollback architecture.
+worker_compute_mode = "cpu"
 worker_max_count    = 10
 cpu_worker_max_count = 1 # Current account evidence shows a 4096-CPU Fargate task; raise only after quota verification.
+worker_scale_in_evaluation_periods = 2 # Keep the queue empty for two one-minute samples before scale-in.
+worker_scale_in_cooldown_seconds = 60
 cpu_worker_image    = ""
 enable_rds           = false
 retain_legacy_rds   = true # Existing production migration phase only; set false after Aurora is verified.
 enable_aurora_serverless = true
+aurora_provisioning_mode = "terraform-vpc" # Free plan fallback: express-existing with externally bootstrapped ARNs.
 aurora_engine_version = "16.8"
 aurora_max_acu = 1
 aurora_auto_pause_seconds = 300
 translation_provider = "google-deep-translator"
 translation_refinement_provider = "hymt2"
+voxcpm_allow_download = true # First CPU validation task must fetch the pinned model; prewarm/cache it before production hardening.
 
 # Set these only after a verified sender/domain and Stripe catalog exist.
 mail_provider = "ses"

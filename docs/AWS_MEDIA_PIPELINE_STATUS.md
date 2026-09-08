@@ -1,6 +1,6 @@
 # AWS Media Pipeline Status
 
-Date: 2026-09-06
+Date: 2026-09-08
 Environment: `eu-north-1`
 Public application: `https://d3ncg3eqih0ccj.cloudfront.net`
 GPU quota: `Running On-Demand G/VT instances = 0`, request `CASE_OPENED`, untouched
@@ -47,10 +47,29 @@ The immutable CPU image was published successfully. Earlier acceptance attempts 
 | VoxCPM2 provider import/contract | PASS | Backend tests and worker image check |
 | Exact model revision | PASS | Runtime/config/manifest pin |
 | Real CPU VoxCPM2 inference | PASS | GitHub Actions run `33981024341`, real CPU synthesis with pinned model |
-| Real full CPU dubbing E2E | PASS | GitHub Actions run `33982181160`, API→S3→SQS→CPU worker→S3→download |
+| Real full CPU dubbing E2E | PASS | Live serverless run `bffd995d-262b-4e61-ad02-69f14454a69d`: API→S3→SQS→Aurora CPU worker→S3→download |
 | Targeted timing routing benchmark | PASS | 3 cases: fit not refined; moderate/large mismatch refined once |
 | GPU quota | PENDING | Existing `CASE_OPENED` request preserved |
-| CPU/GPU scale-to-zero | PASS | Final CPU `0/0/0`; GPU ASG desired `0` |
+| CPU/GPU scale-to-zero | PASS | Live queue-driven CPU `0 → 1 → 0`; final CPU `0/0/0`; GPU ASG desired `0` |
+
+## Latest live serverless CPU E2E
+
+On 2026-09-08 the direct production path was validated after routing the CPU
+worker through Aurora Data API. The real 13.2-second black-video fixture with
+the Whisper `jfk.flac` speech/reference asset was submitted through the public
+CloudFront API. The queue alarm automatically started the CPU Fargate Spot
+worker (`desired 0 → 1`, then `running 1`); the worker claimed the job from
+SQS, updated the Aurora job row, ran Demucs, Whisper, GoogleTranslator, and
+VoxCPM2 on CPU, mixed with FFmpeg, uploaded the MP4 to private S3, and the
+test harness downloaded and ffprobe-validated the signed artifact. Once SQS
+was empty, the scale-in alarm returned the service to `desired/running/pending
+0/0/0` without manual capacity changes.
+
+This run used the pinned VoxCPM2 revision and the real in-process model. The
+first-use worker setting `VOXCPM_ALLOW_DOWNLOAD=true` fetched the pinned
+checkpoint into the task cache; the setting is explicit and can be disabled
+after a prewarmed image/host-cache strategy is adopted. No GPU capacity was
+started and the pending GPU quota request was not changed.
 
 ## Provider and timing policy
 
@@ -93,7 +112,7 @@ The completed run must record:
 
 ## Checks
 
-The migration gate runs backend tests, Ruff, Bandit, pip-audit, Terraform fmt/validate, CI/image build verification, the provider smoke test, and the real CPU E2E. The values below are taken from the live artifacts downloaded from run `33982181160` and the provider smoke artifact from run `33981024341`.
+The migration gate runs backend tests, Ruff, Bandit, pip-audit, Terraform fmt/validate, CI/image build verification, the provider smoke test, and the real CPU E2E. The values below use the latest direct live artifact from 2026-09-08; the earlier GitHub Actions runs remain useful historical evidence.
 
 ## Final measured report
 
@@ -118,42 +137,43 @@ TRANSLATION METRICS:
 - Google-translated segments: 1
 - Hy-MT2-refined segments: 0
 - refinement rate: 0%
-- average duration deviation before refinement: -2.5455%
-- average duration deviation after refinement: -2.5455%
-- translation time: 0.1278 s
+- average duration deviation before refinement: -16.3636%
+- average duration deviation after refinement: -16.3636%
+- translation time: 0.1153 s
 - Hy-MT2 refinement time: 0 s (not triggered)
 - separate real Hy-MT2 CPU benchmark: 156.5701 s for 1 segment; E2E refinement was not triggered
 
 VOXCPM2:
-- model load time: 69.2947 s
-- synthesis time: 64.9108 s
-- generated audio duration: 10.72 s
-- RTF: 6.0551 (VoxCPM2 synthesis); 13.7578 (whole job)
-- peak RAM: 11,695.398 MB
-- CPU utilization: 124.725%
-- estimated/actual cost: $0.009795
+- model load time: 73.1168 s
+- synthesis time: 101.4981 s
+- generated audio duration: 11.04 s
+- RTF: 9.1937 (VoxCPM2 synthesis); 14.9113 (whole job)
+- peak RAM: 11,477.109 MB
+- CPU utilization: 145.065%
+- estimated/actual cost: $0.012739
 
 PIPELINE:
-- input duration: 11.0 s
-- Demucs time: 9.2720 s
-- Whisper time: 12.7818 s
-- translation time: 0.1278 s
+- input duration: 13.2 s
+- Demucs time: 9.1232 s
+- Whisper time: 18.1442 s
+- translation time: 0.1153 s
 - Hy-MT2 time if triggered: 0 s (not triggered)
 - targeted routing benchmark: 3 segments, 2 refinement calls, maximum one pass per segment
-- VoxCPM2 time: 126.8118 s stage wall time; 64.9108 s synthesis telemetry
-- FFmpeg/mixing time: 0.4936 s
-- total job time: 151.3362 s
-- cost/input minute: $0.053427
+- VoxCPM2 time: 163.6676 s stage wall time; 101.4981 s synthesis telemetry
+- FFmpeg/mixing time: 0.4423 s
+- total processing time: 196.8290 s
+- queue wait before worker claim: 301.4824 s
+- cost/input minute: $0.057905
 
 INFRA:
 - CPU worker desired/running/pending: 0/0/0 after test
 - GPU worker/ASG state: 0/0/0
 - GPU quota: CASE_OPENED, quota remains 0
 - expensive compute currently running: no
-- tests: 71 backend tests passed locally; frontend production build passed; Chrome live E2E passed; mobile and desktop Playwright checks passed
-- Terraform: fmt/validate passed locally; temporary acceptance policy removed after run
-- security checks: changed Python files pass Ruff; pip-audit found no known vulnerabilities; full-repository Ruff/Bandit still report pre-existing migration/subprocess baseline findings
-- repo status: clean after commit and push; Google Auth production deployment completed
+- tests: 81 backend tests passed; frontend production build and npm audit passed; live artifact download and ffprobe passed
+- Terraform: fmt/validate passed locally; worker Aurora routing and CPU autoscaling applied; no temporary acceptance policy was added
+- security checks: Ruff passed for the full backend; Bandit passed at the CI medium-severity threshold (low subprocess/URL findings remain informational); pip-audit and npm audit found no known vulnerabilities
+- repo status: documentation and worker-routing changes pending final commit/push after the final verification pass
 
 GOOGLE AUTH:
 - implementation: PASS

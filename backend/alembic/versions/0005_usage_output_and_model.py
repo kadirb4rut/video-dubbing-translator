@@ -1,9 +1,8 @@
 """Record output duration and provider/model version in usage telemetry."""
 
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy import inspect
-
+from alembic import op
+from app.migration_compat import table_columns
 
 revision = "0005_usage_output_and_model"
 down_revision = "0004_usage_bytes"
@@ -12,7 +11,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    columns = {column["name"] for column in inspect(op.get_bind()).get_columns("usage_records")}
+    columns = set(table_columns(op.get_bind(), "usage_records"))
     with op.batch_alter_table("usage_records") as batch:
         if "output_duration_seconds" not in columns:
             batch.add_column(sa.Column("output_duration_seconds", sa.Float(), nullable=True))

@@ -2,7 +2,11 @@ locals {
   serverless_mode             = var.deployment_mode == "serverless"
   serverless_api_enabled      = local.serverless_mode && var.lambda_api_image != ""
   serverless_frontend_cutover = local.serverless_api_enabled && var.serverless_frontend_cutover
-  serverless_db_enabled       = local.serverless_mode && var.enable_aurora_serverless
+  aurora_vpc_enabled          = local.serverless_mode && var.enable_aurora_serverless && var.aurora_provisioning_mode == "terraform-vpc"
+  aurora_express_enabled      = local.serverless_mode && var.enable_aurora_serverless && var.aurora_provisioning_mode == "express-existing"
+  serverless_db_enabled       = local.aurora_vpc_enabled || local.aurora_express_enabled
+  aurora_cluster_arn          = local.aurora_vpc_enabled ? aws_rds_cluster.aurora[0].arn : var.aurora_external_cluster_arn
+  aurora_secret_arn           = local.aurora_vpc_enabled ? aws_rds_cluster.aurora[0].master_user_secret[0].secret_arn : var.aurora_external_secret_arn
   api_enabled                 = var.api_image != "" || local.serverless_api_enabled
   api_origin_domain           = local.serverless_frontend_cutover ? replace(replace(aws_apigatewayv2_api.serverless[0].api_endpoint, "https://", ""), "/", "") : var.api_image != "" ? aws_lb.api[0].dns_name : ""
   ssm_parameter_arns          = distinct(concat(var.ssm_parameter_arns, [for name in values(var.ssm_parameter_map) : startswith(name, "arn:") ? name : format("arn:aws:ssm:%s:%s:parameter%s", var.aws_region, data.aws_caller_identity.current.account_id, startswith(name, "/") ? name : format("/%s", name))]))
@@ -38,6 +42,10 @@ resource "terraform_data" "deployment_mode_guard" {
       condition     = var.deployment_mode != "serverless" || var.enable_aurora_serverless
       error_message = "deployment_mode=serverless requires enable_aurora_serverless=true for the PostgreSQL control plane."
     }
+    precondition {
+      condition     = var.deployment_mode != "serverless" || !var.enable_aurora_serverless || var.aurora_provisioning_mode != "express-existing" || (var.aurora_external_cluster_arn != "" && var.aurora_external_secret_arn != "")
+      error_message = "aurora_provisioning_mode=express-existing requires the existing Express cluster and application secret ARNs."
+    }
   }
 }
 
@@ -72,12 +80,12 @@ resource "aws_iam_role_policy" "serverless_api" {
       {
         Effect   = "Allow"
         Action   = ["rds-data:BatchExecuteStatement", "rds-data:BeginTransaction", "rds-data:CommitTransaction", "rds-data:ExecuteStatement", "rds-data:RollbackTransaction"]
-        Resource = local.serverless_db_enabled ? aws_rds_cluster.aurora[0].arn : "*"
+        Resource = local.serverless_db_enabled ? local.aurora_cluster_arn : "*"
       },
       {
         Effect   = "Allow"
         Action   = ["secretsmanager:GetSecretValue"]
-        Resource = local.serverless_db_enabled ? aws_rds_cluster.aurora[0].master_user_secret[0].secret_arn : "*"
+        Resource = local.serverless_db_enabled ? local.aurora_secret_arn : "*"
       },
       ], length(local.ssm_parameter_arns) > 0 ? [{
         Effect   = "Allow"
@@ -92,7 +100,7 @@ resource "aws_iam_role_policy" "serverless_api" {
 }
 
 resource "aws_rds_cluster" "aurora" {
-  count                       = local.serverless_db_enabled ? 1 : 0
+  count                       = local.aurora_vpc_enabled ? 1 : 0
   cluster_identifier          = "${var.name}-aurora"
   engine                      = "aurora-postgresql"
   engine_version              = var.aurora_engine_version
@@ -102,12 +110,13 @@ resource "aws_rds_cluster" "aurora" {
   db_subnet_group_name        = aws_db_subnet_group.aurora[0].name
   vpc_security_group_ids      = [local.effective_database_security_group_id]
   storage_encrypted           = true
-  backup_retention_period     = 7
-  copy_tags_to_snapshot       = true
-  enable_http_endpoint        = true
-  skip_final_snapshot         = false
-  final_snapshot_identifier   = "${var.name}-aurora-final"
-  deletion_protection         = false
+  # Free-tier accounts in this region currently permit one day for Aurora.
+  backup_retention_period   = 1
+  copy_tags_to_snapshot     = true
+  enable_http_endpoint      = true
+  skip_final_snapshot       = false
+  final_snapshot_identifier = "${var.name}-aurora-final"
+  deletion_protection       = false
 
   serverlessv2_scaling_configuration {
     min_capacity             = 0
@@ -128,13 +137,13 @@ resource "aws_rds_cluster" "aurora" {
 }
 
 resource "aws_db_subnet_group" "aurora" {
-  count      = local.serverless_db_enabled ? 1 : 0
+  count      = local.aurora_vpc_enabled ? 1 : 0
   name       = "${var.name}-aurora"
   subnet_ids = local.effective_database_subnet_ids
 }
 
 resource "aws_rds_cluster_instance" "aurora" {
-  count              = local.serverless_db_enabled ? 1 : 0
+  count              = local.aurora_vpc_enabled ? 1 : 0
   identifier         = "${var.name}-aurora-1"
   cluster_identifier = aws_rds_cluster.aurora[0].id
   instance_class     = "db.serverless"
@@ -155,8 +164,8 @@ resource "aws_lambda_function" "serverless_api" {
   environment {
     variables = {
       DATABASE_URL                   = "postgresql+auroradataapi://:@/${var.database_name}"
-      AURORA_CLUSTER_ARN             = local.serverless_db_enabled ? aws_rds_cluster.aurora[0].arn : ""
-      AURORA_SECRET_ARN              = local.serverless_db_enabled ? aws_rds_cluster.aurora[0].master_user_secret[0].secret_arn : ""
+      AURORA_CLUSTER_ARN             = local.serverless_db_enabled ? local.aurora_cluster_arn : ""
+      AURORA_SECRET_ARN              = local.serverless_db_enabled ? local.aurora_secret_arn : ""
       DB_POOL_MODE                   = "null"
       MEDIA_INSPECTION_MODE          = "presigned-url"
       STORAGE_BACKEND                = "s3"
@@ -164,7 +173,6 @@ resource "aws_lambda_function" "serverless_api" {
       S3_PRESIGN_ENDPOINT_URL        = "https://s3.${var.aws_region}.amazonaws.com"
       SQS_QUEUE_URL                  = aws_sqs_queue.jobs.url
       SQS_VISIBILITY_TIMEOUT_SECONDS = tostring(var.sqs_visibility_timeout_seconds)
-      AWS_REGION                     = var.aws_region
       FRONTEND_ORIGIN                = var.frontend_origin
       COOKIE_SECURE                  = "true"
       MAIL_PROVIDER                  = var.mail_provider
@@ -194,11 +202,10 @@ resource "aws_lambda_function" "serverless_migration" {
   environment {
     variables = {
       DATABASE_URL          = "postgresql+auroradataapi://:@/${var.database_name}"
-      AURORA_CLUSTER_ARN    = aws_rds_cluster.aurora[0].arn
-      AURORA_SECRET_ARN     = aws_rds_cluster.aurora[0].master_user_secret[0].secret_arn
+      AURORA_CLUSTER_ARN    = local.aurora_cluster_arn
+      AURORA_SECRET_ARN     = local.aurora_secret_arn
       DB_POOL_MODE          = "null"
       MEDIA_INSPECTION_MODE = "presigned-url"
-      AWS_REGION            = var.aws_region
       SSM_PARAMETER_MAP     = jsonencode(var.ssm_parameter_map)
     }
   }

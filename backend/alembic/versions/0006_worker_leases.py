@@ -1,10 +1,8 @@
 """Track short-lived worker leases for truthful active-worker metrics."""
 
 from alembic import op
-
-from app.db import Base
 from app import models  # noqa: F401
-
+from app.db import Base
 
 revision = "0006_worker_leases"
 down_revision = "0005_usage_output_and_model"
