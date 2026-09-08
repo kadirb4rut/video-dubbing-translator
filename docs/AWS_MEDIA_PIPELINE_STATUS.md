@@ -89,6 +89,36 @@ The following live product flows passed: Google login, video upload and FFprobe 
 
 UI fixes deployed to CloudFront: media-required actions are disabled until a file is uploaded, estimates are requested before enabling a processing action, a failed estimate disables the action instead of allowing a guaranteed API failure, consented voice is required before dubbing, pricing failures remain visible in the cost panel, Noise Remover is labelled for audio or video, and error/warning toasts no longer use a misleading green success check. The production UI had no Chrome console errors or warnings during the final pass. The mobile Playwright check at 390×844 passed with no horizontal overflow; desktop session/reload persistence also passed.
 
+## Latest frontend production deployment
+
+The polished translation workbench UI/UX refresh was deployed on 2026-09-08
+from commit `18898e9` (`feat: refresh translation workbench UI`). Terraform
+applied only the expected frontend S3 object update: two new hashed assets were
+published, `index.html` was updated, and two superseded hashed bundles were
+removed. No API, worker, GPU, queue, database, IAM, or billing resources were
+changed by this deployment.
+
+CloudFront distribution `E29DUJBS3MCQ75` invalidation
+`I7B4X1VJUQPYQ0QJFW326AJO4D` completed successfully. The public origin
+`https://d3ncg3eqih0ccj.cloudfront.net` returned HTTP 200 for both the live
+homepage and `/health`; the API health response reported `database: configured`,
+`storage: s3`, and `queue: sqs`. The live HTML references
+`assets/index-BvQHbPr6.js` and `assets/index-DI96JvC1.css`.
+
+Chrome verification after deployment showed the new authenticated workbench,
+the Upload → Configure → Export workflow, the Translation/Voice/Advanced
+inspector tabs, the real authenticated workspace name and credits, and recent
+projects. Voice, Advanced, and Translation tab interactions worked and the
+browser reported no error or warning logs. The 390×844 responsive check passed
+with no horizontal overflow. The repository is clean and the commit is pushed
+to `origin/codex/production-saas`.
+
+The local Playwright suite remains environment-dependent: the five GPU-gated
+acceptance cases were skipped as configured, while four local signup flows could
+not complete because no local backend was listening on `localhost:8000`. This
+does not invalidate the live CloudFront verification; it is recorded here so
+the report does not imply a fully green local browser run.
+
 ## Required final evidence
 
 The completed run must record:
