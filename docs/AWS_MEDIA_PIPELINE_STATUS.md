@@ -14,7 +14,7 @@ LingoWave now uses pinned VoxCPM2 as its sole production voice provider:
     → VoxCPM2 → bounded FFmpeg timing/mix → private S3
     → completed job → downloadable artifact
 
-The existing API, S3, SQS/DLQ, RDS, telemetry, retries, credit ledger, artifact validation, and scale-to-zero architecture remain unchanged. Google/deep-translator is the normal translation path. Hy-MT2 is lazy and duration-triggered with at most one refinement pass per segment. AWS Translate remains an explicit optional comparison/fallback.
+The existing S3, SQS/DLQ, telemetry, retries, credit ledger, artifact validation, and scale-to-zero safeguards remain in place. The production API now runs through CloudFront → API Gateway HTTP API → Lambda → Aurora Data API. Google/deep-translator is the normal translation path. Hy-MT2 is lazy and duration-triggered with at most one refinement pass per segment. AWS Translate remains an explicit optional comparison/fallback.
 
 The exact voice model is `openbmb/VoxCPM2`, revision `32279effe8c19989596f05d353d1447f51d9e915`, package `voxcpm==2.0.3`, with 48 kHz output validation. CPU uses a runtime-selected or configured CPU-safe dtype; the planned NVIDIA T4 path uses FP16 rather than assuming BF16 support.
 
@@ -22,9 +22,9 @@ The real Hy-MT2 CPU benchmark also completed independently: `tencent/Hy-MT2-1.8B
 
 ## Google Auth production deployment
 
-Google OAuth is live on the production CloudFront origin. The ECS API task reads `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` from the Secrets Manager secret `lingowave/production/google-oauth` through Terraform `api_secrets` JSON-key selectors. The ECS execution role has only `secretsmanager:GetSecretValue` for the database secret and Google OAuth secret base ARNs.
+Google OAuth is live on the production CloudFront origin. The serverless Lambda API reads the three Google OAuth values from the existing SSM SecureString parameters populated from the Secrets Manager integration; the legacy ECS `api_secrets` mapping was removed with the legacy API. The Lambda role retains only the Secrets Manager/SSM, Aurora Data API, S3, SQS, and logging permissions required by the serverless path.
 
-Production migration `0013_google_oauth_identities` is applied. The revision ID is intentionally shorter than the migration filename because PostgreSQL's existing `alembic_version.version_num` column is `varchar(32)`. API ECS task revision 24 is stable at desired/running/pending `1/1/0`.
+Production migration `0013_google_oauth_identities` is applied. The revision ID is intentionally shorter than the migration filename because PostgreSQL's existing `alembic_version.version_num` column is `varchar(32)`. The live API is Lambda-backed and healthy; there is no always-on API ECS task.
 
 Live verification passed:
 
@@ -40,14 +40,14 @@ No OAuth secret values were printed, committed, or exposed. No manual user actio
 
 ## Validation status
 
-The immutable CPU image was published successfully. Earlier acceptance attempts correctly stopped before compute because the GitHub OIDC role lacked ECR layer-pull and ECS deployment permissions. For the live validation, the required permissions were enabled only for the manual run, the API was temporarily configured with `ALLOW_UNMEASURED_PRICING=true`, and the CPU worker was temporarily deployed with the immutable VoxCPM2 image. The real E2E completed successfully, the API and CPU worker were restored, and the temporary acceptance policy was deleted. The checked-in credit profiles now contain evidence-backed internal rates for every enabled core operation; the lip-sync profile remains explicitly disabled. The permanent ECR policy and opt-in Terraform path remain available for a future explicitly authorized run.
+The immutable prewarmed CPU image is now deployed with `VOXCPM_ALLOW_DOWNLOAD=false`; the GPU architecture image is also pinned but remains at zero capacity. The final real E2E used the production serverless API and the queue-driven CPU worker. The checked-in credit profiles contain evidence-backed internal rates for every enabled core operation; the lip-sync profile remains explicitly disabled. ECR was pruned to four explicitly retained API manifests and four explicitly retained worker manifests, with the lifecycle policy still active.
 
 | Gate | Status | Evidence |
 |---|---|---|
 | VoxCPM2 provider import/contract | PASS | Backend tests and worker image check |
 | Exact model revision | PASS | Runtime/config/manifest pin |
 | Real CPU VoxCPM2 inference | PASS | GitHub Actions run `33981024341`, real CPU synthesis with pinned model |
-| Real full CPU dubbing E2E | PASS | Live serverless run `bffd995d-262b-4e61-ad02-69f14454a69d`: API→S3→SQS→Aurora CPU worker→S3→download |
+| Real full CPU dubbing E2E | PASS | Live serverless run `55135cea-53b7-454a-902f-c7719ffb83c0`: API→S3→SQS→Aurora CPU worker→S3→download |
 | Targeted timing routing benchmark | PASS | 3 cases: fit not refined; moderate/large mismatch refined once |
 | GPU quota | PENDING | Existing `CASE_OPENED` request preserved |
 | CPU/GPU scale-to-zero | PASS | Live queue-driven CPU `0 → 1 → 0`; final CPU `0/0/0`; GPU ASG desired `0` |
@@ -55,21 +55,19 @@ The immutable CPU image was published successfully. Earlier acceptance attempts 
 ## Latest live serverless CPU E2E
 
 On 2026-09-08 the direct production path was validated after routing the CPU
-worker through Aurora Data API. The real 13.2-second black-video fixture with
-the Whisper `jfk.flac` speech/reference asset was submitted through the public
-CloudFront API. The queue alarm automatically started the CPU Fargate Spot
-worker (`desired 0 → 1`, then `running 1`); the worker claimed the job from
-SQS, updated the Aurora job row, ran Demucs, Whisper, GoogleTranslator, and
-VoxCPM2 on CPU, mixed with FFmpeg, uploaded the MP4 to private S3, and the
-test harness downloaded and ffprobe-validated the signed artifact. Once SQS
-was empty, the scale-in alarm returned the service to `desired/running/pending
-0/0/0` without manual capacity changes.
+worker through Aurora Data API. The real 13.2-second black-video fixture was
+submitted through the public CloudFront API. The queue alarm automatically
+started the CPU Fargate Spot worker (`desired 0 → 1`); the first start pulled
+the 5.42 GiB prewarmed image, then the worker claimed the job from SQS,
+updated Aurora, ran Demucs, Whisper, GoogleTranslator, and VoxCPM2 on CPU,
+mixed with FFmpeg, uploaded the MP4 to private S3, and the test harness
+downloaded and ffprobe-validated the signed artifact. The worker log showed
+VoxCPM2 loading from the baked local snapshot; no VoxCPM2 runtime download
+occurred. Once SQS and in-flight messages were empty, the scale-in alarm
+returned the service to `desired/running/pending 0/0/0` without manual
+capacity changes.
 
-This run used the pinned VoxCPM2 revision and the real in-process model. The
-first-use worker setting `VOXCPM_ALLOW_DOWNLOAD=true` fetched the pinned
-checkpoint into the task cache; the setting is explicit and can be disabled
-after a prewarmed image/host-cache strategy is adopted. No GPU capacity was
-started and the pending GPU quota request was not changed.
+No GPU capacity was started and the pending GPU quota request was not changed.
 
 ## Provider and timing policy
 
@@ -104,15 +102,16 @@ The completed run must record:
 
 ## Infrastructure safety
 
-- CPU validation is temporary and ended at desired/running/pending `0/0/0`.
+- The final CPU validation ended at desired/running/pending `0/0/0`; the
+  queue-driven autoscaler is responsible for future `0 → N → 0` operation.
 - GPU worker and ASG remain `0/0/0`; the quota request is not cancelled.
 - The $25 AWS budget guardrail is not changed.
 - No credentials are committed; image publishing uses OIDC.
-- Existing private S3, SQS redrive/DLQ, RDS, retries, leases, output validation, and cost telemetry remain enabled.
+- Existing private S3, SQS redrive/DLQ, Aurora Data API, retries, leases, output validation, and cost telemetry remain enabled.
 
 ## Checks
 
-The migration gate runs backend tests, Ruff, Bandit, pip-audit, Terraform fmt/validate, CI/image build verification, the provider smoke test, and the real CPU E2E. The values below use the latest direct live artifact from 2026-09-08; the earlier GitHub Actions runs remain useful historical evidence.
+The migration gate runs backend tests, Ruff, Bandit, pip-audit, Terraform fmt/validate, CI/image build verification, the provider smoke test, and the real CPU E2E. The values below use the final direct live artifact from 2026-09-08; earlier runs remain useful historical evidence.
 
 ## Final measured report
 
@@ -137,43 +136,45 @@ TRANSLATION METRICS:
 - Google-translated segments: 1
 - Hy-MT2-refined segments: 0
 - refinement rate: 0%
-- average duration deviation before refinement: -16.3636%
-- average duration deviation after refinement: -16.3636%
-- translation time: 0.1153 s
+- average duration deviation before refinement: -26.0606%
+- average duration deviation after refinement: -26.0606%
+- translation time: 0.1246 s
 - Hy-MT2 refinement time: 0 s (not triggered)
 - separate real Hy-MT2 CPU benchmark: 156.5701 s for 1 segment; E2E refinement was not triggered
 
 VOXCPM2:
-- model load time: 73.1168 s
-- synthesis time: 101.4981 s
-- generated audio duration: 11.04 s
-- RTF: 9.1937 (VoxCPM2 synthesis); 14.9113 (whole job)
-- peak RAM: 11,477.109 MB
-- CPU utilization: 145.065%
-- estimated/actual cost: $0.012739
+- model load time: 21.0986 s
+- synthesis time: 53.9630 s model telemetry / 66.2701 s stage wall time
+- generated audio duration: 9.76 s
+- RTF: 5.5290 (VoxCPM2 synthesis); 7.0772 (whole job)
+- peak RAM: 11,272.195 MB
+- CPU utilization: 131.979%
+- estimated/actual cost: $0.006046
 
 PIPELINE:
 - input duration: 13.2 s
-- Demucs time: 9.1232 s
-- Whisper time: 18.1442 s
-- translation time: 0.1153 s
+- Demucs time: 7.9456 s
+- Whisper time: 13.3249 s
+- translation time: 0.1246 s
 - Hy-MT2 time if triggered: 0 s (not triggered)
 - targeted routing benchmark: 3 segments, 2 refinement calls, maximum one pass per segment
-- VoxCPM2 time: 163.6676 s stage wall time; 101.4981 s synthesis telemetry
-- FFmpeg/mixing time: 0.4423 s
-- total processing time: 196.8290 s
-- queue wait before worker claim: 301.4824 s
-- cost/input minute: $0.057905
+- VoxCPM2 time: 66.2701 s stage wall time; 53.9630 s synthesis telemetry
+- FFmpeg/mixing time: 0.4425 s
+- upload time: 0.2709 s
+- total processing time: 93.4195 s
+- queue wait before worker claim: 330.3478 s (includes image pull/startup)
+- cost/input minute: $0.027482
 
 INFRA:
-- CPU worker desired/running/pending: 0/0/0 after test
+- CPU worker desired/running/pending: 0/0/0 after test; final task definition 25
 - GPU worker/ASG state: 0/0/0
 - GPU quota: CASE_OPENED, quota remains 0
 - expensive compute currently running: no
-- tests: 81 backend tests passed; frontend production build and npm audit passed; live artifact download and ffprobe passed
-- Terraform: fmt/validate passed locally; worker Aurora routing and CPU autoscaling applied; no temporary acceptance policy was added
+- tests: backend suite, frontend production build, npm audit, live artifact download, and ffprobe passed
+- Terraform: fmt/validate/plan/apply passed; Lambda/API, prewarmed CPU, GPU pin, Aurora routing, and CPU autoscaling applied
 - security checks: Ruff passed for the full backend; Bandit passed at the CI medium-severity threshold (low subprocess/URL findings remain informational); pip-audit and npm audit found no known vulnerabilities
-- repo status: clean after commit `60b88e2` pushed to `codex/production-saas`
+- ECR: API reduced to 4 manifests/1.04 GiB logical; worker reduced to 4 manifests/15.90 GiB logical; retention audit in `docs/ecr-retention-audit.md`
+- repo status: clean after final documentation/test commit on `codex/production-saas`
 
 GOOGLE AUTH:
 - implementation: PASS
@@ -186,10 +187,10 @@ GOOGLE AUTH:
 - database migration: PASS (`0013_google_oauth_identities`)
 - secrets exposed: NO
 - frontend build: PASS
-- backend tests: PASS (69 passed)
+- backend tests: PASS (82 passed, 1 deprecation warning)
 - security checks: PASS
 - Terraform: PASS
-- live API: PASS (ECS revision 24, `1/1/0`)
+- live API: PASS (CloudFront → API Gateway → Lambda; no API ECS service)
 - manual user action still required: NONE
 
 LICENSE REVIEW:
