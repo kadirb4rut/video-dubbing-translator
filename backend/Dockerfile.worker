@@ -6,12 +6,19 @@ ENV XDG_CACHE_HOME=/home/lingowave/.cache
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libsndfile1 cargo && rm -rf /var/lib/apt/lists/*
 COPY backend/requirements.txt backend/requirements.worker-common.txt backend/requirements.worker-cpu.txt backend/requirements.worker-cpu-full.txt backend/requirements.worker-gpu.txt ./
 ARG WORKER_REQUIREMENTS=requirements.worker-cpu.txt
+ARG PREWARM_VOXCPM2=false
 RUN python -m pip install --no-cache-dir --upgrade "pip>=26.2" "setuptools==80.9.0" \
     && python -m pip install --no-cache-dir -r ${WORKER_REQUIREMENTS}
 COPY backend/app ./app
 COPY backend/alembic ./alembic
 COPY backend/alembic.ini ./alembic.ini
 COPY config ./config
+RUN mkdir -p /home/lingowave/.cache \
+    && if [ "${PREWARM_VOXCPM2}" = "true" ]; then \
+         HF_HOME=/home/lingowave/.cache/huggingface \
+         HF_HUB_DISABLE_XET=1 \
+         python -c 'from app.voxcpm_runtime import resolve_model_path; resolve_model_path(local_files_only=False)'; \
+       fi
 RUN addgroup --system lingowave && adduser --system --ingroup lingowave lingowave \
     && mkdir -p /app/data /home/lingowave/.cache \
     && chown -R lingowave:lingowave /app /home/lingowave

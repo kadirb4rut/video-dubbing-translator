@@ -104,6 +104,7 @@ jobs:
           file: backend/Dockerfile.worker
           build-args: |
             WORKER_REQUIREMENTS=requirements.worker-cpu-full.txt
+            PREWARM_VOXCPM2=true
           platforms: linux/amd64
           push: true
           provenance: false
