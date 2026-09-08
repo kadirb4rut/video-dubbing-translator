@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from scripts.verify_serverless_cutover import _ecs_service, _ecs_service_absent, _ssm_secure_strings
+from scripts.verify_serverless_cutover import (
+    _ecs_service,
+    _ecs_service_absent,
+    _ssm_secure_strings,
+)
 
 
 class FakeEcsClient:
