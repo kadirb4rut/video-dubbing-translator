@@ -349,6 +349,15 @@ variable "cpu_worker_memory" {
   type        = number
   default     = 16384
 }
+variable "cpu_worker_ephemeral_storage_gib" {
+  description = "Fargate ephemeral storage for the CPU worker image and model cache."
+  type        = number
+  default     = 50
+  validation {
+    condition     = var.cpu_worker_ephemeral_storage_gib >= 20 && var.cpu_worker_ephemeral_storage_gib <= 200
+    error_message = "cpu_worker_ephemeral_storage_gib must be between 20 and 200 GiB."
+  }
+}
 variable "cpu_worker_hourly_price_usd" {
   description = "Approximate Fargate CPU plus memory hourly price used for CPU validation telemetry."
   type        = number

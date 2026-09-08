@@ -550,8 +550,11 @@ resource "aws_ecs_task_definition" "cpu_worker" {
   network_mode             = "awsvpc"
   cpu                      = tostring(var.cpu_worker_cpu)
   memory                   = tostring(var.cpu_worker_memory)
-  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
-  task_role_arn            = aws_iam_role.ecs_task_worker.arn
+  ephemeral_storage {
+    size_in_gib = var.cpu_worker_ephemeral_storage_gib
+  }
+  execution_role_arn = aws_iam_role.ecs_task_execution.arn
+  task_role_arn      = aws_iam_role.ecs_task_worker.arn
   container_definitions = jsonencode([{
     name      = "cpu-worker"
     image     = var.cpu_worker_image
@@ -577,10 +580,10 @@ resource "aws_ecs_task_definition" "cpu_worker" {
       { name = "VOXCPM_DEVICE", value = "cpu" },
       { name = "VOXCPM_DTYPE", value = var.voxcpm_cpu_dtype },
       { name = "VOXCPM_OUTPUT_SAMPLE_RATE", value = "48000" },
-      { name = "HOME", value = "/tmp/lingowave-home" },
-      { name = "XDG_CACHE_HOME", value = "/tmp/lingowave-cache" },
-      { name = "TORCH_HOME", value = "/tmp/lingowave-cache/torch" },
-      { name = "HF_HOME", value = "/tmp/lingowave-cache/huggingface" },
+      { name = "HOME", value = "/home/lingowave" },
+      { name = "XDG_CACHE_HOME", value = "/home/lingowave/.cache" },
+      { name = "TORCH_HOME", value = "/home/lingowave/.cache/torch" },
+      { name = "HF_HOME", value = "/home/lingowave/.cache/huggingface" },
     ], local.worker_database_environment)
     secrets = [for name, value_from in var.worker_secrets : { name = name, valueFrom = value_from } if !local.serverless_db_enabled || name != "DATABASE_URL"]
     logConfiguration = {

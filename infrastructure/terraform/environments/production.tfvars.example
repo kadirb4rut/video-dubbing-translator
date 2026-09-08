@@ -21,6 +21,7 @@ worker_desired_count = 0
 cost_alert_email     = "replace-with-cost-alert-email@example.com"
 monthly_cost_budget_usd = 25
 worker_instance_type = "g4dn.xlarge"
+cpu_worker_ephemeral_storage_gib = 50
 # Keep on-demand until Spot interruption recovery is accepted in the target region.
 gpu_market_type      = "on-demand"
 # Phase A uses the measured CPU fleet. The GPU image remains present at
