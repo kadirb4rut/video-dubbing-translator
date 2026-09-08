@@ -142,8 +142,8 @@ resource "terraform_data" "worker_runtime_configuration" {
       error_message = "worker_compute_mode=disabled must not carry a GPU or CPU worker image; leave both fleets absent."
     }
     precondition {
-      condition     = var.worker_compute_mode != "gpu" || var.cpu_worker_image == ""
-      error_message = "worker_compute_mode=gpu must leave cpu_worker_image empty so only one worker fleet is active."
+      condition     = var.worker_compute_mode != "gpu" || var.cpu_worker_image == "" || var.cpu_worker_desired_count == 0
+      error_message = "worker_compute_mode=gpu may retain a CPU worker image only when the inactive CPU service desired count is zero."
     }
   }
 }

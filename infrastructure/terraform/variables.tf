@@ -15,6 +15,11 @@ variable "deployment_mode" {
     error_message = "deployment_mode must be legacy or serverless."
   }
 }
+variable "serverless_frontend_cutover" {
+  description = "Route the shared CloudFront API paths to API Gateway. Keep false while Aurora data migration and direct serverless validation are in progress; enable only in a separately reviewed cutover apply."
+  type        = bool
+  default     = false
+}
 variable "github_repository" {
   description = "GitHub owner/repository allowed to assume the image-publish role through OIDC."
   type        = string

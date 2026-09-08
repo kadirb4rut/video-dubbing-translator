@@ -86,7 +86,7 @@ resource "aws_cloudfront_origin_request_policy" "api" {
 }
 
 resource "aws_cloudfront_origin_request_policy" "serverless_api" {
-  count   = var.frontend_enabled && local.serverless_api_enabled ? 1 : 0
+  count   = var.frontend_enabled && local.serverless_frontend_cutover ? 1 : 0
   name    = "${var.name}-serverless-api-origin"
   comment = "Forward API headers without overriding the API Gateway Host header"
   cookies_config {
@@ -118,11 +118,11 @@ resource "aws_cloudfront_distribution" "app" {
     for_each = local.api_enabled ? [1] : []
     content {
       domain_name = local.api_origin_domain
-      origin_id   = local.serverless_api_enabled ? "api-gateway" : "api-alb"
+      origin_id   = local.serverless_frontend_cutover ? "api-gateway" : "api-alb"
       custom_origin_config {
         http_port              = 80
         https_port             = 443
-        origin_protocol_policy = local.serverless_api_enabled || var.api_certificate_arn != "" ? "https-only" : "http-only"
+        origin_protocol_policy = local.serverless_frontend_cutover || var.api_certificate_arn != "" ? "https-only" : "http-only"
         origin_ssl_protocols   = ["TLSv1.2"]
       }
     }
@@ -145,10 +145,10 @@ resource "aws_cloudfront_distribution" "app" {
       path_pattern             = ordered_cache_behavior.value
       allowed_methods          = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
       cached_methods           = ["GET", "HEAD"]
-      target_origin_id         = local.serverless_api_enabled ? "api-gateway" : "api-alb"
+      target_origin_id         = local.serverless_frontend_cutover ? "api-gateway" : "api-alb"
       viewer_protocol_policy   = "redirect-to-https"
       cache_policy_id          = aws_cloudfront_cache_policy.api[0].id
-      origin_request_policy_id = local.serverless_api_enabled ? aws_cloudfront_origin_request_policy.serverless_api[0].id : aws_cloudfront_origin_request_policy.api[0].id
+      origin_request_policy_id = local.serverless_frontend_cutover ? aws_cloudfront_origin_request_policy.serverless_api[0].id : aws_cloudfront_origin_request_policy.api[0].id
       compress                 = false
     }
   }

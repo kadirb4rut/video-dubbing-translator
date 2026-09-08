@@ -1,10 +1,11 @@
 locals {
-  serverless_mode        = var.deployment_mode == "serverless"
-  serverless_api_enabled = local.serverless_mode && var.lambda_api_image != ""
-  serverless_db_enabled  = local.serverless_mode && var.enable_aurora_serverless
-  api_enabled            = var.api_image != "" || local.serverless_api_enabled
-  api_origin_domain      = local.serverless_api_enabled ? replace(replace(aws_apigatewayv2_api.serverless[0].api_endpoint, "https://", ""), "/", "") : var.api_image != "" ? aws_lb.api[0].dns_name : ""
-  ssm_parameter_arns     = distinct(concat(var.ssm_parameter_arns, [for name in values(var.ssm_parameter_map) : startswith(name, "arn:") ? name : format("arn:aws:ssm:%s:%s:parameter%s", var.aws_region, data.aws_caller_identity.current.account_id, startswith(name, "/") ? name : format("/%s", name))]))
+  serverless_mode             = var.deployment_mode == "serverless"
+  serverless_api_enabled      = local.serverless_mode && var.lambda_api_image != ""
+  serverless_frontend_cutover = local.serverless_api_enabled && var.serverless_frontend_cutover
+  serverless_db_enabled       = local.serverless_mode && var.enable_aurora_serverless
+  api_enabled                 = var.api_image != "" || local.serverless_api_enabled
+  api_origin_domain           = local.serverless_frontend_cutover ? replace(replace(aws_apigatewayv2_api.serverless[0].api_endpoint, "https://", ""), "/", "") : var.api_image != "" ? aws_lb.api[0].dns_name : ""
+  ssm_parameter_arns          = distinct(concat(var.ssm_parameter_arns, [for name in values(var.ssm_parameter_map) : startswith(name, "arn:") ? name : format("arn:aws:ssm:%s:%s:parameter%s", var.aws_region, data.aws_caller_identity.current.account_id, startswith(name, "/") ? name : format("/%s", name))]))
 }
 
 resource "terraform_data" "deployment_mode_guard" {

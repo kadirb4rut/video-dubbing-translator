@@ -1,6 +1,7 @@
 aws_region = "eu-north-1"
 name       = "lingowave"
 deployment_mode = "serverless"
+serverless_frontend_cutover = false # Set true only after Aurora migration and direct API Gateway validation.
 
 # Fill these with immutable ECR image digests before apply.
 worker_image = ""
