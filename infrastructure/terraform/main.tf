@@ -1011,21 +1011,23 @@ resource "aws_db_subnet_group" "postgres" {
   }
 }
 resource "aws_db_instance" "postgres" {
-  count                     = local.legacy_rds_enabled ? 1 : 0
-  identifier                = var.name
-  engine                    = "postgres"
-  engine_version            = "16"
-  instance_class            = "db.t4g.micro"
-  allocated_storage         = 30
-  db_name                   = var.database_name
-  username                  = var.database_username
-  password                  = var.database_password
-  db_subnet_group_name      = aws_db_subnet_group.postgres[0].name
-  vpc_security_group_ids    = [local.effective_database_security_group_id]
-  storage_encrypted         = true
-  backup_retention_period   = var.legacy_rds_backup_retention_days
-  skip_final_snapshot       = false
-  final_snapshot_identifier = "${var.name}-final"
+  count                   = local.legacy_rds_enabled ? 1 : 0
+  identifier              = var.name
+  engine                  = "postgres"
+  engine_version          = "16"
+  instance_class          = "db.t4g.micro"
+  allocated_storage       = 30
+  db_name                 = var.database_name
+  username                = var.database_username
+  password                = var.database_password
+  db_subnet_group_name    = aws_db_subnet_group.postgres[0].name
+  vpc_security_group_ids  = [local.effective_database_security_group_id]
+  storage_encrypted       = true
+  backup_retention_period = var.legacy_rds_backup_retention_days
+  # Production cleanup creates and verifies a named snapshot immediately
+  # before destroying the legacy instance. Avoid creating a second automatic
+  # snapshot for the same retirement event.
+  skip_final_snapshot = true
   lifecycle {
     # The generated password is stored in Secrets Manager and should not be
     # rotated implicitly by routine Terraform plans.

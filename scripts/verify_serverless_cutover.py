@@ -73,6 +73,12 @@ def _ecs_service(client, cluster: str, service: str) -> dict[str, Any] | None:
     return (response.get("services") or [None])[0]
 
 
+def _ecs_service_absent(service: dict[str, Any] | None) -> bool:
+    """Treat ECS's retained INACTIVE tombstone as removed infrastructure."""
+
+    return not service or service.get("status") == "INACTIVE"
+
+
 def _ecr_policy(client, repository: str) -> bool:
     try:
         client.get_lifecycle_policy(repositoryName=repository)
@@ -159,7 +165,12 @@ def main() -> int:
     _check(results, "legacy_alb_absent" if args.strict_serverless else "legacy_alb_observed", not load_balancer if args.strict_serverless else True, load_balancer or "absent")
 
     legacy_api = _ecs_service(clients["ecs"], args.api_cluster, args.api_service)
-    _check(results, "legacy_ecs_api_absent" if args.strict_serverless else "legacy_ecs_api_observed", not legacy_api if args.strict_serverless else True, legacy_api or "absent")
+    _check(
+        results,
+        "legacy_ecs_api_absent" if args.strict_serverless else "legacy_ecs_api_observed",
+        _ecs_service_absent(legacy_api) if args.strict_serverless else True,
+        "absent" if _ecs_service_absent(legacy_api) else legacy_api,
+    )
 
     cpu_service = _ecs_service(clients["ecs"], args.ecs_cluster, args.cpu_service)
     gpu_service = _ecs_service(clients["ecs"], args.ecs_cluster, args.gpu_service)

@@ -8,6 +8,17 @@ import sqlalchemy as sa
 def table_columns(bind, table_name: str) -> dict[str, Mapping[str, object]]:
     """Return column metadata without PostgreSQL catalog CHAR fields."""
 
+    if bind.dialect.name == "sqlite":
+        safe_table_name = table_name.replace('"', '""')
+        rows = bind.execute(sa.text(f'PRAGMA table_info("{safe_table_name}")'))
+        return {
+            row[1]: {
+                "name": row[1],
+                "nullable": row[3] == 0,
+            }
+            for row in rows
+        }
+
     rows = bind.execute(
         sa.text(
             """
@@ -31,6 +42,10 @@ def table_columns(bind, table_name: str) -> dict[str, Mapping[str, object]]:
 def table_names(bind) -> set[str]:
     """Return application-visible table names from information_schema."""
 
+    if bind.dialect.name == "sqlite":
+        rows = bind.execute(sa.text("SELECT name FROM sqlite_master WHERE type = 'table'"))
+        return {row[0] for row in rows}
+
     rows = bind.execute(
         sa.text(
             """
@@ -45,6 +60,11 @@ def table_names(bind) -> set[str]:
 
 def index_names(bind, table_name: str) -> set[str]:
     """Return index names without PostgreSQL catalog CHAR fields."""
+
+    if bind.dialect.name == "sqlite":
+        safe_table_name = table_name.replace('"', '""')
+        rows = bind.execute(sa.text(f'PRAGMA index_list("{safe_table_name}")'))
+        return {row[1] for row in rows}
 
     rows = bind.execute(
         sa.text(

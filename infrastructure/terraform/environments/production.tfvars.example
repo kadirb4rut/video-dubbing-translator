@@ -19,7 +19,7 @@ frontend_origin      = "https://replace-with-the-frontend-origin"
 api_desired_count    = 1
 worker_desired_count = 0
 cost_alert_email     = "replace-with-cost-alert-email@example.com"
-monthly_cost_budget_usd = 5
+monthly_cost_budget_usd = 25
 worker_instance_type = "g4dn.xlarge"
 # Keep on-demand until Spot interruption recovery is accepted in the target region.
 gpu_market_type      = "on-demand"
