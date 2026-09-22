@@ -10,6 +10,7 @@ Local-first, open-source video dubbing with reference-voice cloning, translation
 [![Python 3.10](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/Code-MIT-green.svg)](LICENSE)
 [![VoxCPM2: Apache 2.0](https://img.shields.io/badge/VoxCPM2-Apache--2.0-blue.svg)](https://huggingface.co/openbmb/VoxCPM2)
+[![PeerPush](https://peerpush.com/p/video-dubbing-translator/badge.png)](https://peerpush.com/p/video-dubbing-translator)
 
 [Demo](#demo) · [Quick Start](#quick-start) · [How it works](#how-it-works) · [Platforms](#platforms-and-hardware) · [Contributing](CONTRIBUTING.md)
 
