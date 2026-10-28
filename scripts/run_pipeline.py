@@ -136,6 +136,10 @@ def parse_args():
     parser.add_argument("--latentsync-steps", type=int, default=20)
     parser.add_argument("--latentsync-guidance-scale", type=float, default=1.5)
     parser.add_argument("--latentsync-seed", type=int, default=1247)
+    parser.add_argument("--subtitles", help="Subtitle file (.srt/.vtt) with dialogue text and timing (skips Whisper)")
+    parser.add_argument("--subtitle-language", help="Language code of the subtitle file (defaults to target language)")
+    parser.add_argument("--bg-volume", type=float, default=0.35, help="Background music/effects volume in the final mix (default: 0.35)")
+    parser.add_argument("--low-memory", action="store_true", help="Memory-safe final assembly: single streaming H.264 pass instead of in-memory reconstruction - use for videos with many segments")
     return parser.parse_args()
 
 
@@ -146,17 +150,23 @@ def main():
         print(f"Error: video file not found: {video_path}", file=sys.stderr)
         return 2
 
-    run(
-        [
-            sys.executable,
-            BASE_DIR / "Video_Translator.py",
-            video_path,
-            "--source-language",
-            args.source_language,
-            "--target-language",
-            args.target_language,
-        ]
-    )
+    command = [
+        sys.executable,
+        BASE_DIR / "Video_Translator.py",
+        video_path,
+        "--source-language",
+        args.source_language,
+        "--target-language",
+        args.target_language,
+    ]
+    if args.subtitles:
+        command += ["--subtitles", args.subtitles]
+    if args.subtitle_language:
+        command += ["--subtitle-language", args.subtitle_language]
+    command += ["--bg-volume", str(args.bg_volume)]
+    if args.low_memory:
+        command += ["--low-memory"]
+    run(command)
 
     final_output = expected_dubbed_output(video_path)
     if not final_output.exists():

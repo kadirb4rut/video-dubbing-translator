@@ -4,11 +4,13 @@ import sys
 import argparse
 import json
 import shutil
+import wave
 from pathlib import Path
 from tqdm import tqdm
 from fsorter import fsorter
 import subprocess
 from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_videoclips
+from subtitle_utils import load_subtitles
 from voxcpm_runtime import (
     VOXCPM_OUTPUT_SAMPLE_RATE,
     VOXCPM_REFERENCE_SAMPLE_RATE,
@@ -222,16 +224,18 @@ def create_Speaker_Reference_Clips(start, end, vocal_audio_path):
     return str(speaker_reference_dir) + "/"
     
     
-def generate_dubbed_speech(sentences, path_wav, source_language, target_language, speaker_wav_dir):
-    from deep_translator import GoogleTranslator
+def generate_dubbed_speech(sentences, path_wav, source_language, target_language, speaker_wav_dir, pre_translated=False):
+    translator = None
+    if not pre_translated:
+        from deep_translator import GoogleTranslator
 
-    translator_source = source_language if source_language is not None else "auto"
-    translator = GoogleTranslator(source=translator_source, target=target_language)
+        translator_source = source_language if source_language is not None else "auto"
+        translator = GoogleTranslator(source=translator_source, target=target_language)
     print("Loading pinned VoxCPM2 voice-cloning model...", flush=True)
     model = load_model()
     for i in tqdm(range(len(sentences))):
         source_text = sentences[i].strip()
-        text = translator.translate(source_text)
+        text = source_text if pre_translated else translator.translate(source_text)
         if not text or not text.strip():
             raise RuntimeError(f"Translation returned empty text for segment {i + 1}.")
         print(f"Segment {i + 1}: {source_text!r} -> {text.strip()!r}", flush=True)
@@ -242,7 +246,7 @@ def generate_dubbed_speech(sentences, path_wav, source_language, target_language
             text=text,
             reference_wav_path=speaker_wav,
             output_wav_path=wav_file,
-            prompt_text=source_text,
+            prompt_text=None if pre_translated else source_text,
             seed=42 + i,
         )
 
@@ -395,19 +399,82 @@ def save_Final_Video(final, final_video_name): #  16
     return final_video_path, final__full_video_path
 
 
-def concatenate_Video_And_Background_Sound(final_video_path, instrumental_audio_path, final__full_video_path): #  18
+def concatenate_Video_And_Background_Sound(final_video_path, instrumental_audio_path, final__full_video_path, bg_volume=0.35): # 18
     run_command([
         ensure_ffmpeg(), "-y", "-i", final_video_path, "-i", instrumental_audio_path,
         "-c:v", "copy",
         "-filter_complex",
         "[0:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
         "loudnorm=I=-20:TP=-2:LRA=11[dub];"
-        "[1:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,volume=0.35[bg];"
+        f"[1:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,volume={bg_volume}[bg];"
         "[dub][bg]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]",
         "-map", "0:v:0", "-map", "[a]",
         "-c:a", "aac", "-b:a", "192k", "-ar", VOXCPM_OUTPUT_SAMPLE_RATE,
         "-ac", "2", "-shortest", final__full_video_path,
     ])
+
+
+def _wav_to_s16le_raw(wav_path, sample_rate):
+    proc = subprocess.run(
+        [ensure_ffmpeg(), "-v", "error", "-i", str(wav_path),
+         "-f", "s16le", "-acodec", "pcm_s16le", "-ac", "1", "-ar", str(sample_rate), "-"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    return proc.stdout
+
+
+def build_dubbed_audio(start, end, adjusted_wav_dir, source_video, output_path): #  14a
+    sample_rate = VOXCPM_OUTPUT_SAMPLE_RATE
+    source_duration = media_duration(source_video)
+    with wave.open(str(output_path), "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(sample_rate)
+        cursor = 0.0
+        for i in tqdm(range(len(start))):
+            seg_start = max(0.0, safe_float(start[i]))
+            seg_end = safe_float(end[i])
+            if seg_start > cursor:
+                out.writeframes(b"\x00\x00" * int((seg_start - cursor) * sample_rate))
+                cursor = seg_start
+            adjusted_wav = Path(adjusted_wav_dir) / f"{i + 1}.wav"
+            raw = _wav_to_s16le_raw(adjusted_wav, sample_rate)
+            max_samples = int(max(0.0, seg_end - seg_start) * sample_rate)
+            if max_samples > 0 and len(raw) // 2 > max_samples:
+                raw = raw[:max_samples * 2]
+            out.writeframes(raw)
+            cursor = seg_start + (len(raw) // 2) / sample_rate
+        if source_duration > cursor:
+            out.writeframes(b"\x00\x00" * int((source_duration - cursor) * sample_rate))
+    return str(output_path)
+
+
+def assemble_final_video(source_video, dubbed_audio_path, instrumental_audio_path, final_video_name, bg_volume=0.35): #  14b
+    final_video_dir = Path(os.getcwd()) / "final_video"
+    final_video_full_dir = final_video_dir / "final"
+    final_video_dir.mkdir(exist_ok=True)
+    final_video_full_dir.mkdir(exist_ok=True)
+    final_video_path = str(final_video_dir / final_video_name)
+    final__full_video_path = str(final_video_full_dir / final_video_name)
+    run_command([
+        ensure_ffmpeg(), "-y",
+        "-i", source_video,
+        "-i", dubbed_audio_path,
+        "-i", instrumental_audio_path,
+        "-filter_complex",
+        "[1:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
+        "loudnorm=I=-20:TP=-2:LRA=11[dub];"
+        f"[2:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,volume={bg_volume}[bg];"
+        "[dub][bg]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]",
+        "-map", "0:v:0", "-map", "[a]",
+        "-c:v", "libx264", "-crf", "18", "-preset", "medium",
+        "-c:a", "aac", "-b:a", "192k", "-ar", str(VOXCPM_OUTPUT_SAMPLE_RATE),
+        "-ac", "2", "-shortest", final__full_video_path,
+    ])
+    return final_video_path, final__full_video_path
+
 
 SOURCE_LANGUAGES = {
     'Auto Detect': 'automatic',
@@ -463,14 +530,42 @@ def parse_args():
         "--speaker-wav-dir",
         help="Directory containing 1.wav, 2.wav, etc. for VoxCPM2 speaker references. Generated from the source vocals when omitted.",
     )
+    parser.add_argument(
+        "--subtitles",
+        help="Subtitle file (.srt/.vtt) with dialogue text and timing. Skips Whisper transcription. "
+             "If --subtitle-language matches the target language, cues are spoken directly without translation.",
+    )
+    parser.add_argument(
+        "--subtitle-language",
+        help="Language code of the subtitle file (defaults to the target language)",
+    )
+    parser.add_argument(
+        "--bg-volume",
+        type=float,
+        default=0.35,
+        help="Background music/effects volume relative to the original track in the final mix (default: 0.35)",
+    )
+    parser.add_argument(
+        "--low-memory",
+        action="store_true",
+        help="Memory-safe final assembly: the source video is converted to H.264 in one streaming pass "
+             "(same output codec as the default path) instead of opening every subtitle segment in memory. "
+             "Use for videos with many subtitle segments, where the default reconstruction can exhaust RAM.",
+    )
     parser.add_argument("--list-languages", action="store_true", help="Print supported language codes")
     return parser.parse_args()
 
 
 def main():
-    
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if stream.encoding and stream.encoding.lower() not in ("utf-8", "utf8"):
+                stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError, OSError):
+            pass
+
     # 1 ---------------------------------------
-    
+
     args = parse_args()
     if args.list_languages:
         print("VoxCPM2 target languages:")
@@ -485,6 +580,14 @@ def main():
     video_path = args.video or input("\nVideo file path: ").strip()
     source_language = normalize_language(args.source_language, allow_auto=True) if args.source_language else ask_language('\nPlease select the original video language number : ', allow_auto=True)
     target_language = normalize_language(args.target_language) if args.target_language else ask_language('\nPlease select the target video language number : ')
+    subtitle_cues = None
+    subtitle_language = None
+    if args.subtitles:
+        subtitle_cues = load_subtitles(args.subtitles)
+        if not subtitle_cues:
+            raise RuntimeError(f"No usable subtitle cues found in: {args.subtitles}")
+        subtitle_language = normalize_language(args.subtitle_language) if args.subtitle_language else target_language
+        print(f"Using subtitle file ({subtitle_language}): {len(subtitle_cues)} cues - Whisper transcription skipped")
     
     audio_path, video_path_concat = mp4_to_wav(video_path)
     videoclip = VideoFileClip(video_path_concat)
@@ -502,34 +605,36 @@ def main():
         raise RuntimeError('Vocal separating is not working!') from exc
      
     # 2 ----------------------------------------
-    
-    if ('transcripts' in os.listdir()) != True:
-        os.mkdir('transcripts')
-    transcript_path = os.path.splitext(audio_path)[0].split('/')[-1]
-    transcript_path = str(os.getcwd() + '/transcripts/' + transcript_path)
-    
     os.chdir(VOCAL_REMOVER_DIR)
-    vocal_audio_path = os.getcwd() + "/" + file_path + os.path.splitext(audio_path)[0].split('/')[-1] +'_Vocals.wav'
-    instrumental_audio_path = os.getcwd() + "/" + file_path + os.path.splitext(audio_path)[0].split('/')[-1] +'_Instruments.wav'
-    
-    split_transcript_name = transcript_path.split('/')[-1]
-    split_transcript_folder = transcript_path.split('/')
-    split_transcript_folder.pop(-1)
-    split_transcript_folder = '/'.join(split_transcript_folder) + str('/')
-    if (split_transcript_name in os.listdir(split_transcript_folder)) == False:
-        save_Transcript(vocal_audio_path, transcript_path, source_language)
-    
-    # 3 -----------------------------------------
-    
-    loaded_transcript = read_Transcript(transcript_path)
+    audio_stem = os.path.basename(os.path.splitext(audio_path)[0])
+    vocal_audio_path = os.getcwd() + "/" + file_path + audio_stem +'_Vocals.wav'
+    instrumental_audio_path = os.getcwd() + "/" + file_path + audio_stem +'_Instruments.wav'
+    if subtitle_cues is None:
+        os.chdir(BASE_DIR)
+        if ('transcripts' in os.listdir()) != True:
+            os.mkdir('transcripts')
+        transcript_path = audio_stem
+        transcript_path = str(os.getcwd() + '/transcripts/' + transcript_path)
+        split_transcript_name = transcript_path.split('/')[-1]
+        split_transcript_folder = transcript_path.split('/')
+        split_transcript_folder.pop(-1)
+        split_transcript_folder = '/'.join(split_transcript_folder) + str('/')
+        if (split_transcript_name in os.listdir(split_transcript_folder)) == False:
+            save_Transcript(vocal_audio_path, transcript_path, source_language)
+        os.chdir(VOCAL_REMOVER_DIR)
+        loaded_transcript = read_Transcript(transcript_path)
+    else:
+        loaded_transcript = None
     
     # 4 -----------------------------------------
     character_set = ['.', '!', '?']
-    start, end = create_TimeStamps(loaded_transcript, character_set)
-    
-    # 5 -----------------------------------------
-    
-    sentences = create_Sentences(loaded_transcript, character_set)
+    if subtitle_cues is not None:
+        start = [cue[0] for cue in subtitle_cues]
+        end = [cue[1] for cue in subtitle_cues]
+        sentences = [cue[2] for cue in subtitle_cues]
+    else:
+        start, end = create_TimeStamps(loaded_transcript, character_set)
+        sentences = create_Sentences(loaded_transcript, character_set)
     
     # 6 -----------------------------------------
     
@@ -549,7 +654,8 @@ def main():
     final_movie = os.getcwd() + '/final_movie/'
     path_ffmpeg = os.getcwd() + '/ffmpeg/'
     
-    generate_dubbed_speech(sentences, path_wav, source_language, target_language, speaker_wav_dir)
+    pre_translated = subtitle_cues is not None and subtitle_language == target_language
+    generate_dubbed_speech(sentences, path_wav, source_language, target_language, speaker_wav_dir, pre_translated=pre_translated)
     
     save_Subclips(sentences, start, end, videoclip, path_mp4, video_path_concat)
     
@@ -557,25 +663,34 @@ def main():
     
     change_ClipSpeed(start, path_ffmpeg, path_mp4, path_wav, final_movie)
     
-    # 11 -----------------------------------------
-    
-    video_bosluklari = clip_Parts_without_speaker(start, end, videoclip)
-    
-    # 12 -----------------------------------------
-    
-    remove_and_setting_video_ends(start, video_bosluklari, final_movie, path_mp4)
-    
-    # 13 -----------------------------------------
-    
-    final = concatenate_All_Clip_Parts(video_bosluklari)
-    
-    # 14 -----------------------------------------
     final_video_name = os.path.basename(video_path_concat)
-    final_video_path, final__full_video_path = save_Final_Video(final, final_video_name)
-    
-    # 15 -----------------------------------------
-    
-    concatenate_Video_And_Background_Sound(final_video_path, instrumental_audio_path, final__full_video_path)
+    if args.low_memory:
+        dubbed_audio_path = build_dubbed_audio(
+            start, end, path_ffmpeg, video_path_concat,
+            str(Path(os.getcwd()) / "wav" / (Path(final_video_name).stem + "_dubbed.wav")))
+        final_video_path, final__full_video_path = assemble_final_video(
+            video_path_concat, dubbed_audio_path, instrumental_audio_path,
+            final_video_name, args.bg_volume)
+    else:
+        # 11 -----------------------------------------
+
+        video_bosluklari = clip_Parts_without_speaker(start, end, videoclip)
+
+        # 12 -----------------------------------------
+
+        remove_and_setting_video_ends(start, video_bosluklari, final_movie, path_mp4)
+
+        # 13 -----------------------------------------
+
+        final = concatenate_All_Clip_Parts(video_bosluklari)
+
+        # 14 -----------------------------------------
+
+        final_video_path, final__full_video_path = save_Final_Video(final, final_video_name)
+
+        # 15 -----------------------------------------
+
+        concatenate_Video_And_Background_Sound(final_video_path, instrumental_audio_path, final__full_video_path, args.bg_volume)
     
 
 if __name__ == '__main__':

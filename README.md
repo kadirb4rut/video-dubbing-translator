@@ -110,16 +110,26 @@ python scripts/run_pipeline.py input.mp4 --source-language auto --target-languag
 
 Add `--lip-sync` only after completing the separate LatentSync setup.
 
+To dub from an existing subtitle file instead of Whisper transcription, pass `--subtitles` with a `.srt` or `.vtt` file (cue text and timing are used as-is). `--subtitle-language` (default: target language) controls the translation step: when it matches `--target-language`, the cues are spoken directly and no translation is performed at all.
+
+```bash
+python scripts/run_pipeline.py input.mp4 --source-language ja --target-language en --subtitles dialogue.en.srt
+```
+
+`--bg-volume` (default `0.35`) scales the background track in the final mix.
+
+`--low-memory` rebuilds the final video with a single streaming FFmpeg pass instead of opening every subtitle segment in memory: the source video is encoded to H.264 (same output codec as the default path) and only the audio track is rebuilt. Use it for videos with many subtitle segments, where the default in-memory reconstruction can exhaust RAM.
+
 ## How it works
 
 ```text
 Input video
   └─ FFmpeg audio extraction
       └─ vocal-remover: vocals + background
-          └─ Whisper transcription
-              └─ WhisperX word alignment
-                  └─ punctuation-based speech segments
-                      └─ Google Translate via deep-translator (network request)
+           └─ Whisper transcription (or a --subtitles .srt/.vtt file)
+               └─ WhisperX word alignment
+                   └─ punctuation-based speech segments
+                       └─ Google Translate via deep-translator (skipped when subtitles are already in the target language)
                           └─ VoxCPM2 reference-voice cloning per segment (48 kHz)
                               └─ duration adjustment + video reconstruction
                                   └─ original background mixed back in
@@ -150,7 +160,7 @@ See the script and [the troubleshooting notes](#troubleshooting) before enabling
 | Stage | Where it runs | Notes |
 | --- | --- | --- |
 | Media decoding, vocal separation, Whisper, WhisperX, VoxCPM2, reconstruction | Local machine | Requires model downloads and sufficient RAM/disk. |
-| Translation | Google Translate via `deep-translator` | Transcript text leaves the machine; availability and rate limits are external. |
+| Translation | Google Translate via `deep-translator` | Transcript text leaves the machine; availability and rate limits are external. Skipped entirely when `--subtitles` is already in the target language, making the run fully offline. |
 | Optional lip-sync | Separate local LatentSync environment | CUDA-only in the supported setup. |
 
 ## Limitations and responsible use
