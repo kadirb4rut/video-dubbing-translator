@@ -21,7 +21,7 @@ LIVE_BROWSER_STATUS = BASE_DIR / "temp" / "live-dubbing-browser-status.json"
 class VideoTranslatorGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Video Dubbing Translator")
+        self.root.title("VoxaDub")
         self.root.geometry("1040x680")
         self.root.minsize(920, 600)
 
@@ -93,7 +93,7 @@ class VideoTranslatorGUI:
         shell = ttk.Frame(self.root, style="Shell.TFrame", padding=24)
         shell.pack(fill="both", expand=True)
 
-        ttk.Label(shell, text="Video Dubbing Translator", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(shell, text="VoxaDub", style="Title.TLabel").pack(anchor="w")
         ttk.Label(
             shell,
             text="Choose a video, select languages, and generate a dubbed output without touching the terminal.",

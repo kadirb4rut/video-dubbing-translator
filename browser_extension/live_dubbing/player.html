@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Live Dubbing — Video Dubbing Translator</title>
+  <title>VoxaDub — Live Dubbing</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main>
-  <header><div><p class="eyebrow">VIDEO DUBBING TRANSLATOR</p><h1>Live Dubbing</h1>
+  <header><div><p class="eyebrow">VOXADUB</p><h1>Live Dubbing</h1>
     <p>Experimental · local speech processing with an adaptive, delayed video player.</p></div>
-    <a href="http://127.0.0.1:8765/">Video Dubbing</a></header>
+    <a href="http://127.0.0.1:8765/">VoxaDub</a></header>
   <div class="layout">
     <section class="panel controls" aria-label="Live settings">
       <h2>Source & language</h2>
@@ -33,7 +33,7 @@
       <button id="finish" disabled>Finish capture & play remaining speech</button>
       <div class="row"><button id="pause" disabled>Pause</button><button id="resume" disabled>Resume</button><button id="stop" disabled>Stop</button></div>
       <label for="audioMode">Playback audio</label><select id="audioMode"><option value="translated">Translated</option><option value="original">Original (delayed with video)</option></select>
-      <details id="pairingDetails"><summary>Browser extension pairing</summary><p>Create a fresh one-use code in the main Video Dubbing Translator panel, then enter it above. Codes expire after 120 seconds.</p><button id="pair">Create one-use pairing code</button><button id="copyPair" disabled>Copy pairing code</button><output id="pairOutput"></output></details>
+      <details id="pairingDetails"><summary>Browser extension pairing</summary><p>Create a fresh one-use code in the main VoxaDub panel, then enter it above. Codes expire after 120 seconds.</p><button id="pair">Create one-use pairing code</button><button id="copyPair" disabled>Copy pairing code</button><output id="pairOutput"></output></details>
       <p id="readiness" class="hint">Models load only after Start. Capture starts only after your next explicit action.</p>
     </section>
     <section class="panel playback" aria-label="Synchronized playback">

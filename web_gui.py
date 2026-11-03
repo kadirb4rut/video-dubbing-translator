@@ -265,7 +265,7 @@ def page():
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Video Dubbing Translator</title>
+  <title>VoxaDub — Local-first AI video dubbing</title>
   <style>
     [hidden] {{ display:none !important; }}
     :root {{ color-scheme:dark; --bg:#15243a; --panel:#1d304a; --panel-raised:#243b5a; --line:#48617e; --text:#f4f8ff; --muted:#c3d2e5; --accent:#356cdb; --accent-hover:#4780ee; --green:#84e0aa; --red:#ffb4b2; }}
@@ -351,7 +351,7 @@ def page():
 <body>
 <main>
   <header>
-    <h1>Video Dubbing Translator</h1>
+    <h1>VoxaDub</h1>
     <div class="subtitle">Dub a live stream or translate a video, all in one place.</div>
   </header>
   <div id="activity" class="activity" data-state="idle" role="status" aria-live="polite" hidden><span class="activity-spinner" aria-hidden="true"></span><span id="activityText"></span></div>
@@ -1495,18 +1495,18 @@ def main():
     port = 8765
     if port_is_open(port):
         url = f"http://127.0.0.1:{port}"
-        print(f"Video Dubbing Translator GUI is already running: {url}")
+        print(f"VoxaDub GUI is already running: {url}")
         return
 
     server = ReusableThreadingHTTPServer(("127.0.0.1", port), Handler)
     if threading.current_thread() is threading.main_thread():
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     url = f"http://127.0.0.1:{port}"
-    print(f"Video Dubbing Translator GUI: {url}")
+    print(f"VoxaDub GUI: {url}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nVideo Dubbing Translator GUI stopped.")
+        print("\nVoxaDub GUI stopped.")
     finally:
         server.server_close()
         stop_managed_service()

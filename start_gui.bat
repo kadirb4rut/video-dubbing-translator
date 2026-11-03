@@ -7,6 +7,6 @@ if not exist ".venv\Scripts\activate.bat" (
   exit /b 1
 )
 
-echo Starting Video Dubbing Translator...
+echo Starting VoxaDub...
 call ".venv\Scripts\activate.bat"
 python scripts\start_gui.py

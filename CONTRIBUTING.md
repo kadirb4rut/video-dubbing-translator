@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve Video Dubbing Translator. Focused fixes, documentation improvements, platform notes, and reproducible bug reports are welcome.
+Thanks for helping improve VoxaDub. Focused fixes, documentation improvements, platform notes, and reproducible bug reports are welcome.
 
 ## Before opening an issue
 

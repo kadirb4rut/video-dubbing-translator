@@ -121,9 +121,9 @@ def render_html(payload: Mapping[str, object]) -> str:
             f"<p>Recovered: {html.escape(str(quality.get('recovered_text') or 'not measured'))}</p>"
             f"<pre>{html.escape(json.dumps(row, ensure_ascii=False, indent=2))}</pre></details>"
         )
-    return f"""<!doctype html><meta charset='utf-8'><title>Quality report {html.escape(str(payload.get('run_id')))}</title>
+    return f"""<!doctype html><meta charset='utf-8'><title>VoxaDub quality report — {html.escape(str(payload.get('run_id')))}</title>
 <style>body{{font:14px system-ui;max-width:1100px;margin:2rem auto;padding:0 1rem}} table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ddd;padding:.4rem;text-align:left}}pre{{white-space:pre-wrap;overflow-wrap:anywhere}}details{{margin:1rem 0}} .bad{{color:#a00}}</style>
-<h1>Video dubbing quality report</h1><p>Schema {html.escape(SCHEMA_VERSION)} · Run {html.escape(str(payload.get('run_id')))}</p>
+<h1>VoxaDub quality report</h1><p>Schema {html.escape(SCHEMA_VERSION)} · Run {html.escape(str(payload.get('run_id')))}</p>
 <p>{html.escape(str(payload.get('source_language') or 'unspecified'))} → {html.escape(str(payload.get('target_language') or 'unspecified'))}</p>
 <pre>{html.escape(json.dumps(summary, ensure_ascii=False, indent=2))}</pre>
 <table><thead><tr><th>Group</th><th>Speaker</th><th>TTS backend</th><th>Audio seconds</th><th>Tempo</th><th>WER</th><th>Prosody distance</th><th>QA</th><th>Retries</th></tr></thead><tbody>{''.join(body)}</tbody></table>
