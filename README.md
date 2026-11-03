@@ -332,7 +332,7 @@ scripts/open_live_dubbing_browser.py  isolated Chrome Live Dubbing launcher
 start_live_dubbing_browser.sh/.bat   Live Dubbing browser CLI shortcuts
 voxcpm_runtime.py                   pinned VoxCPM2 adapter
 vocal-remover/                      vendored upstream MIT snapshot
-tests/                              dependency-free logic/protocol tests
+tests/                              logic, protocol and browser-extension tests
 ```
 
 ## Contributing
