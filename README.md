@@ -33,7 +33,7 @@ https://github.com/user-attachments/assets/e2cd7707-a5b7-4a77-b4f8-8c5cd200039c
 
 ## Offline Dubbing — Multilingual Demo
 
-Compare the same 00:20–00:50 interval from the English source and three Offline Dubbing outputs. Turn sound on for each player. These are offline outputs, separate from Live Dubbing.
+Compare the same 00:20–00:50 interval from the English source and three Offline Dubbing outputs. Turn sound on for each player. On narrow screens, scroll the table horizontally to see both columns. These are offline outputs, separate from Live Dubbing.
 
 <table align="center">
   <tr><td align="center"><strong>Original — English</strong></td><td align="center"><strong>AI Dub — Spanish</strong></td></tr>

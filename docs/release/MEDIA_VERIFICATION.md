@@ -1,6 +1,6 @@
 # Release media and preparation verification — 2026-11-03
 
-Status: **media issue public; source release not published**. The maintainer confirmed rights and explicitly authorized publication of the complete unredacted Live recording, including the expired one-use pairing code and acknowledged UI information. The five assets are hosted in [issue #4](https://github.com/kadirb4rut/video-dubbing-translator/issues/4). Source files were not modified. GitHub README rendering and final release publication remain open.
+Status: **media issue public; source release not published**. The maintainer confirmed rights and explicitly authorized publication of the complete unredacted Live recording, including the expired one-use pairing code and acknowledged UI information. The five assets are hosted in [issue #4](https://github.com/kadirb4rut/video-dubbing-translator/issues/4). Source files were not modified. The release-candidate README is public for review; final release publication remains open.
 
 ## Public GitHub media verification — November 3
 
@@ -14,7 +14,7 @@ The maintainer explicitly approved one public media issue and the complete unred
 | Japanese | [Japanese](https://github.com/user-attachments/assets/310f2b76-8ca8-42c1-ac94-2ff6f7428bf5) | 7,858,113 | 30 s |
 | Turkish | [Turkish](https://github.com/user-attachments/assets/56f8f08d-d2f7-46d3-9eb7-dabcc1f9944b) | 7,858,196 | 30 s |
 
-All five attachment URLs returned unauthenticated HTTP 200 video/mp4 with the expected byte sizes. The issue rendered five actual video elements in a signed-out browser. The four Offline players rendered in the requested English/Spanish then Japanese/Turkish 2×2 table, each played from start to the 30-second ended state without browser media errors, and each was sought and resumed. The Live player also played uninterrupted to its 129.115374-second end with no browser media error; its audio control was unmuted during playback. These are public issue checks, not a published-README check. Sound streams exist and the UI could be unmuted; actual audibility has not been independently heard. Check the final README after authorization to publish source.
+All five attachment URLs returned unauthenticated HTTP 200 video/mp4 with the expected byte sizes. The issue rendered five actual video elements in a signed-out browser. The four Offline players rendered in the requested English/Spanish then Japanese/Turkish 2×2 table, each played from start to the 30-second ended state without browser media errors, and each was sought and resumed. The Live player also played uninterrupted to its 129.115374-second end with no browser media error; its audio control was unmuted during playback. These are public issue checks, not a published-README check. Sound streams exist and the UI could be unmuted; actual audibility has not been independently heard. The authorized release-candidate README also rendered all five embedded players: each was played, paused, sought and resumed, then reached its end without a browser media error. On a 390-pixel viewport the two-column table requires horizontal scrolling. Actual audibility remains a human listening check.
 
 The preferred 67.5 MB Live upload attempt failed in GitHub's attachment UI, without a detailed error message. The approved full-length 9.46 MB fallback was uploaded once after visual comparison of UI text at 45 and 90 seconds. Its 129.115374 s audio/container duration, 7,770 decoded frames, original AAC packets, and bounded 49.667 ms source-timestamp correction are documented below. The compact version is unredacted, as explicitly requested.
 
@@ -75,7 +75,7 @@ The [NASA SVS interview page](https://svs.gsfc.nasa.gov/14349/) lists the matchi
 
 ## GitHub rendering investigation
 
-GitHub's Markdown API stripped HTML video elements in an earlier test, but the actual public issue rendered and played the four hosted videos in the requested 2×2 table. The API result alone did not predict the browser rendering. The release-candidate README still needs direct verification on its GitHub branch.
+GitHub's Markdown API stripped HTML video elements in an earlier test, but the actual public issue rendered and played the four hosted videos in the requested 2×2 table. The API result alone did not predict the browser rendering. The public release-candidate README was subsequently verified directly as described above.
 
 ## Checkout and tests
 
