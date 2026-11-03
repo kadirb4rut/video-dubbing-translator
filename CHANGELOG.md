@@ -29,7 +29,7 @@
 
 - Live remains experimental, with variable delay and no universal quality or latency guarantee. The new Chrome launcher, clean platform installs, local Mac Live inference and larger Hy-MT2 variants need further validation.
 - Overlap is flagged, not separated; Community-1 requires gated model access. GUI restart may not recover a running Colab connection's state; cloud resources remain allocated until explicitly disconnected.
-- Five demo attachments are public in the [media issue](https://github.com/kadirb4rut/video-dubbing-translator/issues/4). The public issue renders the requested 2×2 layout; the staged README itself has not yet been published or verified on GitHub. See [media status](docs/release/DEMO_MEDIA.md).
+- Five demo attachments are public in the [media issue](https://github.com/kadirb4rut/video-dubbing-translator/issues/4). The public issue and release-candidate README render the requested 2×2 layout; the table scrolls horizontally on narrow screens. See [media status](docs/release/DEMO_MEDIA.md).
 
 ### Breaking Changes
 
