@@ -24,23 +24,11 @@ are additional local verification artifacts, described in
 as public release assets by the UI/report work. A new test result does not by
 itself close the source-specific redistribution/attribution record above.
 
-## Historical November 3 proposed release media
-
-This pre-upload status was superseded by the public media approval below.
-
-Four NASA JWST files and a YouTube Live screen recording are staged outside the repository. The NASA interview source is identified below; the proposed synthetic-voice use and the Live recording’s third-party broadcast rights still require review. Do not infer permission from capture or attribution. Public upload requires rights review and explicit publication approval. No GitHub asset URLs or playback verification exist for these files yet. The original files remain untouched. See `MEDIA_VERIFICATION.md` for technical results.
-
 ## NASA interview provenance — November 3
 
 The [NASA Scientific Visualization Studio item 14349](https://svs.gsfc.nasa.gov/14349/) lists a 3:49 pre-recorded interview with Dr. Amber Straughn, includes the question shown in the local demo, and asks for credit to NASA's Goddard Space Flight Center. The official WebM's encoded audio packets have the same SHA-256 as the local English MP4's encoded audio packets (`7fd2851e9af4bf45fb277e349f704b7ea3064a42be7d6309479769467bb801fe`); sampled frames at 0, 20, 30 and 49 seconds also visually match within encoding/frame-selection differences. This supports the identified footage provenance; it is not an independent rights clearance for every element or derivative.
 
-[NASA's media guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/) distinguish factual informational use from promotional and commercial use, request source acknowledgement and prohibit implying endorsement; they also warn about third-party material and identifiable people. Review the intended repository/demo presentation, synthetic voice and any applicable permissions before distribution. The unrelated Live recording contains third-party broadcast imagery and remains subject to its own rights review. User authorization for public uploads is still required.
-
-## Historical initial authorization and Live safety check
-
-The initial hold below was superseded by the maintainer's explicit approval recorded in the following section.
-
-The maintainer confirmed rights for all five videos and explicitly authorized public GitHub media upload and playback testing, while withholding authorization for a `main` push, tag or Release publication. A pre-upload review of the full Live recording found an on-screen one-use pairing code around 00:56–00:59, a local machine identifier, and a cloud-compute balance. The user instructed that any recording containing exposed credentials or private identifiers must not be uploaded, so the Live upload is withheld. The credential itself is intentionally not recorded here. Do not treat expiration as permission to publish it. The four Offline clips are separate.
+[NASA's media guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/) distinguish factual informational use from promotional and commercial use, request source acknowledgement and prohibit implying endorsement; they also warn about third-party material and identifiable people. Review the intended repository/demo presentation, synthetic voice and any applicable permissions before distribution. The maintainer confirmed the rights for the selected Live recording and Offline demos and authorized their public upload, as recorded below.
 
 ## Public media approval — November 3
 
