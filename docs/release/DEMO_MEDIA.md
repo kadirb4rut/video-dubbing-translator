@@ -32,4 +32,4 @@ The [NASA Scientific Visualization Studio item 14349](https://svs.gsfc.nasa.gov/
 
 ## Public media approval — November 3
 
-The maintainer explicitly confirmed rights and approved publishing the complete unredacted Live video, including the expired one-use pairing code and acknowledged UI information, and one public media-only issue. The five approved assets are in [issue #4](https://github.com/kadirb4rut/video-dubbing-translator/issues/4). The 67.5 MB Live upload failed; the complete 9.46 MB version was used after checking text readability. The maintainer did not authorize a `main` push, tag or Release publication.
+The maintainer explicitly confirmed rights and approved publishing the complete unredacted Live video, including the expired one-use pairing code and acknowledged UI information, and one public media-only issue. The five approved assets are in [issue #4](https://github.com/kadirb4rut/voxadub/issues/4). The 67.5 MB Live upload failed; the complete 9.46 MB version was used after checking text readability. The maintainer did not authorize a `main` push, tag or Release publication.
