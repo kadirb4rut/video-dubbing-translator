@@ -1,6 +1,6 @@
 # v0.1.0 — Live Dubbing, Hy-MT2 & Multi-Speaker VoxCPM2
 
-**Draft only.** This version is proposed, not tagged or published. The maintainer confirmed media rights and approved the public demo uploads; final release approval remains required.
+The maintainer confirmed media rights and approved the public demo uploads.
 
 Video Dubbing Translator brings speaker-aware offline dubbing and experimental browser-based Live Dubbing together in one GUI. Hy-MT2 translates locally on the selected compute, while Community-1 and VoxCPM2 support speaker-specific references. Duration-aware refinement, bounded timing correction and audio QA help protect output quality.
 
@@ -34,11 +34,11 @@ Prepare the required models and Live dependencies, choose Local or Colab, and cl
 
 ### Demos
 
-The [public demo issue](https://github.com/kadirb4rut/video-dubbing-translator/issues/4) hosts the complete Live recording and four 30-second Offline clips from 00:20–00:50. The public issue renders the four Offline players in a 2×2 table. The staged README uses the same attachment URLs and markup; its own GitHub rendering remains to be checked after authorized source publication. Both offline intervals are retained locally. The [historical demo release](https://github.com/kadirb4rut/video-dubbing-translator/releases/tag/demo-videos) remains unchanged and predates these features.
+The [public demo issue](https://github.com/kadirb4rut/video-dubbing-translator/issues/4) hosts the complete Live recording and four 30-second Offline clips from 00:20–00:50. The public issue renders the four Offline players in a 2×2 table. The release-candidate README renders the same players and 2×2 layout on GitHub; on narrow screens, the table scrolls horizontally. Both offline intervals are retained locally. The [historical demo release](https://github.com/kadirb4rut/video-dubbing-translator/releases/tag/demo-videos) remains unchanged and predates these features.
 
 ## Verification and limits
 
-A full 228.744-second NASA-to-Turkish GUI/Colab offline run and a short synthetic Modal offline run were recorded. An earlier bounded Colab Live capture/playback used Chrome for Testing; the newer Chrome launcher was checked through extension loading and source playback, but its complete capture-to-dubbed-playback path is not established. Saved regression checkpoints include 324 passed/15 skipped/66 subtests before final UI edits and 7 targeted post-redesign tests. A later isolated local Python 3.10 run and the GitHub-hosted Linux run for RC commit 23b7d4a each reported 334 passed and 16 skipped; CI also passed all three Node extension test files. The 16 optional tests require Silero assets or the English syntax model. See [release readiness](https://github.com/kadirb4rut/video-dubbing-translator/blob/main/docs/RELEASE_READINESS.md) for scope and dates.
+A full 228.744-second NASA-to-Turkish GUI/Colab offline run and a short synthetic Modal offline run were recorded. An earlier bounded Colab Live capture/playback used Chrome for Testing; the newer Chrome launcher was checked through extension loading and source playback, but its complete capture-to-dubbed-playback path is not established. Saved regression checkpoints include 324 passed/15 skipped/66 subtests before final UI edits and 7 targeted post-redesign tests. A later isolated local Python 3.10 run and the GitHub-hosted Linux release-candidate run each reported 334 passed and 16 skipped; CI also passed all three Node extension test files. The 16 optional tests require Silero assets or the English syntax model. See [release readiness](https://github.com/kadirb4rut/video-dubbing-translator/blob/main/docs/RELEASE_READINESS.md) for scope and dates.
 
 Live latency varies and quality is not guaranteed. Overlapping speakers are not separated. Hy-MT2 7B/30B, clean Windows/Linux installs and local Mac Live inference were not validated here. Colab connection recovery after GUI restart is incomplete. Verify provider state and explicitly disconnect cloud resources to avoid continuing charges.
 

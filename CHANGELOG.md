@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.1.0 — proposed, unpublished
+## v0.1.0
 
 ### Added
 

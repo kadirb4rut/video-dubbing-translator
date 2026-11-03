@@ -23,7 +23,7 @@ Video Dubbing Translator separates a video's dialogue and background, identifies
 
 ## News
 
-**v0.1.0 — release candidate, unpublished.** The first numbered release is proposed; the existing `demo-videos` tag remains unchanged. Highlights include experimental YouTube Live/VOD dubbing with an automatic Chrome extension launcher; local Hy-MT2 translation with context and duration-aware refinement; Community-1 speaker IDs and speaker-specific VoxCPM2 references; timing and audio QA safeguards; and a refreshed GUI with Local, Colab CLI G4 and bounded-verified Modal offline workflows. See the [release draft](docs/release/GITHUB_RELEASE_DRAFT.md) and [changelog](CHANGELOG.md).
+**v0.1.0** — Highlights include experimental YouTube Live/VOD dubbing with an automatic Chrome extension launcher; local Hy-MT2 translation with context and duration-aware refinement; Community-1 speaker IDs and speaker-specific VoxCPM2 references; timing and audio QA safeguards; and a refreshed GUI with Local, Colab CLI G4 and bounded-verified Modal offline workflows. See the [release draft](docs/release/GITHUB_RELEASE_DRAFT.md) and [changelog](CHANGELOG.md).
 
 ## Live Dubbing — YouTube Live Broadcast Demo
 
@@ -292,7 +292,7 @@ Model setup, package installation, and explicit downloads need internet access. 
 
 As reconciled on 2026-11-01, saved evidence includes a complete 228.744-second NASA English WebM → Turkish run through the GUI/Colab CLI, a 7.084-second synthetic full-pipeline Modal video and real explicit Modal Disconnect, and bounded Colab Live capture/Finish/Stop tests. The earlier 72-second two-speaker G4 run reused an aligned transcript and prior Community-1 output; it is separate evidence. No broad semantic score, current Live speaker-cloning certification, peak VRAM budget or clean cross-platform guarantee follows from these runs.
 
-The saved full regression log reports **324 passed, 15 skipped and 66 subtests passed** before the final UI work. Post-redesign targeted tests passed **7/7**; the final density edits were syntax-checked and visually inspected, with backend/page JavaScript unchanged. These are distinct checkpoints, not a newly rerun full suite. See [current project/release status](docs/RELEASE_READINESS.md), [November 1 provider E2E](docs/release/GUI_COMPUTE_E2E_20261101.md), [UI checks](docs/release/UI_UX_VERIFICATION_20261101.md), [historical E2E metrics](docs/release/E2E_RESULTS.md), and [hardware coverage](docs/release/CUDA_TEST_MATRIX.md). The proposed v0.1.0 remains unpublished and untagged.
+The saved full regression log reports **324 passed, 15 skipped and 66 subtests passed** before the final UI work. Post-redesign targeted tests passed **7/7**; the final density edits were syntax-checked and visually inspected, with backend/page JavaScript unchanged. These are distinct checkpoints, not a newly rerun full suite. See [current project/release status](docs/RELEASE_READINESS.md), [November 1 provider E2E](docs/release/GUI_COMPUTE_E2E_20261101.md), [UI checks](docs/release/UI_UX_VERIFICATION_20261101.md), [historical E2E metrics](docs/release/E2E_RESULTS.md), and [hardware coverage](docs/release/CUDA_TEST_MATRIX.md). The existing `demo-videos` release remains available as historical material.
 
 ## Troubleshooting
 
