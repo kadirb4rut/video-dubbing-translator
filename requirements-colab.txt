@@ -1,0 +1,2 @@
+# Optional authenticated remote runtime connector for the Colab compute provider.
+google-colab-cli==0.7.5

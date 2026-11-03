@@ -16,4 +16,4 @@ if [ ! -x "$PYTHON" ]; then
 fi
 
 echo "Starting Video Dubbing Translator..."
-"$PYTHON" web_gui.py
+"$PYTHON" scripts/start_gui.py

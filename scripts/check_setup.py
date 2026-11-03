@@ -13,6 +13,8 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE_DIR))
 
 from voxcpm_runtime import default_runtime_device, model_ready  # noqa: E402
+from diarization.model_manager import status as diarization_status  # noqa: E402
+from translation.model_manager import model_status as hymt2_model_status  # noqa: E402
 
 
 VOCAL_MODEL = BASE_DIR / "vocal-remover" / "models" / "baseline.pth"
@@ -25,7 +27,6 @@ IMPORTS = {
     "voxcpm": "voxcpm",
     "openai-whisper": "whisper",
     "whisperx": "whisperx",
-    "deep-translator": "deep_translator",
     "moviepy": "moviepy",
     "fsorter": "fsorter",
     "requests": "requests",
@@ -172,9 +173,33 @@ def main():
     except ImportError:
         pass
 
+    hy_statuses = hymt2_model_status()
+    if any(item["installed"] and item["runtime_ready"] for item in hy_statuses):
+        installed = ", ".join(
+            item["display_name"]
+            for item in hy_statuses
+            if item["installed"] and item["runtime_ready"]
+        )
+        report("PASS", f"Local Hy-MT2 translation ready: {installed}")
+    else:
+        failures += 1
+        report(
+            "FAIL",
+            "No ready local Hy-MT2 model: the local full pipeline cannot translate. "
+            "For remote inference, run the model readiness check in that runtime. "
+            "This checker never downloads a model automatically.",
+        )
+
+    diarization = diarization_status()
+    if diarization.installed and diarization.runtime_ready:
+        report("PASS", f"Speaker diarization ready: {diarization.model_dir}")
+    else:
+        report("WARN", diarization.detail + " Per-segment fallback remains available.")
+
     report(
         "INFO",
-        "Translation is not offline: transcript text is sent to Google Translate through deep-translator.",
+        "The base pipeline sends no transcript text to an external translation service; "
+        "after model setup it can run fully locally.",
     )
     if failures:
         report("RESULT", f"Setup is not ready ({failures} required check(s) failed).")

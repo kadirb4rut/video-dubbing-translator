@@ -32,7 +32,20 @@ vocal-remover/ffmpeg/
 vocal-remover/ffmpeg_optimized/
 vocal-remover/gender_dedector/
 temp/
+
+# Local demo/test media without recorded redistribution clearance
+/test_multispeaker.mp4
+/docs/assets/demo-comparison-15s.mp4
+
 third_party/LatentSync/
+third_party/hymt2/.venv/
+third_party/hymt2/models/
+third_party/live/.venv/
+third_party/live_segmentation/
+third_party/live_translation/
+third_party/diarization/.venv/
+third_party/diarization/community-1/
+graphify-out/
 
 # Large downloaded model weights
 vocal-remover/models/*.pth

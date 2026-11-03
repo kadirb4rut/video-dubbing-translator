@@ -1,0 +1,3 @@
+# Optional live HTTP transport only. Existing local model environments are reused.
+# Install explicitly in the selected LIVE_PYTHON runtime; never on page load.
+aiohttp>=3.10,<4

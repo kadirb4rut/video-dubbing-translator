@@ -1,0 +1,20 @@
+# Separate Linux cloud runtime; the installed local/offline environment is untouched.
+# CUDA 12.8 wheels support the G4 Blackwell GPU. Hy-MT2 keeps its isolated environment.
+torch==2.8.0
+torchaudio==2.8.0
+torchcodec==0.7.0
+voxcpm==2.0.3
+transformers==4.51.3
+whisperx==3.8.6
+openai-whisper==20250625
+moviepy==1.0.3
+fsorter==2.4
+requests==2.32.3
+numpy==2.2.6
+librosa==0.11.0
+matplotlib==3.10.7
+opencv-python-headless==4.12.0.88
+resampy==0.4.3
+soundfile==0.13.1
+aiohttp>=3.10,<4
+sentencepiece

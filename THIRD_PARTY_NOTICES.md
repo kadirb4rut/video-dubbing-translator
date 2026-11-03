@@ -4,6 +4,8 @@ This file is an engineering inventory, not legal advice. The root `LICENSE` appl
 
 No third-party model weights or FFmpeg binaries are committed to this repository.
 
+The default offline dubbing path does not call Modal, vLLM, or any hosted translation service. The optional serving/development entries below are inventory for separate code paths; they are not runtime dependencies of the offline release workflow.
+
 ## Bundled source
 
 ### vocal-remover
@@ -24,19 +26,28 @@ The upstream copyright and license are preserved. This code is not represented a
 | vocal-remover `baseline.pth` | [`fabiogra/baseline_vocal_remover`](https://huggingface.co/fabiogra/baseline_vocal_remover) at revision `0206a40f1c92aa7caa8303e022906e3da0d87fb0` | Hugging Face metadata marks it MIT. | Downloaded separately and checksum-verified; not covered by the root license. |
 | OpenAI Whisper models | [`openai/whisper`](https://github.com/openai/whisper) | MIT for code and model weights. | Downloaded on first use. |
 | WhisperX alignment models | Selected dynamically by language in WhisperX | Terms vary by torchaudio bundle or Hugging Face model. | Review the selected model's card/license before redistribution; no single repository-wide license can cover every alignment model. |
+| pyannote Community-1 | [`pyannote/speaker-diarization-community-1`](https://huggingface.co/pyannote/speaker-diarization-community-1) | CC-BY-4.0 according to repository metadata/model card, plus gated user conditions; initial access requires accepting those conditions and using a Hugging Face token. | Downloaded explicitly into an ignored local directory. The application uses regular and exclusive diarization locally; no hosted pyannoteAI service is used. Preserve attribution and review the accepted terms before redistribution. |
 | VoxCPM2 model, tokenizer, and AudioVAE | [`openbmb/VoxCPM2`](https://huggingface.co/openbmb/VoxCPM2) at revision `32279effe8c19989596f05d353d1447f51d9e915` | Apache-2.0 in repository metadata and the official model card; the card describes commercial use as permitted. | This is the default voice model. The pinned snapshot contains the model weights, tokenizer, and built-in 48 kHz AudioVAE; no separately licensed vocoder or denoiser is loaded by the app. The license does not grant rights in a person's voice or excuse deceptive use. |
+| Hy-MT2 1.8B, 7B, and 30B-A3B | [`Tencent-Hunyuan/Hy-MT2`](https://github.com/Tencent-Hunyuan/Hy-MT2) and official [`tencent` model repositories](https://huggingface.co/collections/tencent/hy-mt2) | Official source and model repositories carry Apache-2.0. | The user explicitly downloads one selected variant into an ignored directory. 1.8B is about 4.1 GB, 7B about 16.1 GB, and 30B-A3B about 60.1 GB. The 7B and 30B-A3B variants were not runtime-tested during the implementation described by this repository revision. |
 | LatentSync 1.6 checkpoints | [`ByteDance/LatentSync-1.6`](https://huggingface.co/ByteDance/LatentSync-1.6) at revision `c42c7e6c8e9c213626389fa7d9a3c444b8536353` | Model repository metadata marks the checkpoints OpenRAIL++. | Optional, downloaded separately, and subject to use-based restrictions independent of the Apache-2.0 source license. |
 
 ## Major code dependencies and tools
 
+The optional live sentence boundary worker uses [wtpsplit 2.2.2](https://github.com/segment-any-text/wtpsplit) and [SaT 3l-sm](https://huggingface.co/segment-any-text/sat-3l-sm), both MIT. The pinned SaT snapshot is `137da054051ad9f1eac42025f758db4ac9f22535`; tokenizer assets come from [FacebookAI/xlm-roberta-base](https://huggingface.co/FacebookAI/xlm-roberta-base) (MIT). They are downloaded explicitly into an ignored isolated runtime. The model's advertised training coverage is not a guarantee for all supported dubbing languages.
+
+Multilingual development evidence uses selected natural [Google FLEURS](https://huggingface.co/datasets/google/fleurs) test recordings under CC-BY-4.0; manifests preserve dataset/config/split/ID attribution. Research-only [Omnilingual ASR](https://github.com/facebookresearch/omnilingual-asr) code/models are Apache-2.0; its isolated fairseq2 stack is not a consumer prerequisite or a validated replacement at this checkpoint.
+
 | Component | Version/source used | License finding | Notes |
 | --- | --- | --- | --- |
+| Optional Live Qwen MT | [Qwen/Qwen3.5-27B](https://huggingface.co/Qwen/Qwen3.5-27B), revision `fc05daec18b0a78c049392ed2e771dde82bdf654` | Apache-2.0, official model card and LICENSE | Explicit optional local Live translation worker. Approximately 56 GB weights; not bundled. Main offline Hy-MT2/Vox environments are unchanged. Real MT and native-path component validation succeeded; learned endpoint/semantic-judge controls had failures and are not used to relax safety gates. |
 | VoxCPM | [`OpenBMB/VoxCPM`](https://github.com/OpenBMB/VoxCPM) package `voxcpm==2.0.3`; audited source revision `ee8161e9e1b7b082cb5721a3a9980da4204401e6` | Apache-2.0 | Official inference implementation. The app disables the optional external ZipEnhancer denoiser. Upstream acknowledges MiniCPM-4, CosyVoice, and Descript Audio Codec; the shipped official inference code/model repository applies Apache-2.0, and Descript Audio Codec is MIT. |
 | Whisper | `openai-whisper==20250625` | MIT | Code and official weights are MIT. |
 | WhisperX | `whisperx==3.3.1` | BSD-2-Clause license file | The wheel's metadata says MIT while its included `LICENSE` is BSD-2-Clause; this project follows the included license file conservatively. |
 | Faster-Whisper / PyAV | `faster-whisper==1.1.0` / `av==14.2.0` | MIT / BSD-3-Clause | Versions are pinned together to use a supported Apple-silicon PyAV wheel and avoid compiling an older PyAV against FFmpeg 8. |
-| deep-translator | `deep-translator==1.11.4` | Upstream tag/wheel `LICENSE` is Apache-2.0; package metadata says MIT | Upstream metadata is inconsistent. The package is installed externally, not vendored. Recheck before redistributing its wheel. |
-| Google Translate endpoint | Used by `deep-translator.GoogleTranslator` | External service terms, not an open-source license | Transcript text leaves the machine. Availability, rate limits, and permitted use are controlled by the service provider. |
+| pyannote.audio | Isolated diarization runtime, `>=4.0,<5` | MIT | Installed separately from the pinned main environment. The official package documents optional anonymous telemetry, controllable with `PYANNOTE_METRICS_ENABLED=0`. |
+| Hy-MT2 runtime dependencies | Isolated runtime with `transformers>=5.6,<6`, PyTorch, Accelerate, Safetensors, and huggingface-hub | Apache-2.0/BSD-style per upstream projects | Kept separate because the main VoxCPM2 stack pins Transformers 4.51.3. |
+| Modal Python SDK | `modal>=1.5,<2` in the local control plane; remote image dependencies are declared separately | Apache-2.0 | Optional serving control plane. Credentials stay in environment variables and are never printed. |
+| vLLM / vLLM-Omni | Optional isolated Modal image, pinned together at `0.28.0` | Apache-2.0 | `modal_vllm_smoke.py` uses Python 3.12. Imports pass on the tested image, but VoxCPM2 engine-core startup did not become healthy; native Modal VoxCPM2 remains the validated fallback. |
 | MoviePy | `moviepy==1.0.3` | MIT | Installed dependency. |
 | FFmpeg | System executable | LGPL-2.1-or-later by default; optional components can make a build GPL-2.0-or-later | The app calls the user's FFmpeg executable and does not distribute it. Packaging an FFmpeg binary, especially one with `libx264`/GPL components, requires a separate compliance review. |
 | LatentSync source | revision `a229c3948406bc2cf6eaf4873e662e70c6a04746` | Apache-2.0 | Cloned into ignored `third_party/LatentSync/`; not committed here. Its own acknowledgements identify additional upstream components. |
@@ -65,5 +76,5 @@ The main unresolved human/legal decisions are:
 
 1. Whether a future packaged distribution will bundle FFmpeg, Python wheels, or model weights; each bundled artifact needs a distribution-specific compliance review.
 2. Which language-specific WhisperX alignment models will be supported and redistributed, if any.
-3. Whether the external Google Translate workflow is acceptable for the intended data, privacy, commercial use, and service-terms context.
+3. Whether the accepted Community-1 access terms and optional telemetry configuration are appropriate for a particular deployment.
 4. Whether the user has the consent and personality/voice rights required for the source material and intended generated output.

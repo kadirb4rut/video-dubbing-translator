@@ -1,0 +1,6 @@
+# Optional, isolated remote image dependencies for modal_vllm_smoke.py.
+# The smoke image uses Python 3.12 (the upstream quickstart runtime).
+# Keep vLLM and vLLM-Omni on the same major/minor release.
+vllm==0.28.0
+vllm-omni==0.28.0
+soundfile>=0.13

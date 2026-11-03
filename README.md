@@ -2,52 +2,64 @@
 
 # Video Dubbing Translator
 
-**Dub a video into another language while keeping the source voice and the original scene.**
-
-Local-first, open-source video dubbing with reference-voice cloning, translation, and optional lip-sync.
+**Fully local, speaker-aware video dubbing with consistent cloned voices.**
 
 [![CI](https://github.com/kadirb4rut/video-dubbing-translator/actions/workflows/static-checks.yml/badge.svg)](https://github.com/kadirb4rut/video-dubbing-translator/actions/workflows/static-checks.yml)
 [![Python 3.10](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/Code-MIT-green.svg)](LICENSE)
 [![VoxCPM2: Apache 2.0](https://img.shields.io/badge/VoxCPM2-Apache--2.0-blue.svg)](https://huggingface.co/openbmb/VoxCPM2)
+[![PeerPush](https://peerpush.com/p/video-dubbing-translator/badge.png)](https://peerpush.com/p/video-dubbing-translator)
 
 🌟 Listed in [OpenBMB/VoxCPM](https://github.com/OpenBMB/VoxCPM) — **Ecosystem & Community** · [PR #389](https://github.com/OpenBMB/VoxCPM/pull/389)
 
-[Demo](#demo) · [Quick Start](#quick-start) · [How it works](#how-it-works) · [Platforms](#platforms-and-hardware) · [Contributing](CONTRIBUTING.md)
+[Live demo](#live-dubbing--youtube-live-broadcast-demo) · [Offline demos](#offline-dubbing--multilingual-demo) · [Quick Start](#quick-start) · [Pipeline](#how-it-works) · [Models](#offline-dubbing-quick-start-and-local-model-management) · [CLI](#cli) · [Architecture details](docs/PIPELINE_ARCHITECTURE.md) · [Release verification](docs/RELEASE_READINESS.md)
 
 </div>
 
-Video Dubbing Translator is a local-first Python application with a browser GUI and CLI. It separates vocals from the background, transcribes and aligns speech, translates the transcript, clones a reference voice with VoxCPM2, and rebuilds a shareable dubbed video. The base workflow runs media processing and inference locally; translation currently uses Google Translate through `deep-translator`.
+Video Dubbing Translator separates a video's dialogue and background, identifies speakers, transcribes and aligns speech, translates locally with Hy-MT2, clones one consistent VoxCPM2 voice per speaker, and reconstructs the video. After the selected models have been downloaded once, the base pipeline can run fully locally and offline. No transcript text is sent to a translation service.
 
 > [!IMPORTANT]
-> **Local-first is not fully offline.** Transcript text is sent to Google Translate. First-run setup also downloads models. Do not expose the localhost GUI as a public service, and only process media and voices you have permission to use.
+> Initial installation and model download require internet access. `pyannote/speaker-diarization-community-1` also requires accepting its Hugging Face terms and an `HF_TOKEN` for the initial download. Keep the unauthenticated browser GUI bound to `127.0.0.1`, and process only media and voices you have permission to use.
 
-## Why this project
+## News
 
-- **Understandable output:** keep the original background track while replacing speech.
-- **Reference-voice cloning:** synthesize translated segments with the source speaker's voice reference using VoxCPM2.
-- **Inspectable stages:** separate, transcribe, align, translate, synthesize, fit timing, and reconstruct instead of hiding everything behind one opaque request.
-- **Practical defaults:** base dubbing does not require LatentSync or a CUDA GPU, although inference is much faster with one.
-- **Open source:** MIT-licensed project code with pinned model revisions and third-party notices.
+**v0.1.0 — release candidate, unpublished.** The first numbered release is proposed; the existing `demo-videos` tag remains unchanged. Highlights include experimental YouTube Live/VOD dubbing with an automatic Chrome extension launcher; local Hy-MT2 translation with context and duration-aware refinement; Community-1 speaker IDs and speaker-specific VoxCPM2 references; timing and audio QA safeguards; and a refreshed GUI with Local, Colab CLI G4 and bounded-verified Modal offline workflows. See the [release draft](docs/release/GITHUB_RELEASE_DRAFT.md) and [changelog](CHANGELOG.md).
 
-## Demo
+## Live Dubbing — YouTube Live Broadcast Demo
 
-Turn sound on and compare the same 15-second highlight before and after the current VoxCPM2 pipeline:
+Watch the complete GUI workflow for an authorized YouTube live broadcast. Live Dubbing is **experimental**: delay varies, and capture requires your explicit browser permissions and pairing. See [Live Dubbing setup](docs/LIVE_DUBBING_SETUP.md#pair-and-start-a-session).
 
-<table align="center" width="820">
+https://github.com/user-attachments/assets/e2cd7707-a5b7-4a77-b4f8-8c5cd200039c
+
+## Offline Dubbing — Multilingual Demo
+
+Compare the same 00:20–00:50 interval from the English source and three Offline Dubbing outputs. Turn sound on for each player. These are offline outputs, separate from Live Dubbing.
+
+<table align="center">
+  <tr><td align="center"><strong>Original — English</strong></td><td align="center"><strong>AI Dub — Spanish</strong></td></tr>
   <tr>
-    <td align="center" width="410"><strong>Original — English</strong><br><sub>Source voice and timing</sub></td>
-    <td align="center" width="410"><strong>AI dub — Turkish</strong><br><sub>VoxCPM2 reference-voice output</sub></td>
+    <td align="center"><video controls width="360" src="https://github.com/user-attachments/assets/738cab48-2551-4011-ae72-22bebc466a91"></video></td>
+    <td align="center"><video controls width="360" src="https://github.com/user-attachments/assets/94ceb439-f39e-423d-8363-c1602bd7bc76"></video></td>
   </tr>
+  <tr><td align="center"><strong>AI Dub — Japanese</strong></td><td align="center"><strong>AI Dub — Turkish</strong></td></tr>
   <tr>
-    <td align="center" width="410"><video controls width="360" src="https://github.com/user-attachments/assets/ce74aa39-c683-431e-b15b-2153a1495384"></video></td>
-    <td align="center" width="410"><video controls width="360" src="https://github.com/user-attachments/assets/c993b06d-cf55-48e6-b91b-9a7530d60734"></video></td>
+    <td align="center"><video controls width="360" src="https://github.com/user-attachments/assets/310f2b76-8ca8-42c1-ac94-2ff6f7428bf5"></video></td>
+    <td align="center"><video controls width="360" src="https://github.com/user-attachments/assets/56f8f08d-d2f7-46d3-9eb7-dabcc1f9944b"></video></td>
   </tr>
 </table>
 
-Prefer one file for sharing? Download the generated [single-file comparison](docs/assets/demo-comparison-15s.mp4), or reproduce it with [`scripts/create_demo_comparison.sh`](scripts/create_demo_comparison.sh). The source clips and the current output remain available on the [demo release](https://github.com/kadirb4rut/video-dubbing-translator/releases/tag/demo-videos).
+Source footage: [NASA's Goddard Space Flight Center, JWST interview with Dr. Amber Straughn](https://svs.gsfc.nasa.gov/14349/). The translated speech is AI-generated by this project; no NASA endorsement is implied, and NASA is not responsible for the dub.
 
-Direct files: [original English clip](https://github.com/kadirb4rut/video-dubbing-translator/releases/download/demo-videos/input-highlight-15s.mp4) · [VoxCPM2 Turkish dub](https://github.com/kadirb4rut/video-dubbing-translator/releases/download/demo-videos/target-voxcpm2-highlight-15s.mp4)
+The earlier 15-second [demo release](https://github.com/kadirb4rut/video-dubbing-translator/releases/tag/demo-videos) remains available as historical material; it predates the present Hy-MT2 and multi-speaker workflow. The [original English](https://github.com/kadirb4rut/video-dubbing-translator/releases/download/demo-videos/input-highlight-15s.mp4) and [Turkish dub](https://github.com/kadirb4rut/video-dubbing-translator/releases/download/demo-videos/target-voxcpm2-highlight-15s.mp4) are also available there. A local comparison can be created with [the comparison script](scripts/create_demo_comparison.sh). See [media status](docs/release/DEMO_MEDIA.md).
+
+## Key Features
+
+- **Speaker-aware voices:** Community-1 diarization assigns speaker identities when available; clean references and their transcripts condition VoxCPM2. Ambiguous identities fall back safely.
+- **Local translation:** Hy-MT2 preserves context and optional terminology; 1.8B has bounded tests, while 7B and 30B-A3B are selectable but not runtime-verified here.
+- **Timing and audio quality:** safe same-speaker groups, duration-aware refinement, bounded correction, QA and retry/fallback protect the output without guaranteeing perfect synchronization.
+- **Experimental Live Dubbing:** capture an authorized YouTube live broadcast or supported regular video with a separately paired Chrome extension and Local or Colab inference.
+- **Flexible compute:** run offline jobs locally, or explicitly choose Colab CLI G4 or Modal. Cloud providers receive the media needed for processing.
+- **Optional lip-sync:** LatentSync is a separate CUDA-only post-processing step.
 
 ## Quick Start
 
@@ -55,14 +67,12 @@ Direct files: [original English clip](https://github.com/kadirb4rut/video-dubbin
 
 | Requirement | Base dubbing | Notes |
 | --- | --- | --- |
-| Python 3.10 | Required | The pinned VoxCPM2/WhisperX stack is not validated on other versions. |
-| FFmpeg + ffprobe | Required | They must both be on `PATH`; the installer never uses `sudo` to install them. |
-| Disk space | 10+ GB recommended | VoxCPM2's pinned snapshot is about 5 GB, in addition to the environment and caches. |
-| GPU | Optional | NVIDIA CUDA is recommended; CPU and Apple Silicon paths are supported with different speed/memory tradeoffs. |
+| Python 3.10 | Required | Main VoxCPM2/WhisperX environment. |
+| FFmpeg + ffprobe | Required | Install through the normal OS package manager and put both on `PATH`. |
+| Disk | Model-dependent | VoxCPM2 is about 5 GB; Hy-MT2 is about 4.1, 16.1, or 60.1 GB. |
+| GPU | Optional | CUDA is fastest. The saved full local Mac run used CPU on an 8 GB Apple M1; MPS was exercised only in a Hy-MT2 component smoke. |
 
-Install FFmpeg with your normal system package manager first, for example `brew install ffmpeg` on macOS or `sudo apt install ffmpeg` on Ubuntu/Debian. On Windows, use an FFmpeg build from the [official download page](https://ffmpeg.org/download.html#build-windows) and add its `bin` directory to `PATH`.
-
-### macOS / Linux
+macOS/Linux:
 
 ```bash
 git clone https://github.com/kadirb4rut/video-dubbing-translator.git
@@ -71,9 +81,7 @@ cd video-dubbing-translator
 ./start_gui.sh
 ```
 
-`install.sh` verifies Python and FFmpeg, creates or reuses `.venv`, installs the pinned dependencies, downloads the required model snapshot, and runs the preflight. To prepare the environment without downloading models yet, use `SKIP_MODELS=1 ./install.sh`; run `./install.sh` again later to finish setup.
-
-### Windows PowerShell
+Windows PowerShell:
 
 ```powershell
 git clone https://github.com/kadirb4rut/video-dubbing-translator.git
@@ -82,130 +90,255 @@ cd video-dubbing-translator
 .\start_gui.bat
 ```
 
-Use `.\install.ps1 -SkipModels` when you only need the environment and static checks. The scripts do not silently install system software or change global Python settings.
+The installer creates the pinned main `.venv` and the dependency-isolated Hy-MT2 runtime. It does **not** choose or download a Hy-MT2 model for you. In the browser GUI, expand **Advanced model, speaker and lip-sync settings**, select one translation model and click **Download Selected**. Large downloads never begin merely by launching the application.
 
-The browser GUI opens at [http://127.0.0.1:8765](http://127.0.0.1:8765). Upload a short test video, choose the target language, leave LatentSync disabled for the first run, and follow the process log.
+Run `./start_gui.sh` once for the main panel. It opens Google Chrome using an isolated app profile. On macOS, if Chrome is missing, the terminal asks before downloading Google's installer and installing an app-local copy; other platforms currently require Chrome to be installed separately. No AI model weights are downloaded by browser setup. Its Live Dubbing section has its own GPU choice and **Connect & prepare Colab** and **Open Live Dubbing Browser** actions; its Offline Dubbing section keeps its own provider choice. Live Dubbing supports Local and Colab CLI today. Modal Live is unavailable until its streaming service is implemented; the existing Modal integration runs offline jobs. The command-line shortcut `./start_live_dubbing_browser.sh` remains available for Local or Colab Live sessions.
 
-## Manual Installation / Advanced Setup
+The dashboard and Live Dubbing browser use separate Chrome app profiles and do not alter your normal Chrome profile. The Live launcher loads the extension automatically through Chrome's experimental DevTools protocol, so no Web Store or manual extension installation is needed. During the Live browser session a randomly selected loopback debugging port remains open; other local processes can control that isolated browser profile. The macOS launcher uses a mock Keychain, so credentials saved in these app profiles do not have the normal Keychain protection. See [Live Dubbing setup](docs/LIVE_DUBBING_SETUP.md) for pairing and capture steps.
 
-If you prefer to control each step:
+The web GUI has **Local**, **Colab CLI — G4 GPU**, and **Modal — full video dubbing** choices under **Offline dubbing**. Select a provider, choose your video and languages, and press **Start Dubbing**. For cloud providers the GUI connects your account, prepares an isolated GPU environment and downloads missing models before continuing. You can also use **Connect & prepare GPU** first. Account authorization links and code/confirmation prompts appear in the GUI; Google/Modal consent remains interactive. No notebook, remote folder path, or manually created session is required.
 
-```bash
-python3.10 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python scripts/setup_models.py
-python scripts/check_setup.py
-python web_gui.py
-```
+Cloud connection tools are installed separately from the local AI environment when needed. Colab reuses or creates the dedicated `video-dubbing-g4` session. Models are cached on the Colab VM and must be downloaded again after that VM ends. Modal uses a connected full-pipeline app with a persistent model Volume. **Cloud connections stay open after jobs, errors, browser closure and GUI closure. Only Disconnect GPU requests their shutdown.** Allocated cloud resources can continue consuming credits until disconnected. Video output is saved on this computer and remains available after the GPU is disconnected. A fresh GUI launch clears the previous result from the panel but keeps the output file. Account credentials stay with the provider tools. See [the Turkish GUI guide](docs/GUI_COMPUTE_QUICK_START_TR.md) and [provider details](docs/COMPUTE_PROVIDERS.md).
 
-Windows PowerShell uses `py -3.10`, `.venv\Scripts\Activate.ps1`, and the same Python commands. NVIDIA users can install a matching PyTorch CUDA build from the [official selector](https://pytorch.org/get-started/locally/) before installing the remaining requirements.
+Earlier bounded capture, Turkish speech playback, Finish/drain and source-audio restoration were verified on macOS with Colab G4 using Chrome for Testing. The new Google Chrome launcher has separately loaded the extension, opened its side panel, and played the user's YouTube stream; live audio capture, account sign-in and dubbed playback with this new launcher still need end-to-end verification. Local Mac inference, Windows, Linux, and clean Chrome installation are unverified. See the [release verification record](docs/RELEASE_READINESS.md).
 
-### CLI
+Use `SKIP_MODELS=1 ./install.sh` or `.\install.ps1 -SkipModels` to install environments without the vocal-remover and VoxCPM2 weights. Hy-MT2 and diarization weights are always separate explicit downloads.
+
+## Offline Dubbing Quick Start and Local Model Management
+
+### Hy-MT2 translation
+
+Hy-MT2 requires `transformers>=5.6`, while the main voice/transcription environment stays pinned to `transformers==4.51.3`. The project therefore runs Hy-MT2 in `third_party/hymt2/.venv` and communicates through a persistent JSON-lines subprocess. One worker keeps the selected model loaded for the whole job; stdout is machine-readable and model diagnostics stay on stderr.
 
 ```bash
-python scripts/run_pipeline.py input.mp4 --source-language auto --target-language tr
+python scripts/setup_hymt2.py
+python scripts/manage_hymt2_models.py list
+python scripts/manage_hymt2_models.py download hymt2-1.8b
 ```
 
-Add `--lip-sync` only after completing the separate LatentSync setup.
+Available variants:
+
+| CLI key | Official repository | Approx. download | Local validation in this development work |
+| --- | --- | ---: | --- |
+| `hymt2-1.8b` | [`tencent/Hy-MT2-1.8B`](https://huggingface.co/tencent/Hy-MT2-1.8B) | 4.1 GB | Validated in bounded G4 offline/Live tests; local hardware suitability is separate. |
+| `hymt2-7b` | [`tencent/Hy-MT2-7B`](https://huggingface.co/tencent/Hy-MT2-7B) | 16.1 GB | Implemented, selectable, and downloadable; **not runtime-tested here**. |
+| `hymt2-30b-a3b` | [`tencent/Hy-MT2-30B-A3B`](https://huggingface.co/tencent/Hy-MT2-30B-A3B) | 60.1 GB | Implemented, selectable, and downloadable; **not runtime-tested here**. |
+
+Remove one local model safely with `python scripts/manage_hymt2_models.py remove MODEL_KEY`. Model directories and virtual environments are ignored by Git.
+
+### Speaker diarization
+
+The maintained [`pyannote/speaker-diarization-community-1`](https://huggingface.co/pyannote/speaker-diarization-community-1) pipeline runs in its own optional environment. It returns both regular diarization and exclusive diarization. Exclusive turns are used to reconcile one dominant identity with transcript timestamps; regular turns remain available to flag simultaneous speakers.
+
+1. Sign in to Hugging Face and accept the Community-1 user conditions.
+2. Create a read token and set it only in your environment: `export HF_TOKEN=hf_...` (PowerShell: `$env:HF_TOKEN="hf_..."`).
+3. Run `python scripts/setup_diarization.py --download-model`, or click the explicit GUI setup action.
+
+The token is never stored in project configuration or printed. Once downloaded under `third_party/diarization/community-1`, the worker loads the model from that local path and can run offline. If setup is unavailable, the job logs the reason and uses per-segment references.
 
 ## How it works
 
 ```text
-Input video
-  └─ FFmpeg audio extraction
-      └─ vocal-remover: vocals + background
-          └─ Whisper transcription
-              └─ WhisperX word alignment
-                  └─ punctuation-based speech segments
-                      └─ Google Translate via deep-translator (network request)
-                          └─ VoxCPM2 reference-voice cloning per segment (48 kHz)
-                              └─ duration adjustment + video reconstruction
-                                  └─ original background mixed back in
-                                      └─ optional LatentSync lip-sync
+Video
+  → FFmpeg audio extraction
+  → vocal/background separation
+  → Whisper transcription
+  → WhisperX alignment
+  → Community-1 speaker diarization
+      ↳ exclusive turns assign one stable identity
+      ↳ regular turns flag overlapping speech
+  → safe same-speaker timing-group merging
+      ↳ preserve source metadata and internal pause anchors
+      ↳ calculate safe trailing-silence duration budgets
+  → deterministic clean reference selection per speaker
+  → local Hy-MT2 translation candidates with context/glossary/protected terms
+      ↳ estimate target spoken length and use per-speaker rate calibration
+  → VoxCPM2 speaker-specific synthesis at 48 kHz
+  → measure generated duration against original active speech
+      ↳ ideal 0.90×–1.10×: keep the initial translation
+      ↳ too long: one quantitative Hy-MT2 shortening rewrite
+      ↳ too short: one quantitative Hy-MT2 expansion rewrite without new facts
+      ↳ choose initial/refined WAV by protected content, safe fit, band, and sync error
+  → bounded 0.85×–1.25× FFmpeg timing correction
+  → original background reconstruction
+  → optional LatentSync
+  → dubbed video
 ```
 
-The demo's English → Turkish run uses real vocal separation, Whisper/WhisperX timing, Google translation, four VoxCPM2 segments, duration fitting, and H.264/AAC reconstruction. The final file is about 14.88 seconds with 48 kHz stereo audio; Turkish ASR recovered all four intended sentences. That is an integration check on one short clip, not a broad benchmark.
+### Speaker references and overlap
 
-## Platforms and hardware
+Reference candidates must be non-overlapping, at least one second long, non-silent, and not visibly clipped. Selection is deterministic and favors clean speech near six seconds. A chosen reference record includes its speaker, WAV path, source segment index, and exact transcript.
 
-| Environment | Base dubbing | What to expect |
-| --- | --- | --- |
-| macOS / Apple Silicon | Supported | Systems below 16 GB use slower CPU/bfloat16 defaults to avoid MPS memory exhaustion. |
-| Linux + NVIDIA CUDA | Recommended | Whisper and VoxCPM2 can use CUDA when the installed PyTorch build detects it. |
-| Windows + NVIDIA CUDA | Supported with manual prerequisites | Use Python 3.10, FFmpeg on `PATH`, and a matching CUDA-enabled PyTorch build. |
-| CPU-only Linux/Windows | Possible for short clips | Inference is slow and memory-intensive. |
+Diarization identifies who spoke when; it does not separate simultaneous voices. Overlap is flagged and excluded from preferred reference candidates. Exclusive diarization can still provide a dominant speaker for synthesis. Ambiguous or missing assignments fall back safely; genuine overlap may remain audible in the source reference or reconstructed mix.
 
-The base pipeline has no hard CUDA requirement. **LatentSync does.** Its separate 1.6 environment needs an NVIDIA GPU with approximately 18 GB VRAM and several additional gigabytes of downloads:
+### Duration-aware refinement
+
+The controller keeps two distinct durations: the original active speech duration is preferred, while safe available duration (including trailing silence) is only a hard boundary. If initial VoxCPM2 speech is too long, Hy-MT2 gets one quantitative shortening pass; if it is too short, it gets one quantitative expansion pass that may use only semantically entailed wording and may not invent facts or filler. VoxCPM2 then synthesizes the rewrite with the **same speaker reference**. Initial and refined WAVs are evaluated after bounded tempo correction, with protected content and safe fit taking priority over raw duration proximity.
+
+The ideal tempo band is 0.90×–1.10×, the hard band is 0.85×–1.25×, and the default maximum is one refinement pass. All are explicit CLI options.
+
+### Context and glossary
+
+Each request includes the previous/next timing group, speaker identity, preferred original speech duration, safe available window, spoken-length budget, internal pauses, and protected terms when available. Character and word counts are diagnostics only; timing decisions use spoken-length estimates and measured VoxCPM2 output. A glossary is an optional UTF-8 JSON object:
+
+```json
+{
+  "OpenBMB": "OpenBMB",
+  "VoxCPM2": "VoxCPM2",
+  "CUDA": "CUDA"
+}
+```
+
+## CLI
+
+Default speaker-aware local dubbing:
 
 ```bash
-python scripts/setup_latentsync.py
+python scripts/run_pipeline.py input.mp4 \
+  --source-language auto \
+  --target-language tr \
+  --translation-model hymt2-1.8b \
+  --translation-device auto
 ```
 
-See the script and [the troubleshooting notes](#troubleshooting) before enabling it.
+Use the simple provider-aware command (defaults to the saved Offline dubbing
+choice):
 
-## Local vs network processing
+```bash
+python scripts/run_dubbing.py input.mp4 --target-language tr
+python scripts/run_dubbing.py input.mp4 --compute colab --session my-g4 --target-language tr
+python scripts/run_dubbing.py input.mp4 --compute modal --target-language tr
+python scripts/run_dubbing.py input.mp4 --compute modal-tts --target-language tr
+```
 
-| Stage | Where it runs | Notes |
+The full `modal` option uses the connection prepared in the web GUI. The legacy
+`modal-tts` option selects VoxCPM2 speech generation only; it needs a deployed `modal_app.py`
+and the pinned model in the configured Modal Volume. Colab uses an existing
+active CLI session and preinstalled remote project/models. See
+[provider setup](docs/COMPUTE_PROVIDERS.md).
+
+Speaker controls and glossary:
+
+```bash
+python scripts/run_pipeline.py input.mp4 \
+  --source-language en --target-language tr \
+  --min-speakers 2 --max-speakers 5 \
+  --glossary glossary.json
+```
+
+Use `--num-speakers 2` instead of bounds when the exact count is known. Use `--no-diarization` for the legacy per-segment voice-reference behavior. Translation devices are `auto`, `cpu`, `mps`, `cuda`, and `cuda:N`. Add `--lip-sync` only after completing the separate LatentSync setup.
+
+Timing groups default to a 0.75-second merge gap, 0.85-second micro-segment preference, and 14-second maximum group. Tune these with `--timing-max-gap`, `--timing-micro-seconds`, and `--timing-max-group-seconds`. Refinement targets the original active speech duration, with an ideal `0.90`–`1.10` band (`--ideal-min-tempo`, `--ideal-max-tempo`) and a hard FFmpeg correction bound of `0.85`–`1.25` (`--min-tempo`, `--max-tempo`) unless explicitly changed.
+
+## GUI
+
+The browser GUI at [http://127.0.0.1:8765](http://127.0.0.1:8765) exposes:
+
+- input video and source/target language;
+- speaker-aware toggle, exact speaker count, or compact min/max bounds;
+- Community-1 readiness and explicit setup/download;
+- all three Hy-MT2 variants, per-model installed status, explicit runtime/download actions, and device selection;
+- optional inline glossary JSON and LatentSync;
+- separate compute-location choices for offline dubbing and Live Dubbing;
+- live logs, cancellation, and output preview;
+- compact desktop controls, a stacked narrow-screen layout, and expandable **Advanced model, speaker and lip-sync settings**;
+- in-page activity/error feedback driven by actual server status, with a waiting indicator for ongoing requests. No unmeasured progress percentage or ETA is shown.
+
+The browser zoom does not need adjustment. The November 1 density pass uses 36 px desktop controls, 14 px body text and 16 px panel padding. See [UI verification](docs/release/UI_UX_VERIFICATION_20261101.md). Changes to `web_gui.py` appear after restarting the Python GUI server; reloading a server that still holds the old module does not update its page generator. A server restart is not cloud shutdown and does not automatically recover a previously active Colab connection's UI state; see [connection recovery limits](docs/COMPUTE_PROVIDERS.md#gui-restart-and-connection-state).
+
+## Live Dubbing Quick Start (experimental)
+
+The separate **Live Dubbing** workflow uses incremental ASR, Hy-MT2, native
+VoxCPM2 and a delayed video player on the selected compute. It starts only when
+explicitly selected. The **Open Live Dubbing Browser** option starts Google
+Chrome with the local extension loaded by the launcher; it captures only an
+authorized, user-selected tab and pairs with the selected local or Colab
+loopback service. Generate and copy the one-use pairing code from the main
+Live Dubbing panel, then enter it in the extension panel; it expires after two
+minutes. Modal is not a Live Dubbing provider. See
+[local setup and limitations](docs/LIVE_DUBBING_SETUP.md) and the
+[engineering evidence](docs/LIVE_DUBBING_ENGINEERING.md), plus the
+[Run30/Run31 measured status](docs/release/LIVE_DUBBING_STATUS.md). Real
+browser/YouTube runs are bounded development evidence only; there is no
+universal p95 <15-second guarantee or production-readiness claim. Existing
+Video Dubbing remains the default.
+
+## Supported Compute Providers and Privacy
+
+| Stage | Normal base path | Network after setup? |
 | --- | --- | --- |
-| Media decoding, vocal separation, Whisper, WhisperX, VoxCPM2, reconstruction | Local machine | Requires model downloads and sufficient RAM/disk. |
-| Translation | Google Translate via `deep-translator` | Transcript text leaves the machine; availability and rate limits are external. |
-| Optional lip-sync | Separate local LatentSync environment | CUDA-only in the supported setup. |
+| Vocal separation, Whisper, WhisperX, diarization | Local by default; full batch job can run on selected Colab or Modal GPU | No for local; selected media is uploaded for cloud jobs |
+| Translation and duration rewrite | Selected local Hy-MT2 by default; Colab/Modal run the prepared model remotely | No for local; cloud job text/media are processed on the selected provider |
+| Voice cloning and reconstruction | Local VoxCPM2 by default; full Colab/Modal job or legacy Modal TTS-only | Full cloud jobs receive the selected video; legacy TTS receives required audio/text; no cloud transfer for local |
+| Optional LatentSync | Local CUDA by default; available within full Colab batch path | No for local; video is uploaded for Colab |
 
-## Limitations and responsible use
+The local compute choice preserves the prior fully local privacy behavior.
+Selecting Colab or Modal changes where specific media/text is sent; see
+[provider setup and transfer details](docs/COMPUTE_PROVIDERS.md) before using
+those options.
 
-- There is no production-grade speaker diarization; overlapping or multi-speaker dialogue is not guaranteed.
-- Punctuation-based segmentation and large translation-length changes can affect timing and naturalness.
-- Voice cloning depends on clean reference vocals and does not grant rights to impersonate a person.
-- The localhost GUI has no authentication, upload quota, or multi-user isolation. Keep it bound to `127.0.0.1`.
-- Use only media and voices you have permission and consent to process, and disclose synthetic or translated speech when context could mislead viewers.
+Model setup, package installation, and explicit downloads need internet access. pyannote's optional telemetry can be disabled with `PYANNOTE_METRICS_ENABLED=0`. No external translation API exists in the normal path.
+
+
+## Platforms and Hardware
+
+- `auto` selects CUDA first, then Apple MPS for Hy-MT2, then CPU. Explicit device requests fail with an actionable error if unavailable.
+- The 1.8B checkpoint is about 4.1 GB and still needs additional working memory. An 8 GB machine can be constrained even with half/bfloat16 loading.
+- The 7B and 30B-A3B variants need far more memory; selection support does not imply that they fit ordinary laptops.
+- VoxCPM2 retains its independent `VOXCPM_DEVICE` handling. Hy-MT2 device selection does not override it.
+- LatentSync 1.6 remains CUDA-only in this project and needs approximately 18 GB VRAM.
+
+## Testing and Verification
+
+As reconciled on 2026-11-01, saved evidence includes a complete 228.744-second NASA English WebM → Turkish run through the GUI/Colab CLI, a 7.084-second synthetic full-pipeline Modal video and real explicit Modal Disconnect, and bounded Colab Live capture/Finish/Stop tests. The earlier 72-second two-speaker G4 run reused an aligned transcript and prior Community-1 output; it is separate evidence. No broad semantic score, current Live speaker-cloning certification, peak VRAM budget or clean cross-platform guarantee follows from these runs.
+
+The saved full regression log reports **324 passed, 15 skipped and 66 subtests passed** before the final UI work. Post-redesign targeted tests passed **7/7**; the final density edits were syntax-checked and visually inspected, with backend/page JavaScript unchanged. These are distinct checkpoints, not a newly rerun full suite. See [current project/release status](docs/RELEASE_READINESS.md), [November 1 provider E2E](docs/release/GUI_COMPUTE_E2E_20261101.md), [UI checks](docs/release/UI_UX_VERIFICATION_20261101.md), [historical E2E metrics](docs/release/E2E_RESULTS.md), and [hardware coverage](docs/release/CUDA_TEST_MATRIX.md). The proposed v0.1.0 remains unpublished and untagged.
 
 ## Troubleshooting
 
-**The installer says Python is missing.** Install Python 3.10 and rerun it; an existing virtual environment made with another version must be recreated.
+**Hy-MT2 is not ready.** Run `python scripts/setup_hymt2.py`, then download exactly one selected model. Inspect status with `python scripts/manage_hymt2_models.py list`.
 
-**FFmpeg or ffprobe is missing.** Install both commands with your normal OS package manager and open a new terminal so `PATH` is refreshed.
+**Community-1 download returns 401/403.** Accept the model's Hugging Face terms, create a read token, export `HF_TOKEN`, and retry the explicit setup command. The base pipeline can still run with diarization fallback.
 
-**Model setup fails.** Check network access and free disk space, then rerun `./install.sh`. Interrupted Hugging Face downloads resume; the vocal-remover checkpoint is checksum-verified.
+**A model runs out of memory.** Stop other memory-heavy applications, use the 1.8B model, or select CPU where practical. Never switch to a larger model to address OOM.
 
-**Translation stalls.** Google Translate is an external, unofficial integration and may be rate-limited. Retry with a short clip and inspect the preflight output.
+**FFmpeg or ffprobe is missing.** Install both with the OS package manager and reopen the terminal so `PATH` is refreshed.
 
-**LatentSync is unavailable.** Keep it disabled for base dubbing. It requires its own environment, checkpoint files, and an NVIDIA CUDA GPU.
+**LatentSync is unavailable.** Keep it disabled. It has a separate setup and NVIDIA CUDA requirement.
+
+## Known Limitations and Responsible Use
+
+- Speaker diarization can misidentify speakers, especially in noisy, very short, or heavily overlapped dialogue.
+- V1 flags overlap but does not perform multi-speaker speech separation.
+- Timing groups merge only safe same-speaker boundaries; punctuation and alignment can still split phrases imperfectly.
+- One rewrite pass can shorten excessive output or naturally expand short output, but cannot guarantee an exact speaking duration. Very short source windows may remain timing-limited rather than being stretched beyond the configured tempo bounds; safe trailing silence is fallback capacity, not the primary target.
+- Translation quality varies by language/domain/model size. Glossaries help with fixed terminology.
+- The localhost GUI has no authentication, quota, or multi-user isolation.
+- Voice cloning does not grant rights to impersonate a person. Obtain consent and disclose synthetic/translated speech where appropriate.
 
 ## Project layout
 
 ```text
-Video_Translator.py          core dubbing pipeline
-web_gui.py                   local browser GUI
-install.sh / install.ps1     macOS/Linux and Windows bootstrap
-scripts/check_setup.py       read-only preflight
-scripts/setup_models.py      pinned required-model setup
-scripts/run_pipeline.py      CLI orchestration
-scripts/create_demo_comparison.sh  shareable demo generator
-voxcpm_runtime.py            pinned VoxCPM2 adapter
-vocal-remover/               vendored upstream MIT snapshot
-tests/                       dependency-free runtime tests
+Video_Translator.py                 media-pipeline orchestration
+dubbing/                            typed segments, timing groups, speech budgets, references, duration control
+diarization/                        Community-1 reconciliation and worker client
+translation/                        Hy-MT2 registry, prompts, client, worker
+scripts/manage_hymt2_models.py      explicit model list/download/remove
+scripts/setup_hymt2.py              isolated translation runtime setup
+scripts/setup_diarization.py        isolated Community-1 setup/download
+scripts/run_pipeline.py             public CLI + optional LatentSync
+web_gui.py                          local browser GUI
+scripts/open_live_dubbing_browser.py  isolated Chrome Live Dubbing launcher
+start_live_dubbing_browser.sh/.bat   Live Dubbing browser CLI shortcuts
+voxcpm_runtime.py                   pinned VoxCPM2 adapter
+vocal-remover/                      vendored upstream MIT snapshot
+tests/                              dependency-free logic/protocol tests
 ```
-
-## Roadmap
-
-- Add an optional local translation backend so privacy-sensitive users can avoid the external translation step.
-- Add more segmentation and output-path tests, including multi-speaker fixtures that do not contain private media.
-- Improve per-stage progress, cleanup controls, and resumable jobs.
-- Add configurable Whisper/VoxCPM models and better multi-speaker handling.
-- Document a future packaged-launcher path for macOS, Linux, and Windows without bundling fragile multi-gigabyte model stacks.
 
 ## Contributing
 
-Focused fixes, documentation improvements, platform notes, and reproducible bug reports are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) before changing the pipeline. Good first contributions include improving setup messages, adding dependency-free tests for path/segmentation logic, and documenting verified platform-specific fixes.
+Read [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and the [release-readiness notes](docs/RELEASE_READINESS.md). Do not commit downloaded weights, tokens, private media, or generated outputs.
 
-If this project is useful to you, a star is an easy way to bookmark it and help other developers discover future improvements. Please star only if you genuinely want to follow the project; there are no artificial engagement tactics here.
+## Licenses and Third-Party Terms
 
-See [the release-readiness notes](docs/RELEASE_READINESS.md) for the current source-install release path and the constraints around future packaged launchers.
-
-## License and third-party terms
-
-Original project code is available under the [MIT License](LICENSE). That license does **not** replace the licenses of dependencies, downloaded models, services, or the separately licensed vendored `vocal-remover/` code.
-
-Read [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) before redistribution or commercial use. VoxCPM2 source and the pinned official model snapshot are Apache-2.0; LatentSync source is Apache-2.0 while its checkpoints are marked OpenRAIL++; FFmpeg licensing depends on the installed build and enabled components; WhisperX alignment-model licenses vary by language/model.
+Original project code is under the [MIT License](LICENSE). Dependencies and downloaded models retain their own terms. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the engineering inventory, including Hy-MT2 (Apache-2.0), pyannote.audio (MIT), Community-1 model-card requirements, VoxCPM2, WhisperX, LatentSync, and FFmpeg.

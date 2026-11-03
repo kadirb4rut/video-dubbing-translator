@@ -34,6 +34,9 @@ Write-Host "Installing pinned Python dependencies"
 & $venvPython -m pip install --upgrade pip
 & $venvPython -m pip install -r requirements.txt
 
+Write-Host "Installing the isolated Hy-MT2 runtime (model weights remain an explicit choice)"
+& $venvPython scripts\setup_hymt2.py
+
 if ($SkipModels) {
     Write-Host "Skipping model downloads (-SkipModels). Run .\install.ps1 again before dubbing."
     exit 0
@@ -44,3 +47,4 @@ Write-Host "Downloading and verifying required models"
 Write-Host "Running setup preflight"
 & $venvPython scripts\check_setup.py
 Write-Host "Installation complete. Start the app with .\start_gui.bat"
+Write-Host "In the GUI, explicitly choose and download one Hy-MT2 translation model before dubbing."
