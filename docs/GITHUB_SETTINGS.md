@@ -1,37 +1,52 @@
-# VoxaDub GitHub settings and rename checklist
+# VoxaDub GitHub settings and repository migration
 
-Repository-level metadata is separate from the files in a pull request.
+## Rename status
+
+The existing public repository was renamed in place through GitHub Settings → General on 2026-11-03:
+
+- Previous repository name: video-dubbing-translator
+- Current canonical URL: https://github.com/kadirb4rut/voxadub
+
+GitHub reported that the requested name was available before the rename. This is the same repository; no repository was created or transferred. The main branch, commit history, issues, stars, forks, releases, and tags remain with it. GitHub Actions passed on the merge commit immediately before the rename.
+
+The README, changelog, release documentation, and security contact link use the canonical URL.
 
 ## Visual identity
 
-Use [`assets/branding/voxadub-banner.png`](../assets/branding/voxadub-banner.png) as the README hero and, when updating repository settings, as the GitHub social preview. This keeps the same approved artwork as the project's single visual identity.
+The README hero uses the original approved artwork at [assets/branding/voxadub-banner.png](../assets/branding/voxadub-banner.png). That tracked PNG remains unchanged.
+
+GitHub rejected the 1.62 MB PNG for its Social Preview because the upload limit is 1 MB. The Social Preview now uses a 1280×640 JPEG encoding of the same banner artwork, optimized to about 202 KB. The composition and text remain visually clear; the original PNG was not replaced or edited.
 
 ## About metadata
 
-Recommended description:
+The repository About description is:
 
 > VoxaDub — Local-first AI video and live broadcast dubbing with Hy-MT2 translation and speaker-aware VoxCPM2 voices. Live Dubbing is experimental.
 
-The repository About description now uses this wording. The GitHub social preview remains separate repository metadata and is not changed by the README branch.
+Topics remain: ai-dubbing, ai-video, latentsync, local-ai, open-source, python, speech-translation, video-dubbing, video-localization, video-translation, voice-cloning, voxcpm2, whisper, whisperx.
 
-Recommended topics:
+## Local clone
 
-`ai-dubbing`, `ai-video`, `latentsync`, `local-ai`, `open-source`, `python`, `speech-translation`, `video-dubbing`, `video-localization`, `video-translation`, `voice-cloning`, `voxcpm2`, `whisper`, `whisperx`
+The existing VoxaDub worktree now uses the canonical origin:
 
-## Repository rename — after separate final approval only
+~~~sh
+git remote set-url origin https://github.com/kadirb4rut/voxadub.git
+git fetch origin
+~~~
 
-Desired repository URL: `https://github.com/kadirb4rut/voxadub`.
+A fresh clone creates a directory named voxadub:
 
-The name is not currently present in the owner's public repository list. The GitHub API returns 404 for that URL; only GitHub's rename action can confirm that it is claimable at the time of the approved rename.
+~~~sh
+git clone https://github.com/kadirb4rut/voxadub.git
+cd voxadub
+./install.sh
+./start_gui.sh
+~~~
 
-Until then, keep active links, badges, installation commands, and remotes on `kadirb4rut/video-dubbing-translator`. Do not publish `voxadub` repository URLs before the rename.
+On Windows, run install.ps1 and start_gui.bat from PowerShell after changing into the voxadub directory.
 
-After explicit approval:
+## Compatibility
 
-1. Rename the repository through **Settings → General** and confirm the new canonical URL.
-2. Update the README CI badge, release/demo/media links, and `git clone`/`cd` commands; update `.github/ISSUE_TEMPLATE/config.yml` and other active links that target the old repository path.
-3. Confirm the About description matches the wording above, set the social preview to the VoxaDub banner, and verify the README and links on the renamed repository.
-4. Update existing local clones with `git remote set-url origin https://github.com/kadirb4rut/voxadub.git` and verify fetch/push access.
-5. Review GitHub Actions, issue/security forms, webhooks, GitHub Apps, and any external integrations that may use the old repository path. Verify a fresh clone and CI run.
+The repository rename changes its GitHub URL only. Existing Modal application/function names, Colab runtime directories and paths, internal Python packages, configuration keys, and public commands remain unchanged to preserve existing deployments and installations.
 
-Keep deployed Modal app/function names and Colab runtime paths stable during the repository rename. They are operational identifiers that are independent of the GitHub URL; migrate them only as a separate, verified compatibility change.
+Repository Settings showed no configured webhooks and no installed GitHub Apps. GitHub Actions continues to use the repository’s workflow files under the renamed repository. Any external service configured outside repository Settings should be checked separately if it stores the old URL.

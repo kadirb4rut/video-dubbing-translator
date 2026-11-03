@@ -1,10 +1,10 @@
 # Release media and preparation verification — 2026-11-03
 
-Status: **media issue public; source release not published**. The maintainer confirmed rights and explicitly authorized publication of the complete unredacted Live recording, including the expired one-use pairing code and acknowledged UI information. The five assets are hosted in [issue #4](https://github.com/kadirb4rut/video-dubbing-translator/issues/4). Original media source files were not modified. The release-candidate README is public for review; final release publication remains open.
+Status: **media issue public; v0.1.0 published on 2026-11-03**. The maintainer confirmed rights and explicitly authorized publication of the complete unredacted Live recording, including the expired one-use pairing code and acknowledged UI information. The five assets are hosted in [issue #4](https://github.com/kadirb4rut/voxadub/issues/4). Original media source files were not modified. The maintainer has listened to and approved all five published videos for audio quality and perceived synchronization.
 
 ## Public GitHub media verification — November 3
 
-The maintainer explicitly approved one public media issue and the complete unredacted Live recording, including the acknowledged expired pairing code, machine identifier and compute balance. No still-valid credential was identified in the sampled OCR/ASR scan; sampling is not an exhaustive security guarantee. The authorized [media issue #4](https://github.com/kadirb4rut/video-dubbing-translator/issues/4) is public. The authorized release-candidate branch and draft PR were later created; no v0.1.0 tag or Release was created. The earlier draft-only and withheld-upload state below is historical and superseded.
+The maintainer explicitly approved one public media issue and the complete unredacted Live recording, including the acknowledged expired pairing code, machine identifier and compute balance. No still-valid credential was identified in the sampled OCR/ASR scan; sampling is not an exhaustive security guarantee. The authorized [media issue #4](https://github.com/kadirb4rut/voxadub/issues/4) is public. At the release-candidate stage, the authorized branch and draft PR were created before the v0.1.0 tag and Release. The earlier draft-only and withheld-upload state below is historical and superseded.
 
 | Demo | Public attachment | Bytes | Browser duration |
 | --- | --- | ---: | ---: |
