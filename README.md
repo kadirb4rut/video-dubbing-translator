@@ -2,46 +2,45 @@
 
 # Video Dubbing Translator
 
-**Fully local, speaker-aware video dubbing with consistent cloned voices.**
+**Multilingual dubbing with speaker-consistent voices.**<br>
+Local-first offline workflows · Experimental live dubbing
 
 [![CI](https://github.com/kadirb4rut/video-dubbing-translator/actions/workflows/static-checks.yml/badge.svg)](https://github.com/kadirb4rut/video-dubbing-translator/actions/workflows/static-checks.yml)
 [![Python 3.10](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/Code-MIT-green.svg)](LICENSE)
 [![VoxCPM2: Apache 2.0](https://img.shields.io/badge/VoxCPM2-Apache--2.0-blue.svg)](https://huggingface.co/openbmb/VoxCPM2)
-[![PeerPush](https://peerpush.com/p/video-dubbing-translator/badge.png)](https://peerpush.com/p/video-dubbing-translator)
 
 🌟 Listed in [OpenBMB/VoxCPM](https://github.com/OpenBMB/VoxCPM) — **Ecosystem & Community** · [PR #389](https://github.com/OpenBMB/VoxCPM/pull/389)
 
-[Live demo](#live-dubbing--youtube-live-broadcast-demo) · [Offline demos](#offline-dubbing--multilingual-demo) · [Quick Start](#quick-start) · [Pipeline](#how-it-works) · [Models](#offline-dubbing-quick-start-and-local-model-management) · [CLI](#cli) · [Architecture details](docs/PIPELINE_ARCHITECTURE.md) · [Release verification](docs/RELEASE_READINESS.md)
+[🎬 Watch the demos](#live-dubbing--youtube-live-broadcast-demo) · [Features](#key-features) · [Quick Start](#quick-start) · [Documentation](docs/PIPELINE_ARCHITECTURE.md) · [v0.1.0 release](https://github.com/kadirb4rut/video-dubbing-translator/releases/tag/v0.1.0)
 
 </div>
 
-Video Dubbing Translator separates a video's dialogue and background, identifies speakers, transcribes and aligns speech, translates locally with Hy-MT2, clones one consistent VoxCPM2 voice per speaker, and reconstructs the video. After the selected models have been downloaded once, the base pipeline can run fully locally and offline. No transcript text is sent to a translation service.
-
-> [!IMPORTANT]
-> Initial installation and model download require internet access. `pyannote/speaker-diarization-community-1` also requires accepting its Hugging Face terms and an `HF_TOKEN` for the initial download. Keep the unauthenticated browser GUI bound to `127.0.0.1`, and process only media and voices you have permission to use.
+Dub a video into another language while preserving the scene and a consistent voice for each speaker. **Hy-MT2** translates transcripts, and **VoxCPM2** synthesizes speaker-aware voices. The offline pipeline can run fully locally after model setup, or use explicitly selected cloud compute; an experimental Live Dubbing workflow supports authorized YouTube streams and videos.
 
 ## News
 
-**v0.1.0** — Highlights include experimental YouTube Live/VOD dubbing with an automatic Chrome extension launcher; local Hy-MT2 translation with context and duration-aware refinement; Community-1 speaker IDs and speaker-specific VoxCPM2 references; timing and audio QA safeguards; and a refreshed GUI with Local, Colab CLI G4 and bounded-verified Modal offline workflows. See the [release draft](docs/release/GITHUB_RELEASE_DRAFT.md) and [changelog](CHANGELOG.md).
+🚀 **2026-11-03 · [v0.1.0 released](https://github.com/kadirb4rut/video-dubbing-translator/releases/tag/v0.1.0)**
+
+Experimental Live/VOD dubbing joins local Hy-MT2 translation, speaker-aware VoxCPM2 voices, duration-aware timing safeguards, and updated GUI and compute workflows. Explore the [release notes](https://github.com/kadirb4rut/video-dubbing-translator/releases/tag/v0.1.0) or [changelog](CHANGELOG.md).
 
 ## Live Dubbing — YouTube Live Broadcast Demo
 
-Watch the complete GUI workflow for an authorized YouTube live broadcast. Live Dubbing is **experimental**: delay varies, and capture requires your explicit browser permissions and pairing. See [Live Dubbing setup](docs/LIVE_DUBBING_SETUP.md#pair-and-start-a-session).
+⚡ **Experimental Live Dubbing** · Watch the complete workflow on an authorized YouTube live broadcast. Delay varies; capture requires explicit browser permissions and pairing. [Set up Live Dubbing →](docs/LIVE_DUBBING_SETUP.md#pair-and-start-a-session)
 
 https://github.com/user-attachments/assets/e2cd7707-a5b7-4a77-b4f8-8c5cd200039c
 
 ## Offline Dubbing — Multilingual Demo
 
-Compare the same 00:20–00:50 interval from the English source and three Offline Dubbing outputs. Turn sound on for each player. On narrow screens, scroll the table horizontally to see both columns. These are offline outputs, separate from Live Dubbing.
+🌍 Compare the same **00:20–00:50** interval across the English source and three offline dubs. Turn sound on for each player; on narrow screens, scroll the table horizontally to see both columns.
 
 <table align="center">
-  <tr><td align="center"><strong>Original — English</strong></td><td align="center"><strong>AI Dub — Spanish</strong></td></tr>
+  <tr><td align="center"><strong>🇺🇸 Original · English</strong></td><td align="center"><strong>🇪🇸 AI Dub · Spanish</strong></td></tr>
   <tr>
     <td align="center"><video controls width="360" src="https://github.com/user-attachments/assets/738cab48-2551-4011-ae72-22bebc466a91"></video></td>
     <td align="center"><video controls width="360" src="https://github.com/user-attachments/assets/94ceb439-f39e-423d-8363-c1602bd7bc76"></video></td>
   </tr>
-  <tr><td align="center"><strong>AI Dub — Japanese</strong></td><td align="center"><strong>AI Dub — Turkish</strong></td></tr>
+  <tr><td align="center"><strong>🇯🇵 AI Dub · Japanese</strong></td><td align="center"><strong>🇹🇷 AI Dub · Turkish</strong></td></tr>
   <tr>
     <td align="center"><video controls width="360" src="https://github.com/user-attachments/assets/310f2b76-8ca8-42c1-ac94-2ff6f7428bf5"></video></td>
     <td align="center"><video controls width="360" src="https://github.com/user-attachments/assets/56f8f08d-d2f7-46d3-9eb7-dabcc1f9944b"></video></td>
@@ -54,14 +53,17 @@ The earlier 15-second [demo release](https://github.com/kadirb4rut/video-dubbing
 
 ## Key Features
 
-- **Speaker-aware voices:** Community-1 diarization assigns speaker identities when available; clean references and their transcripts condition VoxCPM2. Ambiguous identities fall back safely.
-- **Local translation:** Hy-MT2 preserves context and optional terminology; 1.8B has bounded tests, while 7B and 30B-A3B are selectable but not runtime-verified here.
-- **Timing and audio quality:** safe same-speaker groups, duration-aware refinement, bounded correction, QA and retry/fallback protect the output without guaranteeing perfect synchronization.
-- **Experimental Live Dubbing:** capture an authorized YouTube live broadcast or supported regular video with a separately paired Chrome extension and Local or Colab inference.
-- **Flexible compute:** run offline jobs locally, or explicitly choose Colab CLI G4 or Modal. Cloud providers receive the media needed for processing.
-- **Optional lip-sync:** LatentSync is a separate CUDA-only post-processing step.
+- 🎙️ **Speaker-aware voices** — Community-1 diarization assigns speaker identities when available; clean references condition VoxCPM2. Ambiguous identities fall back safely.
+- 🧠 **Local translation** — Hy-MT2 supports context and optional terminology. The 1.8B model has bounded tests; 7B and 30B-A3B are selectable but not runtime-verified here.
+- ⏱️ **Timing and quality safeguards** — Duration-aware refinement, bounded correction, QA, and retry/fallback help fit speech without guaranteeing perfect synchronization.
+- ⚡ **Experimental Adaptive Latency Live Dubbing** — Capture an authorized YouTube live broadcast or supported regular video with a paired Chrome extension and Local or Colab inference.
+- ☁️ **Flexible compute** — Run offline jobs locally or explicitly choose Colab CLI G4 or Modal. Selected cloud providers receive the media needed for processing; Modal Live is not available.
+- 🎬 **Optional lip-sync** — LatentSync is a separate CUDA-only post-processing step.
 
 ## Quick Start
+
+> [!IMPORTANT]
+> Initial installation and model downloads require internet access. `pyannote/speaker-diarization-community-1` also requires accepting its Hugging Face terms and an `HF_TOKEN` for the initial download. Keep the unauthenticated browser GUI bound to `127.0.0.1`, and process only media and voices you have permission to use.
 
 ### Prerequisites
 
