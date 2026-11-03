@@ -9,7 +9,7 @@ The existing public repository was renamed in place through GitHub Settings → 
 
 GitHub reported that the requested name was available before the rename. This is the same repository; no repository was created or transferred. The main branch, commit history, issues, stars, forks, releases, and tags remain with it. GitHub Actions passed on the merge commit immediately before the rename.
 
-The README, changelog, release documentation, and security contact link are being updated to the canonical URL in a documentation-only pull request. Keep that pull request unmerged until maintainer approval.
+The README, changelog, release documentation, and security contact link use the canonical URL.
 
 ## Visual identity
 
