@@ -1,4 +1,6 @@
+import hashlib
 import re
+import struct
 import unittest
 from pathlib import Path
 
@@ -9,6 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 class RepositorySurfaceTests(unittest.TestCase):
     def test_readme_keeps_truthful_first_screen_and_local_links(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("# Speaker-aware AI Dubbing for Video and Live Broadcasts", readme)
+        self.assertIn("assets/branding/voxadub-banner.png", readme)
         self.assertIn("fully local", readme.lower())
         self.assertIn("## Offline Dubbing — Multilingual Demo", readme)
         self.assertIn("## Live Dubbing — YouTube Live Broadcast Demo", readme)
@@ -16,7 +20,7 @@ class RepositorySurfaceTests(unittest.TestCase):
         self.assertIn("scripts/create_demo_comparison.sh", readme)
         self.assertIn("timing-group", readme)
         self.assertIn("0.85×–1.25×", readme)
-        self.assertIn("docs/assets/social-preview.svg", (ROOT / "docs/GITHUB_SETTINGS.md").read_text(encoding="utf-8"))
+        self.assertIn("assets/branding/voxadub-banner.png", (ROOT / "docs/GITHUB_SETTINGS.md").read_text(encoding="utf-8"))
 
         local_links = re.findall(r"\]\(([^)#]+)\)", readme)
         for link in local_links:
@@ -51,13 +55,17 @@ class RepositorySurfaceTests(unittest.TestCase):
         extension_page = (ROOT / "browser_extension/live_dubbing/player.html").read_text(encoding="utf-8")
         self.assertIn("enter it above. Codes expire after 120 seconds", extension_page)
 
-    def test_bootstrap_assets_exist_and_social_preview_dimensions_are_declared(self):
+    def test_bootstrap_assets_exist_and_official_voxadub_banner_is_preserved(self):
         self.assertTrue((ROOT / "install.sh").is_file())
         self.assertTrue((ROOT / "install.ps1").is_file())
         self.assertTrue((ROOT / "scripts/create_demo_comparison.sh").is_file())
-        social_preview = (ROOT / "docs/assets/social-preview.svg").read_text(encoding="utf-8")
-        self.assertIn('width="1280"', social_preview)
-        self.assertIn('height="640"', social_preview)
+        banner = (ROOT / "assets/branding/voxadub-banner.png").read_bytes()
+        self.assertEqual(banner[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(struct.unpack(">II", banner[16:24]), (1774, 887))
+        self.assertEqual(
+            hashlib.sha256(banner).hexdigest(),
+            "05bf9a92f3c8bd5664aed5bfa87dd39764ea8e2273c5e140d3112dc74e2dc0d2",
+        )
 
 
 if __name__ == "__main__":

@@ -106,7 +106,7 @@ def _stop_process(process: subprocess.Popen | None) -> None:
 
 
 def main() -> int:
-    print("Video Dubbing Translator opens in Google Chrome with a separate app profile.", flush=True)
+    print("VoxaDub opens in Google Chrome with a separate app profile.", flush=True)
     if sys.platform == "darwin":
         print("The isolated browser will not request access to macOS Keychain items.", flush=True)
 
@@ -127,7 +127,7 @@ def main() -> int:
                 "Chrome did not start successfully. On Linux, install Chrome's required "
                 "system libraries with your distribution's package manager, then retry."
             )
-        print("The Video Dubbing Translator panel is opening in Google Chrome.", flush=True)
+        print("The VoxaDub panel is opening in Google Chrome.", flush=True)
 
         if server is None:
             # An existing GUI server is not owned by this invocation.
@@ -138,13 +138,13 @@ def main() -> int:
             time.sleep(0.5)
         return server.returncode or 0
     except KeyboardInterrupt:
-        print("\nStopping the Video Dubbing Translator GUI server.", flush=True)
+        print("\nStopping the VoxaDub GUI server.", flush=True)
         return 130
     except InstallationDeclined as exc:
         print(str(exc), file=sys.stderr, flush=True)
         return 1
     except Exception as exc:
-        print(f"Could not start Video Dubbing Translator in Chrome: {exc}", file=sys.stderr, flush=True)
+        print(f"Could not start VoxaDub in Chrome: {exc}", file=sys.stderr, flush=True)
         return 1
     finally:
         _stop_process(server)

@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Local Adaptive Live Dubbing",
+  "name": "VoxaDub Live Dubbing",
   "version": "0.1.0",
   "minimum_chrome_version": "116",
-  "description": "Explicitly capture a permitted tab and use a paired local AI service with delayed video playback.",
+  "description": "Experimental live dubbing for a permitted browser tab, paired with the VoxaDub local service and delayed video playback.",
   "permissions": [
     "activeTab",
     "tabCapture",
@@ -17,7 +17,7 @@
     "service_worker": "service-worker.js"
   },
   "action": {
-    "default_title": "Open Live Dubbing beside this permitted tab"
+    "default_title": "Open VoxaDub Live Dubbing beside this permitted tab"
   },
   "side_panel": {
     "default_path": "player.html?sidepanel=1"

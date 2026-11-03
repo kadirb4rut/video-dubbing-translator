@@ -1,9 +1,11 @@
 <div align="center">
 
-# Video Dubbing Translator
+<img src="assets/branding/voxadub-banner.png" alt="VoxaDub — local-first AI video and live broadcast dubbing with speaker-aware voices and timing-aware translation" width="100%">
+
+# Speaker-aware AI Dubbing for Video and Live Broadcasts
 
 **Your video, in another language — with a voice that stays familiar.**<br>
-Speaker-aware multilingual dubbing · Local-first processing
+Local-first offline dubbing · Experimental live broadcast dubbing
 
 [![CI](https://github.com/kadirb4rut/video-dubbing-translator/actions/workflows/static-checks.yml/badge.svg)](https://github.com/kadirb4rut/video-dubbing-translator/actions/workflows/static-checks.yml)
 [![Python 3.10](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
@@ -24,7 +26,7 @@ Speaker-aware multilingual dubbing · Local-first processing
 
 ## News
 
-🚀 **2026-11-03 · [v0.1.0](https://github.com/kadirb4rut/video-dubbing-translator/releases/tag/v0.1.0)** — Experimental Live/VOD dubbing, Hy-MT2 translation, speaker-aware voices, timing safeguards, and new GUI and compute workflows. [Release notes](https://github.com/kadirb4rut/video-dubbing-translator/releases/tag/v0.1.0) · [Changelog](CHANGELOG.md)
+🚀 **2026-11-03 · [VoxaDub v0.1.0](https://github.com/kadirb4rut/video-dubbing-translator/releases/tag/v0.1.0)** — Experimental Live/VOD dubbing, Hy-MT2 translation, speaker-aware voices, timing safeguards, and new GUI and compute workflows. [Release notes](https://github.com/kadirb4rut/video-dubbing-translator/releases/tag/v0.1.0) · [Changelog](CHANGELOG.md)
 
 ## Live Dubbing — YouTube Live Broadcast Demo
 
@@ -264,8 +266,8 @@ minutes. Modal is not a Live Dubbing provider. See
 [engineering evidence](docs/LIVE_DUBBING_ENGINEERING.md), plus the
 [Run30/Run31 measured status](docs/release/LIVE_DUBBING_STATUS.md). Real
 browser/YouTube runs are bounded development evidence only; there is no
-universal p95 <15-second guarantee or production-readiness claim. Existing
-Video Dubbing remains the default.
+universal p95 <15-second guarantee or production-readiness claim. Offline
+Dubbing remains the default workflow.
 
 ## Supported Compute Providers and Privacy
 

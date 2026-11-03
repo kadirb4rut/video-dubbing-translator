@@ -15,5 +15,5 @@ if [ ! -x "$PYTHON" ]; then
   exit 1
 fi
 
-echo "Starting Video Dubbing Translator..."
+echo "Starting VoxaDub..."
 "$PYTHON" scripts/start_gui.py
