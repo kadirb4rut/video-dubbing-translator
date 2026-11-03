@@ -2,8 +2,8 @@
 
 # Video Dubbing Translator
 
-**Multilingual dubbing with speaker-consistent voices.**<br>
-Local-first offline workflows · Experimental live dubbing
+**Your video, in another language — with a voice that stays familiar.**<br>
+Speaker-aware multilingual dubbing · Local-first processing
 
 [![CI](https://github.com/kadirb4rut/video-dubbing-translator/actions/workflows/static-checks.yml/badge.svg)](https://github.com/kadirb4rut/video-dubbing-translator/actions/workflows/static-checks.yml)
 [![Python 3.10](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
@@ -16,13 +16,15 @@ Local-first offline workflows · Experimental live dubbing
 
 </div>
 
-Dub a video into another language while preserving the scene and a consistent voice for each speaker. **Hy-MT2** translates transcripts, and **VoxCPM2** synthesizes speaker-aware voices. The offline pipeline can run fully locally after model setup, or use explicitly selected cloud compute; an experimental Live Dubbing workflow supports authorized YouTube streams and videos.
+**From source video to dubbed video:** dialogue is transcribed, translated with **Hy-MT2**, and voiced with speaker-aware **VoxCPM2** references before the original scene and background are reconstructed.
+
+> 🎙️ **Offline Dubbing** · Process a video fully locally after model setup, or explicitly choose Colab or Modal.
+>
+> ⚡ **Live Dubbing — experimental** · Capture an authorized YouTube stream or supported video with Local or Colab inference.
 
 ## News
 
-🚀 **2026-11-03 · [v0.1.0 released](https://github.com/kadirb4rut/video-dubbing-translator/releases/tag/v0.1.0)**
-
-Experimental Live/VOD dubbing joins local Hy-MT2 translation, speaker-aware VoxCPM2 voices, duration-aware timing safeguards, and updated GUI and compute workflows. Explore the [release notes](https://github.com/kadirb4rut/video-dubbing-translator/releases/tag/v0.1.0) or [changelog](CHANGELOG.md).
+🚀 **2026-11-03 · [v0.1.0](https://github.com/kadirb4rut/video-dubbing-translator/releases/tag/v0.1.0)** — Experimental Live/VOD dubbing, Hy-MT2 translation, speaker-aware voices, timing safeguards, and new GUI and compute workflows. [Release notes](https://github.com/kadirb4rut/video-dubbing-translator/releases/tag/v0.1.0) · [Changelog](CHANGELOG.md)
 
 ## Live Dubbing — YouTube Live Broadcast Demo
 
@@ -74,7 +76,7 @@ The earlier 15-second [demo release](https://github.com/kadirb4rut/video-dubbing
 | Disk | Model-dependent | VoxCPM2 is about 5 GB; Hy-MT2 is about 4.1, 16.1, or 60.1 GB. |
 | GPU | Optional | CUDA is fastest. The saved full local Mac run used CPU on an 8 GB Apple M1; MPS was exercised only in a Hy-MT2 component smoke. |
 
-macOS/Linux:
+**macOS / Linux**
 
 ```bash
 git clone https://github.com/kadirb4rut/video-dubbing-translator.git
@@ -83,7 +85,7 @@ cd video-dubbing-translator
 ./start_gui.sh
 ```
 
-Windows PowerShell:
+**Windows · PowerShell**
 
 ```powershell
 git clone https://github.com/kadirb4rut/video-dubbing-translator.git
