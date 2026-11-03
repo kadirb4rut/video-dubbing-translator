@@ -15,7 +15,7 @@ The image is 1280×640, contains no third-party logos, and is designed to remain
 
 Recommended description:
 
-> Local-first AI video dubbing with Whisper/WhisperX, Google translation, VoxCPM2 voice cloning, and optional LatentSync lip-sync.
+> Fully local speaker-aware AI video dubbing with Whisper/WhisperX, Hy-MT2 translation, VoxCPM2 voice cloning, duration refinement, and optional LatentSync lip-sync.
 
 Recommended topics:
 

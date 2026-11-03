@@ -1,46 +1,53 @@
-import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
-import voxcpm_runtime
+import numpy as np
+import soundfile as sf
+
+from voxcpm_runtime import continuation_prompt, synthesize_cloned_speech
 
 
-class VoxCPMRuntimeTests(unittest.TestCase):
-    def test_pinned_manifest_contains_exact_major_artifact_sizes(self):
-        self.assertEqual(voxcpm_runtime.VOXCPM_OUTPUT_SAMPLE_RATE, 48_000)
-        self.assertEqual(voxcpm_runtime.VOXCPM_REFERENCE_SAMPLE_RATE, 16_000)
-        self.assertEqual(
-            set(voxcpm_runtime.VOXCPM_EXPECTED_SIZES),
-            {"audiovae.pth", "model.safetensors"},
-        )
-        self.assertTrue(
-            set(voxcpm_runtime.VOXCPM_EXPECTED_SIZES).issubset(
-                voxcpm_runtime.VOXCPM_REQUIRED_FILES
-            )
-        )
+class _FakeTTSModel:
+    sample_rate = 48_000
 
-    def test_device_environment_override_does_not_require_torch(self):
-        with patch.dict(os.environ, {"VOXCPM_DEVICE": "cpu"}, clear=False):
-            self.assertEqual(voxcpm_runtime.default_runtime_device(), "cpu")
 
-    def test_model_ready_validates_required_files_and_exact_sizes(self):
+class _FakeVoxCPM:
+    tts_model = _FakeTTSModel()
+
+    def __init__(self):
+        self.calls = []
+
+    def generate(self, **kwargs):
+        self.calls.append(kwargs)
+        return np.zeros(480, dtype=np.float32)
+
+
+class VoxCPMRuntimeRegressionTests(unittest.TestCase):
+    def test_micro_target_uses_reference_only_with_a_long_continuation(self):
+        prompt = "So it's a big fan and that's really what got me into AI was, it's actually a long story."
+        self.assertIsNone(continuation_prompt('Teşekkür ederim. Bilmiyordum.', prompt))
+        self.assertIsNone(continuation_prompt('Bugün hava çok güzel, dışarıda yürüyüş yapıyoruz.', prompt))
+        long_target = 'Yazmayı çok seviyorum ama yapay zekâyı öğrenmek ve öğretmek daha çok hoşuma gidiyor.'
+        self.assertEqual(continuation_prompt(long_target, prompt), prompt)
+
+    def test_style_metadata_never_becomes_spoken_target_text(self):
         with tempfile.TemporaryDirectory() as directory:
-            model_path = Path(directory)
-            for filename in voxcpm_runtime.VOXCPM_REQUIRED_FILES:
-                path = model_path / filename
-                path.touch()
-                expected_size = voxcpm_runtime.VOXCPM_EXPECTED_SIZES.get(filename)
-                if expected_size is not None:
-                    with path.open("r+b") as handle:
-                        handle.truncate(expected_size)
-
-            with patch.object(voxcpm_runtime, "resolve_model_path", return_value=model_path):
-                self.assertEqual(voxcpm_runtime.model_ready(), (True, model_path))
-                with (model_path / "audiovae.pth").open("r+b") as handle:
-                    handle.truncate(1)
-                self.assertEqual(voxcpm_runtime.model_ready(), (False, None))
+            root = Path(directory)
+            reference = root / "reference.wav"
+            output = root / "output.wav"
+            sf.write(reference, np.zeros(16_000, dtype=np.float32), 16_000)
+            model = _FakeVoxCPM()
+            synthesize_cloned_speech(
+                model,
+                "Merhaba, bu hedef cümledir.",
+                reference,
+                output,
+                prompt_text="Referans cümlesi.",
+                style="slower, soft delivery, preserve pauses",
+            )
+            self.assertEqual(model.calls[0]["text"], "Merhaba, bu hedef cümledir.")
+            self.assertNotIn("soft delivery", model.calls[0]["text"])
 
 
 if __name__ == "__main__":

@@ -7,6 +7,12 @@ from pathlib import Path
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(BASE_DIR))
+
+from diarization.assignment import validate_speaker_bounds  # noqa: E402
+from translation.hymt2 import validate_device  # noqa: E402
+from translation.registry import MODEL_BY_KEY  # noqa: E402
+from dubbing.timing import TimingGroupConfig  # noqa: E402
 OUTPUT_DIR = BASE_DIR / "vocal-remover" / "final_video" / "final"
 LATENTSYNC_DIR = BASE_DIR / "third_party" / "LatentSync"
 FFMPEG = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
@@ -127,16 +133,57 @@ def run_latentsync(video_path, output_path, steps, guidance_scale, seed):
     run(command, cwd=latentsync_dir)
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Run dubbing, optionally followed by LatentSync lip-sync.")
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description="Run local speaker-aware dubbing, optionally followed by LatentSync.")
     parser.add_argument("video", help="Input video path")
     parser.add_argument("--source-language", default="auto")
     parser.add_argument("--target-language", default="en")
+    parser.add_argument("--no-diarization", action="store_false", dest="diarization")
+    parser.set_defaults(diarization=True)
+    parser.add_argument("--num-speakers", type=int)
+    parser.add_argument("--min-speakers", type=int)
+    parser.add_argument("--max-speakers", type=int)
+    parser.add_argument("--diarization-device", default="auto")
+    parser.add_argument(
+        "--translation-model", choices=tuple(MODEL_BY_KEY), default="hymt2-1.8b"
+    )
+    parser.add_argument("--translation-device", default="auto")
+    parser.add_argument(
+        "--tts-backend", choices=("native", "modal"), default="native",
+        help="Modal offloads only VoxCPM2 speech generation; other stages stay local.",
+    )
+    parser.add_argument("--glossary", help="Optional JSON glossary path.")
+    parser.add_argument("--duration-tolerance", type=float, default=0.20)
+    parser.add_argument("--max-refinement-passes", type=int, default=1)
+    parser.add_argument("--timing-max-gap", type=float, default=0.75)
+    parser.add_argument("--timing-micro-seconds", type=float, default=0.85)
+    parser.add_argument("--timing-max-group-seconds", type=float, default=14.0)
+    parser.add_argument("--min-tempo", type=float, default=0.85)
+    parser.add_argument("--max-tempo", type=float, default=1.25)
+    parser.add_argument("--ideal-min-tempo", type=float, default=0.90)
+    parser.add_argument("--ideal-max-tempo", type=float, default=1.10)
     parser.add_argument("--lip-sync", action="store_true")
     parser.add_argument("--latentsync-steps", type=int, default=20)
     parser.add_argument("--latentsync-guidance-scale", type=float, default=1.5)
     parser.add_argument("--latentsync-seed", type=int, default=1247)
-    return parser.parse_args()
+    args = parser.parse_args(argv)
+    try:
+        validate_speaker_bounds(args.num_speakers, args.min_speakers, args.max_speakers)
+        validate_device(args.translation_device)
+        if args.duration_tolerance < 0 or args.max_refinement_passes < 0:
+            raise ValueError("Duration tolerance and maximum refinement passes cannot be negative.")
+        TimingGroupConfig(
+            max_gap_seconds=args.timing_max_gap,
+            micro_segment_seconds=args.timing_micro_seconds,
+            max_group_duration_seconds=args.timing_max_group_seconds,
+        )
+        if args.min_tempo <= 0 or args.max_tempo < args.min_tempo:
+            raise ValueError("Tempo limits must be positive and ordered.")
+        if args.ideal_min_tempo <= 0 or args.ideal_max_tempo < args.ideal_min_tempo:
+            raise ValueError("Ideal tempo limits must be positive and ordered.")
+    except ValueError as exc:
+        parser.error(str(exc))
+    return args
 
 
 def main():
@@ -146,17 +193,52 @@ def main():
         print(f"Error: video file not found: {video_path}", file=sys.stderr)
         return 2
 
-    run(
-        [
-            sys.executable,
-            BASE_DIR / "Video_Translator.py",
-            video_path,
-            "--source-language",
-            args.source_language,
-            "--target-language",
-            args.target_language,
-        ]
-    )
+    command = [
+        sys.executable,
+        BASE_DIR / "Video_Translator.py",
+        video_path,
+        "--source-language",
+        args.source_language,
+        "--target-language",
+        args.target_language,
+        "--translation-model",
+        args.translation_model,
+        "--translation-device",
+        args.translation_device,
+        "--tts-backend",
+        args.tts_backend,
+        "--diarization-device",
+        args.diarization_device,
+        "--duration-tolerance",
+        str(args.duration_tolerance),
+        "--max-refinement-passes",
+        str(args.max_refinement_passes),
+        "--timing-max-gap",
+        str(args.timing_max_gap),
+        "--timing-micro-seconds",
+        str(args.timing_micro_seconds),
+        "--timing-max-group-seconds",
+        str(args.timing_max_group_seconds),
+        "--min-tempo",
+        str(args.min_tempo),
+        "--max-tempo",
+        str(args.max_tempo),
+        "--ideal-min-tempo",
+        str(args.ideal_min_tempo),
+        "--ideal-max-tempo",
+        str(args.ideal_max_tempo),
+    ]
+    if not args.diarization:
+        command.append("--no-diarization")
+    for option, value in (
+        ("--num-speakers", args.num_speakers),
+        ("--min-speakers", args.min_speakers),
+        ("--max-speakers", args.max_speakers),
+        ("--glossary", args.glossary),
+    ):
+        if value is not None:
+            command.extend([option, str(value)])
+    run(command)
 
     final_output = expected_dubbed_output(video_path)
     if not final_output.exists():

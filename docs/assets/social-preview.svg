@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
   <title id="title">Video Dubbing Translator social preview</title>
-  <desc id="desc">A dark developer-oriented social preview reading Video Dubbing Translator, Local-first AI video dubbing, Voice cloning, Translation, Optional lip-sync, Open Source.</desc>
+  <desc id="desc">A dark developer-oriented social preview reading Video Dubbing Translator, Fully local speaker-aware dubbing, Voice cloning, Hy-MT2 translation, Optional lip-sync, Open Source.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#08111f"/>
@@ -24,7 +24,7 @@
   <rect x="72" y="72" width="122" height="8" rx="4" fill="url(#accent)"/>
   <text x="72" y="190" fill="#f7fbff" font-family="Inter, Arial, sans-serif" font-size="68" font-weight="700">Video Dubbing</text>
   <text x="72" y="270" fill="#f7fbff" font-family="Inter, Arial, sans-serif" font-size="68" font-weight="700">Translator</text>
-  <text x="76" y="338" fill="#b7cfda" font-family="Inter, Arial, sans-serif" font-size="30">Local-first AI video dubbing</text>
+  <text x="76" y="338" fill="#b7cfda" font-family="Inter, Arial, sans-serif" font-size="30">Fully local speaker-aware dubbing</text>
   <text x="76" y="418" fill="#e9f7f2" font-family="Inter, Arial, sans-serif" font-size="25">Voice cloning  •  Translation  •  Optional lip-sync</text>
   <rect x="76" y="500" width="184" height="46" rx="23" fill="#d9fff2"/>
   <text x="168" y="531" text-anchor="middle" fill="#0b2530" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="700">OPEN SOURCE</text>

@@ -1,0 +1,3 @@
+# Local control-plane dependency for the optional Modal serving path.
+# Model/runtime dependencies are installed in the remote Modal image.
+modal>=1.5,<2

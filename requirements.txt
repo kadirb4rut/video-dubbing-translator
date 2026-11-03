@@ -8,7 +8,6 @@ openai-whisper==20250625
 whisperx==3.3.1
 faster-whisper==1.1.0
 av==14.2.0
-deep-translator==1.11.4
 moviepy==1.0.3
 fsorter==2.4
 requests==2.32.3
@@ -21,3 +20,4 @@ resampy==0.4.3
 soundfile==0.12.1
 tqdm==4.66.6
 numpy==1.22.0
+websockets>=12,<17

@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Local Adaptive Live Dubbing",
+  "version": "0.1.0",
+  "minimum_chrome_version": "116",
+  "description": "Explicitly capture a permitted tab and use a paired local AI service with delayed video playback.",
+  "permissions": [
+    "activeTab",
+    "tabCapture",
+    "storage",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8766/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "action": {
+    "default_title": "Open Live Dubbing beside this permitted tab"
+  },
+  "side_panel": {
+    "default_path": "player.html?sidepanel=1"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src http://127.0.0.1:8766 ws://127.0.0.1:8766"
+  }
+}

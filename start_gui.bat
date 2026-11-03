@@ -9,4 +9,4 @@ if not exist ".venv\Scripts\activate.bat" (
 
 echo Starting Video Dubbing Translator...
 call ".venv\Scripts\activate.bat"
-python web_gui.py
+python scripts\start_gui.py

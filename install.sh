@@ -47,6 +47,9 @@ echo "Installing pinned Python dependencies"
 "$PYTHON" -m pip install --upgrade pip
 "$PYTHON" -m pip install -r requirements.txt
 
+echo "Installing the isolated Hy-MT2 runtime (model weights remain an explicit choice)"
+"$PYTHON" scripts/setup_hymt2.py
+
 if [[ "${SKIP_MODELS:-0}" == "1" ]]; then
   echo "Skipping model downloads (SKIP_MODELS=1). Run ./install.sh again before dubbing."
   exit 0
@@ -57,3 +60,4 @@ echo "Downloading and verifying required models"
 echo "Running setup preflight"
 "$PYTHON" scripts/check_setup.py
 echo "Installation complete. Start the app with ./start_gui.sh"
+echo "In the GUI, explicitly choose and download one Hy-MT2 translation model before dubbing."

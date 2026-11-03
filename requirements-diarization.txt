@@ -1,0 +1,2 @@
+pyannote.audio>=4.0,<5
+huggingface-hub>=0.30,<2

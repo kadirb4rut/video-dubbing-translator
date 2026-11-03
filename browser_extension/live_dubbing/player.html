@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Live Dubbing — Video Dubbing Translator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header><div><p class="eyebrow">VIDEO DUBBING TRANSLATOR</p><h1>Live Dubbing</h1>
+    <p>Experimental · local speech processing with an adaptive, delayed video player.</p></div>
+    <a href="http://127.0.0.1:8765/">Video Dubbing</a></header>
+  <div class="layout">
+    <section class="panel controls" aria-label="Live settings">
+      <h2>Source & language</h2>
+      <label for="sourceUrl">Permitted source URL</label>
+      <input id="sourceUrl" type="url" placeholder="https://your-permitted-source.example/video">
+      <p class="hint">YouTube requires the tab extension and an authorized source. No stream extraction, player modification or advertising changes.</p>
+      <div class="row"><div><label for="sourceLanguage">Source language</label><select id="sourceLanguage"><option value="auto">Automatic</option><option value="en">English</option><option value="tr">Turkish</option></select></div>
+      <div><label for="targetLanguage">Target language</label><select id="targetLanguage"><option value="tr">Turkish</option><option value="en">English</option><option value="de">German</option><option value="fr">French</option><option value="es">Spanish</option><option value="ja">Japanese</option><option value="zh">Chinese</option><option value="ar">Arabic</option><option value="da">Danish (local fallback)</option><option value="fi">Finnish (local fallback)</option><option value="el">Greek (local fallback)</option><option value="lo">Lao (local fallback)</option><option value="no">Norwegian (local fallback)</option><option value="sw">Swahili (local fallback)</option><option value="sv">Swedish (local fallback)</option></select></div></div>
+      <label for="mode">Latency preference</label>
+      <select id="mode"><option value="balanced">Balanced</option><option value="quality">Quality</option><option value="low_latency">Low Latency</option></select>
+      <p class="hint">Unstable or incomplete speech waits for context in every mode. Targets are not latency guarantees.</p>
+      <details><summary>Optional terminology</summary>
+        <label for="glossary">Source terms and target translations (JSON)</label>
+        <textarea id="glossary" rows="3" maxlength="20000" placeholder='{"doubling time":"ikiye katlanma süresi"}'></textarea>
+        <p class="hint">Only terms present in the current source phrase are applied. Up to 50 terms. This assists translation; it does not verify its meaning or change the audio QA transcript.</p>
+      </details>
+      <label class="check"><input id="consent" type="checkbox">I am authorized to capture and translate this source.</label>
+      <div id="extensionPair" hidden><label for="pairCode">Pairing code from the local application</label><input id="pairCode" type="password" autocomplete="off"></div>
+      <button id="start">Start Live Dubbing</button>
+      <button id="capture" disabled>Choose permitted source & capture</button>
+      <button id="finish" disabled>Finish capture & play remaining speech</button>
+      <div class="row"><button id="pause" disabled>Pause</button><button id="resume" disabled>Resume</button><button id="stop" disabled>Stop</button></div>
+      <label for="audioMode">Playback audio</label><select id="audioMode"><option value="translated">Translated</option><option value="original">Original (delayed with video)</option></select>
+      <details id="pairingDetails"><summary>Browser extension pairing</summary><p>Create a fresh one-use code in the main Video Dubbing Translator panel, then enter it above. Codes expire after 120 seconds.</p><button id="pair">Create one-use pairing code</button><button id="copyPair" disabled>Copy pairing code</button><output id="pairOutput"></output></details>
+      <p id="readiness" class="hint">Models load only after Start. Capture starts only after your next explicit action.</p>
+    </section>
+    <section class="panel playback" aria-label="Synchronized playback">
+      <div class="status"><span id="state">Inactive</span><span id="speaker">No speaker</span></div>
+      <video id="video" playsinline muted aria-label="Delayed source video"></video>
+      <div class="metrics"><div>Effective video delay <strong id="delay">—</strong></div><div>Buffer <strong id="buffer">—</strong></div><div>Translation <strong id="translationState">Not started</strong></div></div>
+      <p id="warning" role="alert"></p>
+      <p class="hint">Source and translation currently playing</p>
+      <p id="sourceText" class="caption"></p><p id="targetText" class="caption target"></p>
+      <details><summary id="hypothesisState">Incoming speech — not yet played</summary><p id="hypothesisText" class="caption"></p></details>
+      <details><summary>Decision history</summary><pre id="events"></pre></details>
+    </section>
+  </div>
+</main>
+<script type="module" src="client.js"></script>
+</body></html>
