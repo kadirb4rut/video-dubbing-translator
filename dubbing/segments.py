@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import math
 from typing import Iterable, Optional, Sequence
 
 
@@ -42,23 +43,43 @@ class SpeechSegment:
 
 
 def from_legacy_lists(
-    sentences: Sequence[str], starts: Sequence[float], ends: Sequence[float]
+    sentences: Sequence[str],
+    starts: Sequence[float],
+    ends: Sequence[float],
+    *,
+    media_duration: Optional[float] = None,
 ) -> list[SpeechSegment]:
     if not (len(sentences) == len(starts) == len(ends)):
         raise ValueError(
             "Sentence and timestamp counts differ: "
             f"sentences={len(sentences)}, starts={len(starts)}, ends={len(ends)}."
         )
-    return [
-        SpeechSegment(
-            index=index,
-            start=float(start),
-            end=float(end),
-            text=str(text).strip(),
-        )
-        for index, (text, start, end) in enumerate(zip(sentences, starts, ends))
-        if str(text).strip()
-    ]
+    if media_duration is not None and (
+        not math.isfinite(media_duration) or media_duration <= 0
+    ):
+        raise ValueError("Media duration must be finite and positive.")
+    segments: list[SpeechSegment] = []
+    for index, (text, start_value, end_value) in enumerate(
+        zip(sentences, starts, ends)
+    ):
+        content = str(text).strip()
+        if not content:
+            continue
+        try:
+            start, end = float(start_value), float(end_value)
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(start) or not math.isfinite(end):
+            continue
+        if media_duration is not None:
+            if end <= 0 or start >= media_duration:
+                continue
+            start = max(0.0, start)
+            end = min(media_duration, end)
+        if end <= start:
+            continue
+        segments.append(SpeechSegment(index, start, end, content))
+    return segments
 
 
 def surrounding_text(

@@ -1,5 +1,6 @@
 import cgi
 import html
+from http.cookies import CookieError, SimpleCookie
 import json
 import mimetypes
 import os
@@ -9,7 +10,10 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
+import time
+import traceback
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -22,6 +26,7 @@ from live_dubbing.service_launcher import ensure_live_service, stop_managed_serv
 from compute_backends.providers import validate_provider
 from compute_backends.settings import load_compute_settings, save_compute_settings
 from compute_backends.onboarding import connection as cloud_connection
+from engine.diagnostics import create_private_diagnostic_log, sanitize_for_display
 from voxcpm_runtime import model_ready
 
 
@@ -52,6 +57,10 @@ LIVE_BROWSER_STATUS = BASE_DIR / "temp" / "live-dubbing-browser-status.json"
 LAST_OUTPUT = BASE_DIR / "temp" / "gui-last-output.json"
 CLOUD_REQUEST_TOKEN = secrets.token_urlsafe(32)
 LIVE_SERVICE_ORIGIN = "http://127.0.0.1:8766"
+OUTPUT_ACCESS_COOKIE = "voxadub_output_access"
+OUTPUT_ACCESS_TTL_SECONDS = 60 * 60
+output_access_lock = threading.Lock()
+output_access_grant = {"token": "", "path": "", "expires_at": 0.0}
 
 
 def launch_live_service():
@@ -123,6 +132,11 @@ def add_log(line):
         state["logs"] = state["logs"][-1200:]
 
 
+def revoke_output_access():
+    with output_access_lock:
+        output_access_grant.update(token="", path="", expires_at=0.0)
+
+
 def reset_gui_view_state():
     """Start a clean dashboard view without deleting any output files."""
     with state_lock:
@@ -132,6 +146,7 @@ def reset_gui_view_state():
         if state.get("status") not in ("Ready", "Done", "Failed"):
             return False
         state.update(process=None, status="Ready", uploaded_video="", output_video="", logs=[])
+    revoke_output_access()
     while True:
         try:
             log_queue.get_nowait()
@@ -157,18 +172,40 @@ def run_process(command, status, output_path=None):
     with state_lock:
         if state["process"] is not None:
             return False, "Another process is already running."
+        input_name = Path(state["uploaded_video"]).name if state["uploaded_video"] else ""
         state["status"] = status
         if output_path is not None:
             state["output_video"] = ""
-        state["logs"] = ["$ " + " ".join(str(part) for part in command) + "\n\n"]
+        safe_stage = sanitize_for_display(status)
+        safe_input = sanitize_for_display(input_name)
+        first_line = f"{safe_stage} started"
+        if safe_input:
+            first_line += f" for {safe_input}"
+        state["logs"] = [first_line + ".\n\n"]
 
-    thread = threading.Thread(target=worker, args=(command, output_path), daemon=True)
+    if output_path is not None:
+        revoke_output_access()
+
+    thread = threading.Thread(
+        target=worker,
+        args=(command, output_path, status, input_name),
+        daemon=True,
+    )
     thread.start()
     return True, "Started."
 
 
-def worker(command, output_path=None):
+def worker(command, output_path=None, stage="Processing", input_name=""):
+    diagnostic_path = None
     try:
+        diagnostic_path = create_private_diagnostic_log(
+            BASE_DIR / "temp" / "diagnostics",
+            stage=stage,
+            input_name=input_name,
+        )
+        with diagnostic_path.open("a", encoding="utf-8", errors="replace") as diagnostic:
+            diagnostic.write("Command arguments are withheld from the browser log.\n\n")
+            diagnostic.flush()
         process = subprocess.Popen(
             command,
             cwd=BASE_DIR,
@@ -181,11 +218,22 @@ def worker(command, output_path=None):
         with state_lock:
             state["process"] = process
 
-        for line in process.stdout:
-            add_log(line)
+        with diagnostic_path.open("a", encoding="utf-8", errors="replace") as diagnostic:
+            for line in process.stdout:
+                diagnostic.write(line)
+                diagnostic.flush()
+                add_log(sanitize_for_display(line))
 
         return_code = process.wait()
-        add_log("\nDone.\n" if return_code == 0 else f"\nProcess failed with exit code {return_code}.\n")
+        if return_code == 0:
+            add_log("\nCompleted successfully.\n")
+        else:
+            safe_stage = sanitize_for_display(stage)
+            safe_input = sanitize_for_display(Path(input_name).name) if input_name else "the request"
+            add_log(
+                f"\n{safe_stage} failed for {safe_input} (exit code {return_code}). "
+                "A private diagnostic log was saved locally.\n"
+            )
         with state_lock:
             state["status"] = "Done" if return_code == 0 else "Failed"
             if return_code == 0 and output_path and Path(output_path).exists():
@@ -195,7 +243,28 @@ def worker(command, output_path=None):
                 temporary.write_text(json.dumps({"output_video": str(output_path)}))
                 temporary.replace(LAST_OUTPUT)
     except Exception as exc:
-        add_log(f"\n{type(exc).__name__}: {exc}\n")
+        details = traceback.format_exc()
+        diagnostic_saved = bool(diagnostic_path and diagnostic_path.is_file())
+        if diagnostic_path is not None:
+            try:
+                with diagnostic_path.open("a", encoding="utf-8", errors="replace") as diagnostic:
+                    diagnostic.write("\nWorker exception:\n")
+                    diagnostic.write(details)
+                diagnostic_saved = True
+            except OSError:
+                diagnostic_saved = False
+        safe_stage = sanitize_for_display(stage)
+        safe_input = sanitize_for_display(Path(input_name).name) if input_name else "the request"
+        diagnostic_note = (
+            "A private diagnostic log was saved locally."
+            if diagnostic_saved
+            else "The local diagnostic log could not be saved."
+        )
+        add_log(
+            f"\nCould not complete {safe_stage} for {safe_input} ({type(exc).__name__}). "
+            "Check the selected input and configured media dependencies, then retry. "
+            f"{diagnostic_note}\n"
+        )
         with state_lock:
             state["status"] = "Failed"
     finally:
@@ -205,13 +274,77 @@ def worker(command, output_path=None):
             state["process"] = None
 
 
-def json_response(handler, data, status=200):
+def json_response(handler, data, status=200, headers=None):
     body = json.dumps(data).encode("utf-8")
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
+    for name, value in (headers or {}).items():
+        handler.send_header(name, value)
     handler.end_headers()
     handler.wfile.write(body)
+
+
+def open_output_folder(output_dir: Path, *, platform_name=None, opener_run=None, windows_opener=None):
+    """Open the output folder when a desktop opener exists."""
+    platform_name = sys.platform if platform_name is None else platform_name
+    opener_run = subprocess.run if opener_run is None else opener_run
+    try:
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        if platform_name == "darwin":
+            result = opener_run(["open", str(output_dir)], check=False, capture_output=True, text=True)
+        elif platform_name.startswith("win"):
+            startfile = windows_opener or getattr(os, "startfile", None)
+            if startfile is None:
+                raise OSError("Desktop folder opener is unavailable")
+            startfile(str(output_dir))
+            result = None
+        else:
+            result = opener_run(["xdg-open", str(output_dir)], check=False, capture_output=True, text=True)
+        if result is not None and result.returncode != 0:
+            raise OSError("Desktop folder opener returned an error")
+        return {"ok": True}
+    except (OSError, subprocess.SubprocessError):
+        return {
+            "ok": False,
+            "code": "output_opener_unavailable",
+            "message": "The output was saved, but this system has no working desktop folder opener. Open the output folder from your file manager.",
+        }
+
+
+def save_uploaded_file(file_obj, filename, directory: Path, *, expected_size=None):
+    """Write bytes to a temporary sibling and atomically publish only a complete upload."""
+    safe_name = str(filename or "").replace("\\", "/").rsplit("/", 1)[-1]
+    safe_name = "".join(c for c in safe_name if ord(c) >= 32 and c not in '<>:"|?*').strip(" .")
+    if not safe_name or safe_name in {".", ".."}:
+        raise ValueError("Upload filename is empty or invalid.")
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    fd, temporary_name = tempfile.mkstemp(prefix=".upload-", suffix=".part", dir=directory)
+    temporary_path = Path(temporary_name)
+    output_path = directory / safe_name
+    written = 0
+    try:
+        with os.fdopen(fd, "wb") as output:
+            while True:
+                chunk = file_obj.read(1024 * 1024)
+                if not chunk:
+                    break
+                output.write(chunk)
+                written += len(chunk)
+            output.flush()
+            os.fsync(output.fileno())
+        if expected_size is not None and written != expected_size:
+            raise ValueError("Upload ended before the complete video was received.")
+        if written == 0:
+            raise ValueError("Uploaded video is empty.")
+        os.replace(temporary_path, output_path)
+        return output_path
+    finally:
+        try:
+            temporary_path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def page():
@@ -497,8 +630,8 @@ def page():
       <div id="preview" class="preview">
         <div class="statusbar">
           <h2 style="margin:0;font-size:16px">Final Video</h2>
-          <a id="videoLink" class="hint" href="#" target="_blank" rel="noreferrer">Open video</a>
-          <a id="downloadLink" class="hint" href="#" download>Download video</a>
+          <a id="videoLink" class="hint" href="#">Authorize and preview</a>
+          <a id="downloadLink" class="hint" href="#">Authorize and download</a>
         </div>
         <video id="finalVideo" controls playsinline preload="metadata"></video>
       </div>
@@ -809,7 +942,15 @@ async function api(path, options = {{}}) {{
   if (options.method === 'POST') options.headers = {{...options.headers, 'X-Compute-Token': '{CLOUD_REQUEST_TOKEN}'}};
   const response = await fetch(path, options);
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Request failed');
+  if (response.status === 403 && data.code === 'stale_ui_session') {{
+    const key = 'voxadub-ui-session-refresh-token';
+    if (sessionStorage.getItem(key) !== '{CLOUD_REQUEST_TOKEN}') {{
+      sessionStorage.setItem(key, '{CLOUD_REQUEST_TOKEN}');
+      window.location.replace('/');
+      throw new Error('This page belonged to an older application session. The page was refreshed; retry the action.');
+    }}
+  }}
+  if (!response.ok) throw new Error(data.error || data.message || 'Request failed');
   return data;
 }}
 
@@ -866,16 +1007,16 @@ async function refresh() {{
   if (data.outputVideoUrl) {{
     const url = data.outputVideoUrl;
     preview.classList.add('active');
-    link.href = url;
-    document.getElementById('downloadLink').href = url + '&download=1';
     if (currentVideoUrl !== url) {{
       currentVideoUrl = url;
-      video.src = url;
+      video.pause();
+      video.removeAttribute('src');
       video.load();
     }}
   }} else {{
     preview.classList.remove('active');
     link.href = '#';
+    document.getElementById('downloadLink').href = '#';
     if (currentVideoUrl) {{
       currentVideoUrl = '';
       video.removeAttribute('src');
@@ -883,6 +1024,38 @@ async function refresh() {{
     }}
   }}
 }}
+
+async function authorizeOutputAccess() {{
+  const response = await api('/api/output-access', {{ method: 'POST' }});
+  if (!response.url) throw new Error('The finished output is no longer available.');
+  return response.url;
+}}
+
+document.getElementById('videoLink').addEventListener('click', async event => {{
+  event.preventDefault();
+  if (!currentVideoUrl) return;
+  try {{
+    const url = await authorizeOutputAccess();
+    const video = document.getElementById('finalVideo');
+    video.src = url;
+    video.load();
+    video.focus();
+  }} catch (error) {{ showError(error); }}
+}});
+
+document.getElementById('downloadLink').addEventListener('click', async event => {{
+  event.preventDefault();
+  if (!currentVideoUrl) return;
+  try {{
+    const url = await authorizeOutputAccess();
+    const download = document.createElement('a');
+    download.href = url + (url.includes('?') ? '&' : '?') + 'download=1';
+    download.rel = 'noreferrer';
+    document.body.appendChild(download);
+    download.click();
+    download.remove();
+  }} catch (error) {{ showError(error); }}
+}});
 
 async function uploadVideo() {{
   const input = document.getElementById('video');
@@ -1091,8 +1264,8 @@ class Handler(BaseHTTPRequestHandler):
                     "status": status,
                     "running": running,
                     "logs": logs,
-                    "uploadedVideo": uploaded_video,
-                    "outputVideo": output_video if output_video_exists else "",
+                    "uploadedVideo": Path(uploaded_video).name if uploaded_video else "",
+                    "outputVideo": output_video_path.name if output_video_exists else "",
                     "outputVideoUrl": output_video_url,
                     "modelInstalled": MODEL_PATH.exists() and MODEL_PATH.stat().st_size > 0,
                     "modelSizeMb": round(MODEL_PATH.stat().st_size / (1024 * 1024), 1) if MODEL_PATH.exists() else 0,
@@ -1116,8 +1289,14 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         token = self.headers.get("X-Compute-Token", "")
         origin = self.headers.get("Origin")
-        if not secrets.compare_digest(token, CLOUD_REQUEST_TOKEN) or (origin and urllib.parse.urlparse(origin).netloc != self.headers.get("Host")):
-            json_response(self, {"error": "Refresh this local GUI before continuing."}, 403)
+        if not secrets.compare_digest(token, CLOUD_REQUEST_TOKEN):
+            json_response(self, {
+                "error": "Refresh this local GUI before continuing.",
+                "code": "stale_ui_session",
+            }, 403)
+            return
+        if origin and urllib.parse.urlparse(origin).netloc != self.headers.get("Host"):
+            json_response(self, {"error": "This request came from an unexpected origin.", "code": "invalid_origin"}, 403)
             return
         if parsed.path.startswith("/api/cloud-"):
             self.handle_cloud(parsed.path)
@@ -1177,14 +1356,18 @@ class Handler(BaseHTTPRequestHandler):
                 add_log("\nCancel requested.\n")
             json_response(self, {"ok": True})
         elif parsed.path == "/api/open-output":
-            OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-            if sys.platform == "darwin":
-                subprocess.run(["open", str(OUTPUT_DIR)], check=False)
-            elif os.name == "nt":
-                os.startfile(OUTPUT_DIR)
-            else:
-                subprocess.run(["xdg-open", str(OUTPUT_DIR)], check=False)
-            json_response(self, {"ok": True})
+            result = open_output_folder(OUTPUT_DIR)
+            json_response(self, result, 200 if result["ok"] else 503)
+        elif parsed.path == "/api/output-access":
+            if not origin:
+                json_response(
+                    self,
+                    {"error": "Output access must be authorized by the local GUI."},
+                    403,
+                    headers={"Cache-Control": "no-store"},
+                )
+                return
+            self.handle_output_access()
         else:
             json_response(self, {"error": "Not found"}, 404)
 
@@ -1233,27 +1416,46 @@ class Handler(BaseHTTPRequestHandler):
             json_response(self, {"error": str(exc)}, 400)
 
     def handle_upload(self):
-        form = cgi.FieldStorage(fp=self.rfile, headers=self.headers, environ={"REQUEST_METHOD": "POST"})
-        file_item = form["video"] if "video" in form else None
-        if file_item is None or not file_item.filename:
-            json_response(self, {"error": "No video uploaded"}, 400)
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+            if content_length <= 0:
+                raise ValueError("Upload request is empty or incomplete.")
+            form = cgi.FieldStorage(
+                fp=self.rfile,
+                headers=self.headers,
+                environ={"REQUEST_METHOD": "POST", "CONTENT_LENGTH": str(content_length)},
+            )
+            file_item = form["video"] if "video" in form else None
+            if file_item is None or not file_item.filename:
+                raise ValueError("No video was included in the upload.")
+            if getattr(form, "done", 0) == -1 or getattr(file_item, "done", 0) == -1:
+                raise ValueError("Upload ended before the complete video was received.")
+            expected_size = getattr(file_item, "length", -1)
+            if expected_size < 0:
+                expected_size = None
+            output_path = save_uploaded_file(
+                file_item.file, file_item.filename, UPLOAD_DIR, expected_size=expected_size
+            )
+        except Exception as exc:
+            add_log(
+                sanitize_for_display(
+                    f"Upload failed during multipart validation: {type(exc).__name__}: {exc}"
+                )
+                + "\n"
+            )
+            message = (
+                sanitize_for_display(str(exc))
+                if isinstance(exc, (ValueError, TypeError, OSError, EOFError))
+                else "Upload could not be completed. Select the video again and retry."
+            )
+            json_response(self, {"error": message}, 400)
             return
-
-        UPLOAD_DIR.mkdir(exist_ok=True)
-        safe_name = Path(file_item.filename).name
-        output_path = UPLOAD_DIR / safe_name
-        with output_path.open("wb") as output:
-            while True:
-                chunk = file_item.file.read(1024 * 1024)
-                if not chunk:
-                    break
-                output.write(chunk)
 
         with state_lock:
             state["uploaded_video"] = str(output_path)
             state["status"] = "Video uploaded"
-        add_log(f"Uploaded video: {output_path}\n")
-        json_response(self, {"ok": True, "path": str(output_path)})
+        add_log(f"Uploaded video: {sanitize_for_display(output_path.name)}\n")
+        json_response(self, {"ok": True, "filename": output_path.name})
 
     def handle_hymt2_download(self):
         content_length = int(self.headers.get("Content-Length", "0"))
@@ -1274,6 +1476,51 @@ class Handler(BaseHTTPRequestHandler):
         )
         json_response(self, {"ok": ok, "message": message}, 200 if ok else 409)
 
+    def handle_output_access(self):
+        """Grant one browser access window to the current output video."""
+        with state_lock:
+            output_video = state["output_video"]
+        if not output_video:
+            json_response(self, {"error": "No output video is available."}, 404)
+            return
+
+        try:
+            output_root = OUTPUT_DIR.resolve(strict=True)
+            video_path = Path(output_video).resolve(strict=True)
+            video_path.relative_to(output_root)
+            if not video_path.is_file():
+                raise ValueError("not a regular file")
+        except (OSError, RuntimeError, ValueError):
+            json_response(self, {"error": "The output video is unavailable."}, 403)
+            return
+
+        token = secrets.token_urlsafe(32)
+        expires_at = time.time() + OUTPUT_ACCESS_TTL_SECONDS
+        with output_access_lock:
+            output_access_grant.update(
+                token=token,
+                path=str(video_path),
+                expires_at=expires_at,
+            )
+
+        json_response(
+            self,
+            {
+                "ok": True,
+                "url": "/media/output-video",
+                "filename": video_path.name,
+                "expiresIn": OUTPUT_ACCESS_TTL_SECONDS,
+            },
+            headers={
+                "Set-Cookie": (
+                    f"{OUTPUT_ACCESS_COOKIE}={token}; HttpOnly; SameSite=Strict; "
+                    f"Path=/media/output-video; Max-Age={OUTPUT_ACCESS_TTL_SECONDS}"
+                ),
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
     def handle_video(self):
         with state_lock:
             output_video = state["output_video"]
@@ -1281,14 +1528,43 @@ class Handler(BaseHTTPRequestHandler):
             json_response(self, {"error": "No output video yet"}, 404)
             return
 
-        video_path = Path(output_video).resolve()
         try:
-            video_path.relative_to(OUTPUT_DIR.resolve())
+            output_root = OUTPUT_DIR.resolve(strict=True)
+            video_path = Path(output_video).resolve(strict=True)
+        except (OSError, RuntimeError):
+            json_response(self, {"error": "Output video not found"}, 404)
+            return
+        try:
+            video_path.relative_to(output_root)
         except ValueError:
             json_response(self, {"error": "Invalid output video path"}, 403)
             return
-        if not video_path.exists():
+        if not video_path.is_file():
             json_response(self, {"error": "Output video not found"}, 404)
+            return
+
+        cookie = SimpleCookie()
+        try:
+            cookie.load(self.headers.get("Cookie", ""))
+            cookie_token = cookie[OUTPUT_ACCESS_COOKIE].value
+        except (KeyError, CookieError):
+            cookie_token = ""
+        with output_access_lock:
+            grant = dict(output_access_grant)
+        authorized = (
+            bool(cookie_token)
+            and bool(grant["token"])
+            and secrets.compare_digest(cookie_token, grant["token"])
+            and grant["expires_at"] > time.time()
+            and secrets.compare_digest(str(video_path), grant["path"])
+        )
+        if not authorized:
+            json_response(
+                self,
+                {"error": "Authorize this output from the local GUI before viewing or downloading it."},
+                403,
+                headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+            )
             return
 
         file_size = video_path.stat().st_size
@@ -1325,6 +1601,9 @@ class Handler(BaseHTTPRequestHandler):
         chunk_size = end - start + 1
         self.send_response(status_code)
         self.send_header("Content-Type", content_type)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Cache-Control", "private, no-store")
         if urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("download") == ["1"]:
             self.send_header("Content-Disposition", "attachment; filename=\"dubbed_video.mp4\"; filename*=UTF-8''" + urllib.parse.quote(video_path.name))
         self.send_header("Accept-Ranges", "bytes")

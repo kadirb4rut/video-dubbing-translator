@@ -1,4 +1,5 @@
 import contextlib
+from http.cookies import SimpleCookie
 import json
 import threading
 import urllib.error
@@ -65,10 +66,32 @@ def test_completed_video_download_and_suffix_seeking_use_the_local_file(gui, mon
     video.write_bytes(data)
     monkeypatch.setattr(module, "OUTPUT_DIR", tmp_path)
     monkeypatch.setitem(module.state, "output_video", str(video))
-    response = urllib.request.urlopen(base + "/media/output-video?download=1")
+    authorize = urllib.request.Request(
+        base + "/api/output-access",
+        data=b"{}",
+        headers={
+            "X-Compute-Token": module.CLOUD_REQUEST_TOKEN,
+            "Origin": base,
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(authorize) as response:
+        cookie = SimpleCookie()
+        cookie.load(response.headers["Set-Cookie"])
+        access_cookie = f"{module.OUTPUT_ACCESS_COOKIE}={cookie[module.OUTPUT_ACCESS_COOKIE].value}"
+
+    response = urllib.request.urlopen(
+        urllib.request.Request(base + "/media/output-video?download=1", headers={"Cookie": access_cookie})
+    )
     assert "attachment" in response.headers["Content-Disposition"]
     assert response.read() == data
-    response = urllib.request.urlopen(urllib.request.Request(base + "/media/output-video", headers={"Range": "bytes=-1024"}))
+    response = urllib.request.urlopen(
+        urllib.request.Request(
+            base + "/media/output-video",
+            headers={"Range": "bytes=-1024", "Cookie": access_cookie},
+        )
+    )
     assert response.status == 206
     assert response.read() == data[-1024:]
     assert response.headers["Content-Range"] == f"bytes {len(data)-1024}-{len(data)-1}/{len(data)}"

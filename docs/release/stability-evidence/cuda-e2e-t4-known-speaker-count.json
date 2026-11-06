@@ -1,0 +1,17 @@
+{
+  "scenario": "T4",
+  "variant": "--num-speakers 2",
+  "return_code": 0,
+  "duration_seconds": 75.0,
+  "assigned_speaker_counts": [
+    "2"
+  ],
+  "speaker_labels": [
+    "SPEAKER_00",
+    "SPEAKER_01"
+  ],
+  "group_count": 12,
+  "qa_hard_failures": 0,
+  "group_sync_error_max_seconds": 0.21260189469045995,
+  "log_file": "T4_num_speakers_2.log"
+}

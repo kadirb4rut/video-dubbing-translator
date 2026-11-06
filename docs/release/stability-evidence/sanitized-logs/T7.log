@@ -1,0 +1,25 @@
+# Sanitized excerpt for T7.log; generated 2026-11-06 UTC.
+# Contains stage/model timing and diarization/timing summaries only; prompts and raw tracebacks omitted.
+STABILITY_METRIC stage=input_validation wall_seconds=0.047
+STABILITY_METRIC stage=media_extract wall_seconds=0.155
+STABILITY_METRIC stage=vocal_background_separation wall_seconds=9.659
+STABILITY_METRIC stage=transcription_alignment wall_seconds=8.926 cache_hit=false
+Diarization assigned 1 stable speaker(s); 0 transcript segment(s) overlap simultaneous speech.
+STABILITY_METRIC stage=speaker_diarization_assignment wall_seconds=5.097
+STABILITY_METRIC stage=voxcpm2_model_load wall_seconds=7.481
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=6.086 model_load_seconds=4.125 generation_seconds=0.424
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.169 model_load_seconds=0.000 generation_seconds=0.168
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.988 group=1 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.192 model_load_seconds=0.000 generation_seconds=0.190
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=0.840 group=1 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.168 model_load_seconds=0.000 generation_seconds=0.167
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.166 model_load_seconds=0.000 generation_seconds=0.165
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=0.732 group=2 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.168 model_load_seconds=0.000 generation_seconds=0.167
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=0.729 group=2 attempt=1
+Timing summary: groups=2 max_required_tempo=1.181x min_required_tempo=1.104x mean_required_tempo=1.143x median_required_tempo=1.143x ideal_band=0/2 hard_band=2/2 timing_limited=0 mean_sync_error=0.000 median_sync_error=0.000.
+Quality report: json=quality_report.json, html=quality_report.html, csv=quality_report.csv
+STABILITY_METRIC stage=translation_tts_timing_refinement wall_seconds=19.583
+STABILITY_METRIC stage=video_audio_reconstruction wall_seconds=5.884
+STABILITY_METRIC stage=pipeline_total wall_seconds=49.397
+FINAL_OUTPUT=T7_confirmed_T7_trailing_silence_75s.mp4

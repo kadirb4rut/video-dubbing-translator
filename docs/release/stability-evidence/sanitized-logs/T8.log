@@ -1,0 +1,28 @@
+# Sanitized excerpt for T8.log; generated 2026-11-06 UTC.
+# Contains stage/model timing and diarization/timing summaries only; prompts and raw tracebacks omitted.
+STABILITY_METRIC stage=input_validation wall_seconds=0.047
+STABILITY_METRIC stage=media_extract wall_seconds=0.109
+STABILITY_METRIC stage=vocal_background_separation wall_seconds=5.513
+STABILITY_METRIC stage=transcription_alignment wall_seconds=8.751 cache_hit=false
+Diarization assigned 1 stable speaker(s); 0 transcript segment(s) overlap simultaneous speech.
+STABILITY_METRIC stage=speaker_diarization_assignment wall_seconds=4.290
+STABILITY_METRIC stage=voxcpm2_model_load wall_seconds=7.733
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=6.188 model_load_seconds=4.136 generation_seconds=0.513
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.264 model_load_seconds=0.000 generation_seconds=0.263
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=2.303 group=1 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.266 model_load_seconds=0.000 generation_seconds=0.265
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.306 group=1 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.168 model_load_seconds=0.000 generation_seconds=0.167
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.187 model_load_seconds=0.000 generation_seconds=0.187
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=0.739 group=2 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.329 model_load_seconds=0.000 generation_seconds=0.328
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.327 model_load_seconds=0.000 generation_seconds=0.326
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.569 group=3 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.328 model_load_seconds=0.000 generation_seconds=0.326
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.564 group=3 attempt=1
+Timing summary: groups=3 max_required_tempo=1.344x min_required_tempo=0.967x mean_required_tempo=1.144x median_required_tempo=1.122x ideal_band=1/3 hard_band=2/3 timing_limited=1 mean_sync_error=0.025 median_sync_error=0.000.
+Quality report: json=quality_report.json, html=quality_report.html, csv=quality_report.csv
+STABILITY_METRIC stage=translation_tts_timing_refinement wall_seconds=24.193
+STABILITY_METRIC stage=video_audio_reconstruction wall_seconds=3.242
+STABILITY_METRIC stage=pipeline_total wall_seconds=46.156
+FINAL_OUTPUT=T8_confirmed_T8_portrait_30fps_15s.mp4

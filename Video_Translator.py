@@ -37,6 +37,7 @@ from voxcpm_runtime import (
 )
 from engine.qa import evaluate_tts
 from engine.reports import QualityReport
+from engine.media_validation import MediaValidationError, validate_dubbing_input
 from engine.prosody import extract_prosody, prosody_distance, style_instruction
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -49,6 +50,15 @@ MIN_CLIP_DURATION = 0.04
 
 def run_command(args, cwd=None):
     subprocess.run([str(arg) for arg in args], cwd=cwd, check=True)
+
+
+def _emit_stability_metric(stage, started_at, **values):
+    fields = " ".join(f"{name}={value}" for name, value in values.items())
+    suffix = f" {fields}" if fields else ""
+    print(
+        f"STABILITY_METRIC stage={stage} wall_seconds={time.perf_counter() - started_at:.3f}{suffix}",
+        flush=True,
+    )
 
 
 def ensure_ffmpeg():
@@ -324,7 +334,7 @@ def speaker_aware_segments(
             flush=True,
         )
         return list(segments)
-    from diarization.assignment import assign_speakers
+    from diarization.assignment import assign_speakers, potential_fragment_speakers
 
     assigned = assign_speakers(segments, result)
     speakers = sorted({segment.speaker for segment in assigned if segment.speaker})
@@ -334,6 +344,15 @@ def speaker_aware_segments(
         f"{overlaps} transcript segment(s) overlap simultaneous speech.",
         flush=True,
     )
+    fragments = potential_fragment_speakers(result)
+    if fragments:
+        print(
+            "Diarization review: low-duration speaker label(s) "
+            f"{', '.join(fragments)} were retained, not merged. "
+            "Uncertain transcript segments will not borrow these voices; "
+            "if the real speaker count is known, rerun with the matching --num-speakers value.",
+            flush=True,
+        )
     return assigned
 
 
@@ -377,7 +396,11 @@ def generate_dubbed_speech(
         print("Loading pinned local VoxCPM2 voice-cloning model...", flush=True)
     else:
         print(f"Using {tts_backend_name} speech generation...", flush=True)
-    model = None if tts_synthesizer is not None else load_model()
+    model = None
+    if tts_synthesizer is None:
+        model_started = time.perf_counter()
+        model = load_model()
+        _emit_stability_metric("voxcpm2_model_load", model_started)
     reference_manager.prepare()
     rate_estimator = SpeakerRateEstimator()
     if context_memory is None:
@@ -476,25 +499,34 @@ def generate_dubbed_speech(
             prosody_profiles.append(source_prosody)
 
             def synthesize(text_to_speak, selected_reference, output_path, *, attempt=0):
-                if tts_synthesizer is not None:
-                    tts_synthesizer(
-                        text_to_speak,
-                        selected_reference,
-                        output_path,
-                        seed=42 + group.index + 1000 * attempt,
-                        style=style,
-                        prosody=source_prosody,
-                    )
-                else:
-                    synthesize_cloned_speech(
-                        model=model,
-                        text=text_to_speak,
-                        reference_wav_path=selected_reference.wav_path,
-                        output_wav_path=output_path,
-                        prompt_text=selected_reference.transcript,
-                        seed=42 + group.index + 1000 * attempt,
-                        style=style,
-                        prosody=source_prosody,
+                synthesis_started = time.perf_counter()
+                try:
+                    if tts_synthesizer is not None:
+                        tts_synthesizer(
+                            text_to_speak,
+                            selected_reference,
+                            output_path,
+                            seed=42 + group.index + 1000 * attempt,
+                            style=style,
+                            prosody=source_prosody,
+                        )
+                    else:
+                        synthesize_cloned_speech(
+                            model=model,
+                            text=text_to_speak,
+                            reference_wav_path=selected_reference.wav_path,
+                            output_wav_path=output_path,
+                            prompt_text=selected_reference.transcript,
+                            seed=42 + group.index + 1000 * attempt,
+                            style=style,
+                            prosody=source_prosody,
+                        )
+                finally:
+                    _emit_stability_metric(
+                        "voxcpm2_synthesis" if tts_synthesizer is None else "tts_backend_synthesis",
+                        synthesis_started,
+                        group=group.index + 1,
+                        attempt=attempt + 1,
                     )
 
             result = synthesize_with_duration_refinement(
@@ -1133,6 +1165,15 @@ def main():
         print("Czech: cs")
         return
 
+    pipeline_started = time.perf_counter()
+    video_path = Path(args.video or input("\nVideo file path: ").strip()).expanduser().resolve()
+    validation_started = time.perf_counter()
+    try:
+        validate_dubbing_input(video_path)
+    except MediaValidationError as exc:
+        raise SystemExit(str(exc)) from exc
+    _emit_stability_metric("input_validation", validation_started)
+
     modal_synthesizer = None
     modal_previous_sigterm = None
     if args.tts_backend == "modal":
@@ -1151,17 +1192,19 @@ def main():
 
     print('\n\n'+' '*30 + '* VIDEO TRANSLATOR *\n\n')
 
-    video_path = Path(args.video or input("\nVideo file path: ").strip()).expanduser().resolve()
     source_language = normalize_language(args.source_language, allow_auto=True) if args.source_language else ask_language('\nPlease select the original video language number : ', allow_auto=True)
     target_language = normalize_language(args.target_language) if args.target_language else ask_language('\nPlease select the target video language number : ')
     
+    stage_started = time.perf_counter()
     audio_path, video_path_concat = mp4_to_wav(video_path)
     videoclip = VideoFileClip(video_path_concat)
+    _emit_stability_metric("media_extract", stage_started)
     os.chdir(VOCAL_REMOVER_DIR)
     if ('vocals' in os.listdir()) != True:
         os.mkdir('vocals')
     file_path = 'vocals/'
     
+    separation_started = time.perf_counter()
     try:
         if (os.path.basename(audio_path).split('.')[0] + '_Vocals.wav' in os.listdir('vocals/')) != True:
             seperate_Speaker_and_Background_Sound_from_audio(audio_path, file_path)
@@ -1169,6 +1212,8 @@ def main():
     except Exception as exc:
         os.chdir(BASE_DIR)
         raise RuntimeError('Vocal separating is not working!') from exc
+    finally:
+        _emit_stability_metric("vocal_background_separation", separation_started)
      
     # 2 ----------------------------------------
     
@@ -1185,8 +1230,13 @@ def main():
     split_transcript_folder = transcript_path.split('/')
     split_transcript_folder.pop(-1)
     split_transcript_folder = '/'.join(split_transcript_folder) + str('/')
-    if (split_transcript_name in os.listdir(split_transcript_folder)) == False:
+    transcription_started = time.perf_counter()
+    transcript_cached = split_transcript_name in os.listdir(split_transcript_folder)
+    if not transcript_cached:
         save_Transcript(vocal_audio_path, transcript_path, source_language)
+    _emit_stability_metric(
+        "transcription_alignment", transcription_started, cache_hit=str(transcript_cached).lower()
+    )
     
     # 3 -----------------------------------------
     
@@ -1199,8 +1249,15 @@ def main():
     # 5 -----------------------------------------
     
     sentences = create_Sentences(loaded_transcript, character_set)
-    segments = from_legacy_lists(sentences, start, end)
+    segments = from_legacy_lists(
+        sentences, start, end, media_duration=float(videoclip.duration)
+    )
+    if not segments:
+        raise RuntimeError(
+            "Transcription produced no usable speech segments inside the video duration."
+        )
 
+    diarization_started = time.perf_counter()
     segments = speaker_aware_segments(
         segments,
         vocal_audio_path,
@@ -1210,6 +1267,7 @@ def main():
         min_speakers=args.min_speakers,
         max_speakers=args.max_speakers,
     )
+    _emit_stability_metric("speaker_diarization_assignment", diarization_started)
     timing_config = TimingGroupConfig(
         max_gap_seconds=args.timing_max_gap,
         micro_segment_seconds=args.timing_micro_seconds,
@@ -1253,6 +1311,7 @@ def main():
     path_ffmpeg = str(run_root / "ffmpeg") + "/"
     
     glossary = load_glossary(args.glossary)
+    synthesis_started = time.perf_counter()
     try:
         generate_dubbed_speech(
             timing_groups,
@@ -1282,7 +1341,9 @@ def main():
         finally:
             if modal_previous_sigterm is not None:
                 signal.signal(signal.SIGTERM, modal_previous_sigterm)
+    _emit_stability_metric("translation_tts_timing_refinement", synthesis_started)
     
+    reconstruction_started = time.perf_counter()
     save_Subclips(timing_groups, videoclip, path_mp4, video_path_concat)
     
     # 10 -----------------------------------------
@@ -1316,6 +1377,8 @@ def main():
     # 15 -----------------------------------------
     
     concatenate_Video_And_Background_Sound(final_video_path, instrumental_audio_path, final__full_video_path)
+    _emit_stability_metric("video_audio_reconstruction", reconstruction_started)
+    _emit_stability_metric("pipeline_total", pipeline_started)
     
 
 if __name__ == '__main__':

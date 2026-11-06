@@ -1,0 +1,26 @@
+[
+  {
+    "scenario": "T5",
+    "exit_code": 2,
+    "validation_message": "Input validation failed for T5_video_without_audio.mp4: no audio stream was found. Choose a video with dialogue or other audio to dub.",
+    "traceback": false,
+    "inference_started": false,
+    "expected_contract": "safe pre-inference rejection"
+  },
+  {
+    "scenario": "T6",
+    "exit_code": 2,
+    "validation_message": "Input validation failed for T6_audio_only.wav: no video stream was found. Choose a video file; audio-only inputs are not supported.",
+    "traceback": false,
+    "inference_started": false,
+    "expected_contract": "safe pre-inference rejection"
+  },
+  {
+    "scenario": "T9",
+    "exit_code": 2,
+    "validation_message": "Input validation failed for T9_subsecond_0p6s.mp4: duration is 0.600 seconds. Videos shorter than 1.0 second are not supported.",
+    "traceback": false,
+    "inference_started": false,
+    "expected_contract": "safe pre-inference rejection"
+  }
+]

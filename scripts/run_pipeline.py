@@ -13,6 +13,7 @@ from diarization.assignment import validate_speaker_bounds  # noqa: E402
 from translation.hymt2 import validate_device  # noqa: E402
 from translation.registry import MODEL_BY_KEY  # noqa: E402
 from dubbing.timing import TimingGroupConfig  # noqa: E402
+from engine.media_validation import MediaValidationError, validate_dubbing_input  # noqa: E402
 OUTPUT_DIR = BASE_DIR / "vocal-remover" / "final_video" / "final"
 LATENTSYNC_DIR = BASE_DIR / "third_party" / "LatentSync"
 FFMPEG = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
@@ -191,6 +192,11 @@ def main():
     video_path = Path(args.video).expanduser().resolve()
     if not video_path.exists():
         print(f"Error: video file not found: {video_path}", file=sys.stderr)
+        return 2
+    try:
+        validate_dubbing_input(video_path)
+    except MediaValidationError as exc:
+        print(str(exc), file=sys.stderr)
         return 2
 
     command = [

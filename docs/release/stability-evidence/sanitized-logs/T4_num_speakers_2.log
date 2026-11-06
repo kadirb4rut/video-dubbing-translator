@@ -1,0 +1,72 @@
+# Sanitized excerpt for T4_num_speakers_2.log; generated 2026-11-06 UTC.
+# Contains stage/model timing and diarization/timing summaries only; prompts and raw tracebacks omitted.
+STABILITY_METRIC stage=input_validation wall_seconds=0.048
+STABILITY_METRIC stage=media_extract wall_seconds=0.163
+STABILITY_METRIC stage=vocal_background_separation wall_seconds=9.616
+STABILITY_METRIC stage=transcription_alignment wall_seconds=9.588 cache_hit=false
+Diarization assigned 2 stable speaker(s); 0 transcript segment(s) overlap simultaneous speech.
+STABILITY_METRIC stage=speaker_diarization_assignment wall_seconds=5.126
+STABILITY_METRIC stage=voxcpm2_model_load wall_seconds=7.516
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=6.313 model_load_seconds=4.151 generation_seconds=0.621
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.342 model_load_seconds=0.000 generation_seconds=0.342
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=2.943 group=1 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.265 model_load_seconds=0.000 generation_seconds=0.263
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.333 group=1 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.320 model_load_seconds=0.000 generation_seconds=0.318
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.319 model_load_seconds=0.000 generation_seconds=0.318
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.597 group=2 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.321 model_load_seconds=0.000 generation_seconds=0.319
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.594 group=2 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.364 model_load_seconds=0.000 generation_seconds=0.363
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.361 model_load_seconds=0.000 generation_seconds=0.360
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.647 group=3 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.333 model_load_seconds=0.000 generation_seconds=0.331
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.605 group=3 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.374 model_load_seconds=0.000 generation_seconds=0.373
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.406 model_load_seconds=0.000 generation_seconds=0.406
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=2.302 group=4 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.389 model_load_seconds=0.000 generation_seconds=0.388
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=2.217 group=4 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.299 model_load_seconds=0.000 generation_seconds=0.297
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.749 group=5 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.255 model_load_seconds=0.000 generation_seconds=0.254
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.487 group=5 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.330 model_load_seconds=0.000 generation_seconds=0.328
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.338 model_load_seconds=0.000 generation_seconds=0.338
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.946 group=6 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.342 model_load_seconds=0.000 generation_seconds=0.340
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.898 group=6 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.363 model_load_seconds=0.000 generation_seconds=0.361
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.360 model_load_seconds=0.000 generation_seconds=0.359
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.687 group=7 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.332 model_load_seconds=0.000 generation_seconds=0.330
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.750 group=7 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.328 model_load_seconds=0.000 generation_seconds=0.327
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.305 model_load_seconds=0.000 generation_seconds=0.304
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.855 group=8 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.371 model_load_seconds=0.000 generation_seconds=0.370
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=2.042 group=8 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.340 model_load_seconds=0.000 generation_seconds=0.339
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.445 group=9 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.286 model_load_seconds=0.000 generation_seconds=0.284
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.249 group=9 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.343 model_load_seconds=0.000 generation_seconds=0.341
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.328 model_load_seconds=0.000 generation_seconds=0.327
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=2.035 group=10 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.285 model_load_seconds=0.000 generation_seconds=0.284
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.941 group=10 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.267 model_load_seconds=0.000 generation_seconds=0.265
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.428 group=11 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.212 model_load_seconds=0.000 generation_seconds=0.210
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.136 group=11 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.276 model_load_seconds=0.000 generation_seconds=0.275
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.276 model_load_seconds=0.000 generation_seconds=0.276
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.838 group=12 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.286 model_load_seconds=0.000 generation_seconds=0.284
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.746 group=12 attempt=1
+Timing summary: groups=12 max_required_tempo=1.516x min_required_tempo=0.870x mean_required_tempo=1.163x median_required_tempo=1.154x ideal_band=3/12 hard_band=8/12 timing_limited=4 mean_sync_error=0.034 median_sync_error=0.000.
+Quality report: json=quality_report.json, html=quality_report.html, csv=quality_report.csv
+STABILITY_METRIC stage=translation_tts_timing_refinement wall_seconds=68.585
+STABILITY_METRIC stage=video_audio_reconstruction wall_seconds=14.322
+STABILITY_METRIC stage=pipeline_total wall_seconds=107.496
+FINAL_OUTPUT=T4_known_two_speakers.mp4

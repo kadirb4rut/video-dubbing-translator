@@ -1,0 +1,40 @@
+# Sanitized excerpt for T2.log; generated 2026-11-06 UTC.
+# Contains stage/model timing and diarization/timing summaries only; prompts and raw tracebacks omitted.
+STABILITY_METRIC stage=input_validation wall_seconds=0.048
+STABILITY_METRIC stage=media_extract wall_seconds=0.150
+STABILITY_METRIC stage=vocal_background_separation wall_seconds=8.474
+STABILITY_METRIC stage=transcription_alignment wall_seconds=10.007 cache_hit=false
+Diarization assigned 1 stable speaker(s); 0 transcript segment(s) overlap simultaneous speech.
+STABILITY_METRIC stage=speaker_diarization_assignment wall_seconds=4.870
+STABILITY_METRIC stage=voxcpm2_model_load wall_seconds=7.468
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=6.161 model_load_seconds=4.122 generation_seconds=0.500
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=2.545 group=1 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.377 model_load_seconds=0.000 generation_seconds=0.376
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.363 model_load_seconds=0.000 generation_seconds=0.362
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.698 group=2 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.426 model_load_seconds=0.000 generation_seconds=0.425
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.426 model_load_seconds=0.000 generation_seconds=0.425
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=2.410 group=3 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.398 model_load_seconds=0.000 generation_seconds=0.396
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=2.219 group=3 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.280 model_load_seconds=0.000 generation_seconds=0.279
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.448 group=4 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.343 model_load_seconds=0.000 generation_seconds=0.342
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.341 model_load_seconds=0.000 generation_seconds=0.340
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.910 group=5 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.319 model_load_seconds=0.000 generation_seconds=0.318
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.950 group=5 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.366 model_load_seconds=0.000 generation_seconds=0.364
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.854 group=6 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.402 model_load_seconds=0.000 generation_seconds=0.401
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=2.110 group=7 attempt=1
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.300 model_load_seconds=0.000 generation_seconds=0.299
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.689 group=8 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.486 model_load_seconds=0.000 generation_seconds=0.484
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=2.883 group=8 attempt=1
+Timing summary: groups=8 max_required_tempo=1.477x min_required_tempo=1.038x mean_required_tempo=1.153x median_required_tempo=1.076x ideal_band=5/8 hard_band=6/8 timing_limited=2 mean_sync_error=0.031 median_sync_error=0.000.
+Quality report: json=quality_report.json, html=quality_report.html, csv=quality_report.csv
+STABILITY_METRIC stage=translation_tts_timing_refinement wall_seconds=42.426
+STABILITY_METRIC stage=video_audio_reconstruction wall_seconds=11.686
+STABILITY_METRIC stage=pipeline_total wall_seconds=77.701
+FINAL_OUTPUT=T2_confirmed_T2_single_speaker_60s.mp4

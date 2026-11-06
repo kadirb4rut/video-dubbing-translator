@@ -1,0 +1,20 @@
+# Sanitized excerpt for T3.log; generated 2026-11-06 UTC.
+# Contains stage/model timing and diarization/timing summaries only; prompts and raw tracebacks omitted.
+STABILITY_METRIC stage=input_validation wall_seconds=0.047
+STABILITY_METRIC stage=media_extract wall_seconds=0.097
+STABILITY_METRIC stage=vocal_background_separation wall_seconds=4.630
+STABILITY_METRIC stage=transcription_alignment wall_seconds=8.536 cache_hit=false
+Diarization assigned 1 stable speaker(s); 0 transcript segment(s) overlap simultaneous speech.
+STABILITY_METRIC stage=speaker_diarization_assignment wall_seconds=4.125
+STABILITY_METRIC stage=voxcpm2_model_load wall_seconds=7.655
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=6.095 model_load_seconds=4.133 generation_seconds=0.422
+STABILITY_METRIC stage=hymt2 operation=translate rpc_wall_seconds=0.158 model_load_seconds=0.000 generation_seconds=0.157
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=1.780 group=1 attempt=1
+STABILITY_METRIC stage=hymt2 operation=rewrite_for_duration rpc_wall_seconds=0.158 model_load_seconds=0.000 generation_seconds=0.157
+STABILITY_METRIC stage=voxcpm2_synthesis wall_seconds=0.672 group=1 attempt=1
+Timing summary: groups=1 max_required_tempo=1.391x min_required_tempo=1.391x mean_required_tempo=1.391x median_required_tempo=1.391x ideal_band=0/1 hard_band=0/1 timing_limited=1 mean_sync_error=0.113 median_sync_error=0.113.
+Quality report: json=quality_report.json, html=quality_report.html, csv=quality_report.csv
+STABILITY_METRIC stage=translation_tts_timing_refinement wall_seconds=17.286
+STABILITY_METRIC stage=video_audio_reconstruction wall_seconds=0.926
+STABILITY_METRIC stage=pipeline_total wall_seconds=35.650
+FINAL_OUTPUT=T3_confirmed_T3_short_2p2s.mp4

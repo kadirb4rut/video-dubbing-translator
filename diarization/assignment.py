@@ -5,6 +5,11 @@ from typing import Iterable, Optional, Sequence
 
 from dubbing.segments import SpeechSegment
 
+MIN_ASSIGNMENT_EVIDENCE_SECONDS = 0.35
+MIN_DOMINANT_OVERLAP_FRACTION = 0.60
+SHORT_SPEAKER_TOTAL_SECONDS = 0.75
+SHORT_SPEAKER_TURN_SECONDS = 0.35
+
 
 @dataclass(frozen=True)
 class DiarizationTurn:
@@ -128,12 +133,38 @@ def assign_speakers(
         ranked = sorted(totals.items(), key=lambda item: (-item[1], item[0]))
         best_label, best_seconds = ranked[0]
         second_seconds = ranked[1][1] if len(ranked) > 1 else 0.0
-        ambiguous = best_seconds <= 0 or abs(best_seconds - second_seconds) < 1e-6
+        total_evidence = sum(totals.values())
+        dominance = best_seconds / total_evidence if total_evidence else 0.0
+        ambiguous = (
+            best_seconds < MIN_ASSIGNMENT_EVIDENCE_SECONDS
+            or dominance < MIN_DOMINANT_OVERLAP_FRACTION
+            or abs(best_seconds - second_seconds) < 1e-6
+        )
         speaker = None if ambiguous else speaker_map.get(best_label, best_label)
         assigned.append(
             segment.with_speaker(speaker, overlap=overlap, ambiguous=ambiguous)
         )
     return assigned
+
+
+def potential_fragment_speakers(
+    result: DiarizationResult,
+) -> tuple[str, ...]:
+    """Identify labels with little total evidence for review; never merge labels."""
+    turns = result.exclusive_turns or result.turns
+    totals: dict[str, float] = {}
+    durations: dict[str, list[float]] = {}
+    for turn in turns:
+        totals[turn.speaker] = totals.get(turn.speaker, 0.0) + turn.end - turn.start
+        durations.setdefault(turn.speaker, []).append(turn.end - turn.start)
+    return tuple(
+        sorted(
+            speaker
+            for speaker, values in durations.items()
+            if totals[speaker] < SHORT_SPEAKER_TOTAL_SECONDS
+            or all(duration < SHORT_SPEAKER_TURN_SECONDS for duration in values)
+        )
+    )
 
 
 def reconcile_or_fallback(

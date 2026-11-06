@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 import threading
+import time
 import uuid
 from collections import deque
 from pathlib import Path
@@ -68,6 +69,7 @@ class HyMT2Translator(Translator):
         return "\n".join(self._stderr_lines).strip()
 
     def _request(self, operation: str, prompt: str, *, deterministic: bool = False) -> str:
+        request_started = time.perf_counter()
         request_id = uuid.uuid4().hex
         request = {"id": request_id, "operation": operation, "prompt": prompt}
         if deterministic:
@@ -94,11 +96,22 @@ class HyMT2Translator(Translator):
             raise HyMT2ProtocolError("Hy-MT2 response ID did not match the request.")
         if not response.get("ok"):
             raise RuntimeError(str(response.get("error") or "Hy-MT2 inference failed."))
+        stats = response.get("stats") or {}
+        rpc_wall_seconds = time.perf_counter() - request_started
         self.last_generation = {
             "operation": operation,
             "prompt": prompt,
-            **(response.get("stats") or {}),
+            **stats,
+            "rpc_wall_seconds": rpc_wall_seconds,
         }
+        print(
+            "STABILITY_METRIC stage=hymt2 "
+            f"operation={operation} rpc_wall_seconds={rpc_wall_seconds:.3f} "
+            f"model_load_seconds={float(stats.get('model_load_seconds') or 0):.3f} "
+            f"generation_seconds={float(stats.get('generation_wall_seconds') or 0):.3f}",
+            file=sys.stderr,
+            flush=True,
+        )
         if operation == "prepare":
             if not (response.get("stats") or {}).get("prepared"):
                 raise HyMT2ProtocolError("Hy-MT2 did not confirm model preparation.")
