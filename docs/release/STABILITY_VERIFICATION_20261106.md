@@ -58,7 +58,7 @@ Fixtures are synthetic, locally generated eSpeak speech plus FFmpeg `testsrc2` v
 
 All six valid outputs contained H.264 video and AAC audio; FFprobe succeeded and a full FFmpeg decode completed. Audio/video stream-duration deltas ranged from 0 to 0.000667 s. There were no timing-QA hard failures. Maximum group synchronization error across the six runs was 0.1816 s. After fixing the direct-entry exception import, `Video_Translator.py` also rejected T5 with the same actionable no-audio message and no traceback. Peak memory is sampled `nvidia-smi memory.used` approximately every 1.5 seconds, includes runtime CUDA context, and can miss a brief peak; it is not a PyTorch allocator maximum. Wall time includes process startup and model initialization. Each fresh pipeline process loaded VoxCPM2 in about 7.4–7.7 s; the isolated Hy-MT2 worker loaded in about 4.1 s. Model weight downloads were not part of these timed runs.
 
-T5, T6, and T9 were rejected before inference with no traceback. The exact messages are in [`stability-evidence/rejections.json`](stability-evidence/rejections.json). Machine-readable per-run details and sanitized timing excerpts are in [`stability-evidence/`](stability-evidence/).
+T5, T6, and T9 were rejected before inference with no traceback. The exact messages are in [`stability-evidence/cuda-e2e-rejections.json`](stability-evidence/cuda-e2e-rejections.json). Machine-readable per-run details and sanitized timing excerpts are in [`stability-evidence/`](stability-evidence/).
 
 ### Speaker and audio-quality limits
 
