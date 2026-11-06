@@ -6,6 +6,7 @@ from diarization.assignment import (
     DiarizationResult,
     DiarizationTurn,
     assign_speakers,
+    potential_fragment_speakers,
     reconcile_or_fallback,
     validate_speaker_bounds,
 )
@@ -63,6 +64,34 @@ class DiarizationAssignmentTests(unittest.TestCase):
         self.assertIsNone(assigned[0].speaker)
         self.assertTrue(assigned[0].speaker_ambiguous)
 
+    def test_low_evidence_fragment_is_ambiguous_instead_of_borrowing_a_voice(self):
+        segment = SpeechSegment(0, 0.0, 2.0, "A long transcript span.")
+        result = DiarizationResult(
+            turns=(DiarizationTurn(0.2, 0.24, "spurious-fragment"),),
+            exclusive_turns=(DiarizationTurn(0.2, 0.24, "spurious-fragment"),),
+        )
+        assigned = assign_speakers([segment], result)
+        self.assertIsNone(assigned[0].speaker)
+        self.assertTrue(assigned[0].speaker_ambiguous)
+        self.assertEqual(potential_fragment_speakers(result), ("spurious-fragment",))
+
+    def test_competing_overlap_evidence_is_marked_ambiguous_without_merging(self):
+        segment = SpeechSegment(0, 0.0, 2.0, "Two speakers overlap this transcript.")
+        result = DiarizationResult(
+            turns=(
+                DiarizationTurn(0.0, 1.0, "speaker-a"),
+                DiarizationTurn(1.0, 2.0, "speaker-b"),
+            ),
+            exclusive_turns=(
+                DiarizationTurn(0.0, 1.0, "speaker-a"),
+                DiarizationTurn(1.0, 2.0, "speaker-b"),
+            ),
+        )
+        assigned = assign_speakers([segment], result)
+        self.assertIsNone(assigned[0].speaker)
+        self.assertTrue(assigned[0].speaker_ambiguous)
+        self.assertEqual(potential_fragment_speakers(result), ())
+
     def test_unavailable_diarization_preserves_segments_for_fallback(self):
         self.assertEqual(reconcile_or_fallback(self.segments, None), self.segments)
 
@@ -77,7 +106,7 @@ class DiarizationAssignmentTests(unittest.TestCase):
             with self.subTest(arguments=arguments), self.assertRaises(ValueError):
                 validate_speaker_bounds(**arguments)
 
-    def test_model_readiness_requires_both_component_weights(self):
+    def test_model_readiness_requires_all_vbx_pipeline_files(self):
         with TemporaryDirectory() as temporary:
             model_dir = Path(temporary)
             (model_dir / "config.yaml").touch()
@@ -86,7 +115,14 @@ class DiarizationAssignmentTests(unittest.TestCase):
             (model_dir / "embedding" / "pytorch_model.bin").touch()
             self.assertFalse(model_installed(model_dir))
             (model_dir / "segmentation" / "model.safetensors").touch()
+            self.assertFalse(model_installed(model_dir))
+            (model_dir / "plda").mkdir()
+            (model_dir / "plda" / "xvec_transform.npz").touch()
+            self.assertFalse(model_installed(model_dir))
+            (model_dir / "plda" / "plda.npz").touch()
             self.assertTrue(model_installed(model_dir))
+            (model_dir / "plda" / "xvec_transform.npz").unlink()
+            self.assertFalse(model_installed(model_dir))
 
 
 if __name__ == "__main__":

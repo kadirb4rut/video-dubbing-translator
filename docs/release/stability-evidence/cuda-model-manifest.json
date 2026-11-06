@@ -1,0 +1,54 @@
+{
+  "hymt2": {
+    "model_id": "tencent/Hy-MT2-1.8B",
+    "revision_refs": [
+      "9a341cd1b679d3efd23b46e847b01745a71ed792"
+    ],
+    "files": {
+      ".gitattributes": 1777,
+      "LICENSE.txt": 11629,
+      "README.md": 14763,
+      "README_CN.md": 13767,
+      "chat_template.jinja": 654,
+      "config.json": 1348,
+      "generation_config.json": 221,
+      "model.safetensors": 4077072784,
+      "special_tokens_map.json": 488,
+      "tokenizer.json": 9527287,
+      "tokenizer_config.json": 165815
+    }
+  },
+  "voxcpm2": {
+    "model_id": "openbmb/VoxCPM2",
+    "revision": "32279effe8c19989596f05d353d1447f51d9e915",
+    "required_files": {
+      "audiovae.pth": 376951122,
+      "config.json": 4336,
+      "model.safetensors": 4580080592,
+      "special_tokens_map.json": 1632,
+      "tokenization_voxcpm2.py": 2895,
+      "tokenizer.json": 3676772,
+      "tokenizer_config.json": 5059
+    }
+  },
+  "community1": {
+    "model_id": "pyannote/speaker-diarization-community-1",
+    "revision": "3533c8cf8e369892e6b79ff1bf80f7b0286a54ee",
+    "required_files": {
+      "config.yaml": 444,
+      "embedding/pytorch_model.bin": 26646242,
+      "plda/plda.npz": 133852,
+      "plda/xvec_transform.npz": 134376,
+      "segmentation/pytorch_model.bin": 5906507
+    }
+  },
+  "vocal_remover_baseline": {
+    "file": "baseline.pth",
+    "bytes": 59317925,
+    "sha256": "f0bf9cb226e20571aac8aeda9f6d5f70e495c7b9b3457afe4b11cfec3b515fc3"
+  },
+  "optional_translation_models": {
+    "hymt2_7b": "not installed",
+    "hymt2_30b_a3b": "not installed"
+  }
+}

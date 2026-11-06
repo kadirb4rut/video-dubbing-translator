@@ -36,16 +36,29 @@ def runtime_python() -> Path:
 
 
 def model_installed(model_dir: Path = MODEL_DIR) -> bool:
-    if not (model_dir / "config.yaml").is_file():
-        return False
+    return not missing_model_files(model_dir)
 
+
+def missing_model_files(model_dir: Path = MODEL_DIR) -> tuple[str, ...]:
+    """List required Community-1 pipeline files absent from the local snapshot."""
+    missing = []
+    if not (model_dir / "config.yaml").is_file():
+        missing.append("config.yaml")
     def has_weights(component: str) -> bool:
         directory = model_dir / component
         return any(directory.glob("*.safetensors")) or any(directory.glob("*.bin"))
 
     # Community-1 currently ships PyTorch .bin files, but accepting safetensors
     # keeps this check valid if the upstream packaging changes.
-    return has_weights("embedding") and has_weights("segmentation")
+    for component in ("embedding", "segmentation"):
+        if not has_weights(component):
+            missing.append(f"{component}/*.(bin|safetensors)")
+    # VBx clustering loads both PLDA transforms from config.yaml at pipeline
+    # construction. Without them, pyannote fails only after processing starts.
+    for name in ("plda/xvec_transform.npz", "plda/plda.npz"):
+        if not (model_dir / name).is_file():
+            missing.append(name)
+    return tuple(missing)
 
 
 def status(model_dir: Path = MODEL_DIR) -> DiarizationStatus:
@@ -56,9 +69,11 @@ def status(model_dir: Path = MODEL_DIR) -> DiarizationStatus:
     elif not runtime_ready:
         detail = "Diarization runtime is not installed; run scripts/setup_diarization.py."
     else:
+        missing = ", ".join(missing_model_files(model_dir))
         detail = (
-            "Community-1 is not downloaded. Accept its Hugging Face terms, set HF_TOKEN, "
-            "then run scripts/setup_diarization.py --download-model."
+            f"Community-1 checkpoint is incomplete (missing: {missing}). "
+            "Accept its Hugging Face terms, set HF_TOKEN, then run "
+            "scripts/setup_diarization.py --download-model."
         )
     return DiarizationStatus(installed, model_dir, runtime_ready, detail)
 

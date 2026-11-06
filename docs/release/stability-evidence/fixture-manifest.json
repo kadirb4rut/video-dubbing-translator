@@ -1,0 +1,231 @@
+{
+  "rights": "Locally generated synthetic eSpeak test speech, digital silence, and FFmpeg testsrc2 video; no third-party recordings.",
+  "source_language": "en",
+  "target_language": "tr",
+  "single_speaker_voice": "eSpeak en-us, pitch 50, rate 145-155 wpm",
+  "two_speaker_voice_design": "Locally synthesized eSpeak en-us+m3 male voice (A) alternating with en-us+f3 female voice (B), 145 wpm; 0.30 second gaps.",
+  "two_speaker_turns": [
+    {
+      "speaker": "A",
+      "voice": "en-us+m3",
+      "start": 0.0,
+      "end": 5.334,
+      "transcript": "The observatory opens its doors before sunrise to welcome visiting students."
+    },
+    {
+      "speaker": "B",
+      "voice": "en-us+f3",
+      "start": 5.634,
+      "end": 10.585,
+      "transcript": "Our small team checks the telescope and prepares the camera for tonight."
+    },
+    {
+      "speaker": "A",
+      "voice": "en-us+m3",
+      "start": 10.885,
+      "end": 15.73,
+      "transcript": "Clear skies allow us to study planets and distant stars together."
+    },
+    {
+      "speaker": "B",
+      "voice": "en-us+f3",
+      "start": 16.03,
+      "end": 20.978,
+      "transcript": "We record every measurement so researchers can compare their results later."
+    },
+    {
+      "speaker": "A",
+      "voice": "en-us+m3",
+      "start": 21.278,
+      "end": 26.274,
+      "transcript": "The new instrument gathers light from objects far beyond our own galaxy."
+    },
+    {
+      "speaker": "B",
+      "voice": "en-us+f3",
+      "start": 26.574,
+      "end": 32.162,
+      "transcript": "Students ask questions while the scientists explain how the telescope works."
+    },
+    {
+      "speaker": "A",
+      "voice": "en-us+m3",
+      "start": 32.462,
+      "end": 37.706,
+      "transcript": "Careful observations help us learn how these bright stars change over time."
+    },
+    {
+      "speaker": "B",
+      "voice": "en-us+f3",
+      "start": 38.006,
+      "end": 42.682,
+      "transcript": "The team shares fresh images with classrooms around the world each week."
+    },
+    {
+      "speaker": "A",
+      "voice": "en-us+m3",
+      "start": 42.982,
+      "end": 47.354,
+      "transcript": "We begin another observation as the night sky slowly grows darker."
+    },
+    {
+      "speaker": "B",
+      "voice": "en-us+f3",
+      "start": 47.654,
+      "end": 52.88,
+      "transcript": "A quiet control room lets everyone listen and review the incoming data."
+    },
+    {
+      "speaker": "A",
+      "voice": "en-us+m3",
+      "start": 53.18,
+      "end": 57.401,
+      "transcript": "Every discovery gives us a better view of the surrounding universe."
+    },
+    {
+      "speaker": "B",
+      "voice": "en-us+f3",
+      "start": 57.701,
+      "end": 62.358,
+      "transcript": "Tomorrow we will compare these notes and plan our next experiment."
+    }
+  ],
+  "scenarios": {
+    "T1": {
+      "file": "T1_single_speaker_15s.mp4",
+      "duration": 15,
+      "speakers": 1,
+      "fps": 24
+    },
+    "T2": {
+      "file": "T2_single_speaker_60s.mp4",
+      "duration": 60,
+      "speakers": 1,
+      "fps": 24
+    },
+    "T3": {
+      "file": "T3_short_2p2s.mp4",
+      "duration": 2.2,
+      "speakers": 1,
+      "fps": 24
+    },
+    "T4": {
+      "file": "T4_two_speaker_75s.mp4",
+      "duration": 75,
+      "speakers": 2,
+      "fps": 30,
+      "ground_truth_turns": [
+        {
+          "speaker": "A",
+          "voice": "en-us+m3",
+          "start": 0.0,
+          "end": 5.334,
+          "transcript": "The observatory opens its doors before sunrise to welcome visiting students."
+        },
+        {
+          "speaker": "B",
+          "voice": "en-us+f3",
+          "start": 5.634,
+          "end": 10.585,
+          "transcript": "Our small team checks the telescope and prepares the camera for tonight."
+        },
+        {
+          "speaker": "A",
+          "voice": "en-us+m3",
+          "start": 10.885,
+          "end": 15.73,
+          "transcript": "Clear skies allow us to study planets and distant stars together."
+        },
+        {
+          "speaker": "B",
+          "voice": "en-us+f3",
+          "start": 16.03,
+          "end": 20.978,
+          "transcript": "We record every measurement so researchers can compare their results later."
+        },
+        {
+          "speaker": "A",
+          "voice": "en-us+m3",
+          "start": 21.278,
+          "end": 26.274,
+          "transcript": "The new instrument gathers light from objects far beyond our own galaxy."
+        },
+        {
+          "speaker": "B",
+          "voice": "en-us+f3",
+          "start": 26.574,
+          "end": 32.162,
+          "transcript": "Students ask questions while the scientists explain how the telescope works."
+        },
+        {
+          "speaker": "A",
+          "voice": "en-us+m3",
+          "start": 32.462,
+          "end": 37.706,
+          "transcript": "Careful observations help us learn how these bright stars change over time."
+        },
+        {
+          "speaker": "B",
+          "voice": "en-us+f3",
+          "start": 38.006,
+          "end": 42.682,
+          "transcript": "The team shares fresh images with classrooms around the world each week."
+        },
+        {
+          "speaker": "A",
+          "voice": "en-us+m3",
+          "start": 42.982,
+          "end": 47.354,
+          "transcript": "We begin another observation as the night sky slowly grows darker."
+        },
+        {
+          "speaker": "B",
+          "voice": "en-us+f3",
+          "start": 47.654,
+          "end": 52.88,
+          "transcript": "A quiet control room lets everyone listen and review the incoming data."
+        },
+        {
+          "speaker": "A",
+          "voice": "en-us+m3",
+          "start": 53.18,
+          "end": 57.401,
+          "transcript": "Every discovery gives us a better view of the surrounding universe."
+        },
+        {
+          "speaker": "B",
+          "voice": "en-us+f3",
+          "start": 57.701,
+          "end": 62.358,
+          "transcript": "Tomorrow we will compare these notes and plan our next experiment."
+        }
+      ]
+    },
+    "T5": {
+      "file": "T5_video_without_audio.mp4",
+      "expected": "safe rejection"
+    },
+    "T6": {
+      "file": "T6_audio_only.wav",
+      "expected": "safe rejection"
+    },
+    "T7": {
+      "file": "T7_trailing_silence_75s.mp4",
+      "duration": 75,
+      "speakers": 1,
+      "speech_seconds": 5.077
+    },
+    "T8": {
+      "file": "T8_portrait_30fps_15s.mp4",
+      "duration": 15,
+      "speakers": 1,
+      "resolution": "360x640",
+      "fps": 30
+    },
+    "T9": {
+      "file": "T9_subsecond_0p6s.mp4",
+      "duration": 0.6,
+      "expected": "safe rejection"
+    }
+  }
+}

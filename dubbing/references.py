@@ -9,6 +9,7 @@ from .segments import SpeechSegment
 
 
 MIN_REFERENCE_SECONDS = 1.0
+MIN_FALLBACK_REFERENCE_SECONDS = 0.5
 MAX_REFERENCE_SECONDS = 20.0
 PREFERRED_REFERENCE_MIN_SECONDS = 3.0
 PREFERRED_REFERENCE_MAX_SECONDS = 12.0
@@ -137,7 +138,33 @@ class SpeakerReferenceManager:
         ):
             return self._speaker_references[segment.speaker]
 
+        if segment.speaker_ambiguous:
+            raise ValueError(
+                "Cannot synthesize transcript segment "
+                f"{segment.index + 1} ({segment.start:.2f}–{segment.end:.2f}s): "
+                "speaker identity is ambiguous. Review the diarization or provide "
+                "a stable speaker assignment; no voice reference was borrowed."
+            )
+
         if segment.index not in self._segment_fallbacks:
+            quality = self.qualities.get(segment.index)
+            if (
+                segment.duration < MIN_FALLBACK_REFERENCE_SECONDS
+                or segment.duration > MAX_REFERENCE_SECONDS
+                or segment.overlap
+                or quality is None
+                or quality.rms < 0.008
+                or quality.peak < 0.02
+                or quality.peak >= 0.999
+                or quality.clipped_fraction > 0.01
+            ):
+                raise ValueError(
+                    "No safe voice reference is available for transcript segment "
+                    f"{segment.index + 1} ({segment.start:.2f}–{segment.end:.2f}s). "
+                    "No stable same-speaker reference was found, and this segment "
+                    "is too short, overlapping, silent, clipped, or long to use as "
+                    "its own voice reference."
+                )
             path = self.output_dir / f"segment_{segment.index + 1:04d}.wav"
             self.clip_writer(segment, path)
             self._segment_fallbacks[segment.index] = SpeakerReference(

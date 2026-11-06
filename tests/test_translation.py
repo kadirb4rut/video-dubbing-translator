@@ -1,7 +1,10 @@
 import json
+import io
 import subprocess
 import sys
 import tempfile
+import threading
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch, Mock
@@ -162,6 +165,92 @@ class HyMT2TranslationTests(unittest.TestCase):
         self.assertEqual(result, 'Devam edelim.')
         translator._request.assert_called_once()
         self.assertEqual(translator._request.call_args.kwargs['deterministic'], True)
+
+    def test_hymt2_request_records_timings_without_logging_prompt_text(self):
+        from contextlib import redirect_stderr
+        from translation.hymt2 import HyMT2Translator
+
+        class InputStream:
+            request = None
+
+            def write(self, value):
+                self.request = json.loads(value)
+
+            def flush(self):
+                return None
+
+        class OutputStream:
+            def __init__(self, input_stream):
+                self.input_stream = input_stream
+
+            def readline(self):
+                return json.dumps({
+                    "id": self.input_stream.request["id"],
+                    "ok": True,
+                    "text": "Merhaba.",
+                    "stats": {
+                        "model_load_seconds": 1.25,
+                        "generation_wall_seconds": 0.75,
+                    },
+                })
+
+        translator = object.__new__(HyMT2Translator)
+        stream = InputStream()
+        translator._process = types.SimpleNamespace(
+            poll=lambda: None,
+            stdin=stream,
+            stdout=OutputStream(stream),
+        )
+        translator._lock = threading.Lock()
+        translator.last_generation = {}
+        diagnostics = io.StringIO()
+        with redirect_stderr(diagnostics):
+            self.assertEqual(translator._request("translate", "private source sentence"), "Merhaba.")
+
+        self.assertEqual(translator.last_generation["model_load_seconds"], 1.25)
+        self.assertEqual(translator.last_generation["generation_wall_seconds"], 0.75)
+        self.assertGreaterEqual(translator.last_generation["rpc_wall_seconds"], 0)
+        self.assertIn("stage=hymt2 operation=translate", diagnostics.getvalue())
+        self.assertNotIn("private source sentence", diagnostics.getvalue())
+
+    def test_hymt2_worker_measures_first_model_load_only(self):
+        from translation.hymt2_worker import Runtime
+
+        class FakeModel:
+            def to(self, _device):
+                return self
+
+            def eval(self):
+                return self
+
+        class FakeTokenizer:
+            @staticmethod
+            def from_pretrained(*_args, **_kwargs):
+                return object()
+
+        class FakeAutoModel:
+            @staticmethod
+            def from_pretrained(*_args, **_kwargs):
+                return FakeModel()
+
+        fake_torch = types.SimpleNamespace(
+            cuda=types.SimpleNamespace(is_available=lambda: False),
+            backends=types.SimpleNamespace(mps=types.SimpleNamespace(is_available=lambda: False)),
+            bfloat16=object(),
+            device=lambda name: name,
+        )
+        fake_transformers = types.SimpleNamespace(
+            AutoTokenizer=FakeTokenizer,
+            AutoModelForCausalLM=FakeAutoModel,
+        )
+        with patch.dict(sys.modules, {"torch": fake_torch, "transformers": fake_transformers}):
+            runtime = Runtime(Path("unused-model"), "cpu")
+            runtime.load()
+            measured = runtime.last_model_load_seconds
+            runtime.load()
+
+        self.assertGreaterEqual(measured, 0)
+        self.assertEqual(runtime.last_model_load_seconds, measured)
 
     def test_translation_output_sanitization(self):
         self.assertEqual(sanitize_translation_output('Translation: "Merhaba dünya"'), "Merhaba dünya")

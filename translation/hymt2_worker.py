@@ -19,10 +19,12 @@ class Runtime:
         self.model = None
         self.tokenizer = None
         self.device = None
+        self.last_model_load_seconds = 0.0
 
     def load(self) -> None:
         if self.model is not None:
             return
+        load_started = time.perf_counter()
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -58,6 +60,7 @@ class Runtime:
         self.model.to(torch.device(device))
         self.model.eval()
         self.device = torch.device(device)
+        self.last_model_load_seconds = time.perf_counter() - load_started
 
     def _max_new_tokens(self, prompt: str) -> int:
         """Choose a bounded generation budget from the spoken-length target.
@@ -75,7 +78,9 @@ class Runtime:
     def generate(self, prompt: str, *, deterministic: bool = False) -> tuple[str, dict[str, object]]:
         import torch
 
+        was_loaded = self.model is not None
         self.load()
+        model_load_seconds = 0.0 if was_loaded else self.last_model_load_seconds
         messages = [{"role": "user", "content": prompt}]
         inputs = self.tokenizer.apply_chat_template(
             messages,
@@ -110,6 +115,7 @@ class Runtime:
         generation_wall_seconds = time.perf_counter() - started
         stop_reason = "eos" if eos_seen else ("length" if generated_count >= max_new_tokens else "unknown")
         stats = {
+            "model_load_seconds": model_load_seconds,
             "prompt_tokens": int(input_length),
             "generated_tokens": generated_count,
             "max_new_tokens": max_new_tokens,
@@ -141,9 +147,14 @@ def main() -> int:
                 return 0
             request_id = request.get("id")
             if request.get("operation") == "prepare":
+                was_loaded = runtime.model is not None
                 started = time.perf_counter()
                 runtime.load()
-                text, stats = "", {"prepared": True, "model_load_seconds": time.perf_counter() - started}
+                text, stats = "", {
+                    "prepared": True,
+                    "model_load_seconds": 0.0 if was_loaded else runtime.last_model_load_seconds,
+                    "request_wall_seconds": time.perf_counter() - started,
+                }
             elif request.get("operation") in {"translate", "rewrite_for_duration", "simultaneous_proposal"}:
                 text, stats = runtime.generate(
                     str(request.get("prompt", "")),

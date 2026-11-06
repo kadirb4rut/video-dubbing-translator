@@ -1,0 +1,1774 @@
+{
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+  "driver_cuda": "580.82.07 / CUDA 13.0",
+  "pytorch_cuda": "2.8.0+cu128 / CUDA 12.8",
+  "python": "3.12.3 across application and isolated model runtimes",
+  "community1": "pyannote.audio 4.0.7, local full snapshot including PLDA",
+  "results": [
+    {
+      "scenario": "T1",
+      "status": "passed",
+      "return_code": 0,
+      "input": {
+        "name": "T1_single_speaker_15s.mp4",
+        "duration_seconds": 15.0,
+        "bytes": 1032011,
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 640,
+            "height": 360,
+            "r_frame_rate": "24/1",
+            "start_time": "0.000000",
+            "duration": "15.000000"
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio",
+            "sample_rate": "44100",
+            "channels": 1,
+            "r_frame_rate": "0/0",
+            "start_time": "0.000000",
+            "duration": "15.000000"
+          }
+        ]
+      },
+      "output": {
+        "name": "T1_confirmed_T1_single_speaker_15s.mp4",
+        "bytes": 1272949,
+        "probe": {
+          "ok": true,
+          "format_duration": 15.083333,
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 640,
+              "height": 360,
+              "r_frame_rate": "24/1",
+              "start_time": "0.000000",
+              "duration": "15.083333"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "sample_rate": "48000",
+              "channels": 2,
+              "r_frame_rate": "0/0",
+              "start_time": "0.000000",
+              "duration": "15.083000"
+            }
+          ]
+        },
+        "decode_ok": true,
+        "decode_error": null,
+        "audio_video_duration_delta_seconds": 0.0003329999999994726,
+        "duration_delta_from_input_seconds": 0.08333299999999966,
+        "audio_loudness": {
+          "rc": 0,
+          "mean_db": "-24.5",
+          "max_db": "-3.9"
+        }
+      },
+      "wall_seconds": 49.29083024799911,
+      "processing_ratio": 3.2860553498666074,
+      "vram": {
+        "baseline_mib": 681,
+        "peak_observed_mib": 11445,
+        "increase_mib": 10764,
+        "sample_count": 26,
+        "measurement": "nvidia-smi memory.used, sampled ~1.5s; includes runtime CUDA context"
+      },
+      "stage_totals_seconds": {
+        "input_validation": 0.047,
+        "media_extract": 0.109,
+        "vocal_background_separation": 5.598,
+        "transcription_alignment": 8.732,
+        "speaker_diarization_assignment": 4.198,
+        "voxcpm2_model_load": 7.692,
+        "voxcpm2_synthesis": 7.911,
+        "translation_tts_timing_refinement": 24.799,
+        "video_audio_reconstruction": 3.356,
+        "pipeline_total": 46.851
+      },
+      "stage_metrics": [
+        {
+          "stage": "input_validation",
+          "wall_seconds": "0.047"
+        },
+        {
+          "stage": "media_extract",
+          "wall_seconds": "0.109"
+        },
+        {
+          "stage": "vocal_background_separation",
+          "wall_seconds": "5.598"
+        },
+        {
+          "stage": "transcription_alignment",
+          "wall_seconds": "8.732",
+          "cache_hit": "false"
+        },
+        {
+          "stage": "speaker_diarization_assignment",
+          "wall_seconds": "4.198"
+        },
+        {
+          "stage": "voxcpm2_model_load",
+          "wall_seconds": "7.692"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "6.208",
+          "model_load_seconds": "4.156",
+          "generation_seconds": "0.510"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.264",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.264"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "2.296",
+          "group": "1",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.245",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.244"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.187",
+          "group": "1",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.158",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.157"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.188",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.187"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "0.678",
+          "group": "2",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.179",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.178"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "0.669",
+          "group": "2",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.328",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.327"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.326",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.325"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.539",
+          "group": "3",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.329",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.328"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.542",
+          "group": "3",
+          "attempt": "1"
+        },
+        {
+          "stage": "translation_tts_timing_refinement",
+          "wall_seconds": "24.799"
+        },
+        {
+          "stage": "video_audio_reconstruction",
+          "wall_seconds": "3.356"
+        },
+        {
+          "stage": "pipeline_total",
+          "wall_seconds": "46.851"
+        }
+      ],
+      "evidence": {
+        "community1_assigned_speaker_counts": [
+          "1"
+        ],
+        "community1_fallback": false,
+        "hy_mt2_requests": 9,
+        "voxcpm2_synthesis_calls": 6,
+        "speaker_labels": [
+          "SPEAKER_00"
+        ],
+        "groups": 3,
+        "max_group_sync_error_seconds": 0.07484483388097848,
+        "timing_limited_groups": 1,
+        "qa_hard_failures": 0,
+        "quality_summary": {
+          "groups": 3,
+          "passed": 3,
+          "hard_failures": 0,
+          "warnings": 1,
+          "mean_wer": null,
+          "mean_cer": null,
+          "mean_speaker_similarity": 0.9563244314324674,
+          "mean_prosody_distance": null
+        },
+        "t4_identity_overlap_proxy": null
+      },
+      "log_file": "T1.log"
+    },
+    {
+      "scenario": "T2",
+      "status": "passed",
+      "return_code": 0,
+      "input": {
+        "name": "T2_single_speaker_60s.mp4",
+        "duration_seconds": 60.0,
+        "bytes": 4232697,
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 640,
+            "height": 360,
+            "r_frame_rate": "24/1",
+            "start_time": "0.000000",
+            "duration": "60.000000"
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio",
+            "sample_rate": "44100",
+            "channels": 1,
+            "r_frame_rate": "0/0",
+            "start_time": "0.000000",
+            "duration": "60.000000"
+          }
+        ]
+      },
+      "output": {
+        "name": "T2_confirmed_T2_single_speaker_60s.mp4",
+        "bytes": 5275188,
+        "probe": {
+          "ok": true,
+          "format_duration": 60.125,
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 640,
+              "height": 360,
+              "r_frame_rate": "24/1",
+              "start_time": "0.000000",
+              "duration": "60.125000"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "sample_rate": "48000",
+              "channels": 2,
+              "r_frame_rate": "0/0",
+              "start_time": "0.000000",
+              "duration": "60.125000"
+            }
+          ]
+        },
+        "decode_ok": true,
+        "decode_error": null,
+        "audio_video_duration_delta_seconds": 0.0,
+        "duration_delta_from_input_seconds": 0.125,
+        "audio_loudness": {
+          "rc": 0,
+          "mean_db": "-24.4",
+          "max_db": "-2.4"
+        }
+      },
+      "wall_seconds": 80.49452181000015,
+      "processing_ratio": 1.3415753635000025,
+      "vram": {
+        "baseline_mib": 681,
+        "peak_observed_mib": 11497,
+        "increase_mib": 10816,
+        "sample_count": 41,
+        "measurement": "nvidia-smi memory.used, sampled ~1.5s; includes runtime CUDA context"
+      },
+      "stage_totals_seconds": {
+        "input_validation": 0.048,
+        "media_extract": 0.15,
+        "vocal_background_separation": 8.474,
+        "transcription_alignment": 10.007,
+        "speaker_diarization_assignment": 4.87,
+        "voxcpm2_model_load": 7.468,
+        "voxcpm2_synthesis": 22.715999999999998,
+        "translation_tts_timing_refinement": 42.426,
+        "video_audio_reconstruction": 11.686,
+        "pipeline_total": 77.701
+      },
+      "stage_metrics": [
+        {
+          "stage": "input_validation",
+          "wall_seconds": "0.048"
+        },
+        {
+          "stage": "media_extract",
+          "wall_seconds": "0.150"
+        },
+        {
+          "stage": "vocal_background_separation",
+          "wall_seconds": "8.474"
+        },
+        {
+          "stage": "transcription_alignment",
+          "wall_seconds": "10.007",
+          "cache_hit": "false"
+        },
+        {
+          "stage": "speaker_diarization_assignment",
+          "wall_seconds": "4.870"
+        },
+        {
+          "stage": "voxcpm2_model_load",
+          "wall_seconds": "7.468"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "6.161",
+          "model_load_seconds": "4.122",
+          "generation_seconds": "0.500"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "2.545",
+          "group": "1",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.377",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.376"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.363",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.362"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.698",
+          "group": "2",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.426",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.425"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.426",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.425"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "2.410",
+          "group": "3",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.398",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.396"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "2.219",
+          "group": "3",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.280",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.279"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.448",
+          "group": "4",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.343",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.342"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.341",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.340"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.910",
+          "group": "5",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.319",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.318"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.950",
+          "group": "5",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.366",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.364"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.854",
+          "group": "6",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.402",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.401"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "2.110",
+          "group": "7",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.300",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.299"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.689",
+          "group": "8",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.486",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.484"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "2.883",
+          "group": "8",
+          "attempt": "1"
+        },
+        {
+          "stage": "translation_tts_timing_refinement",
+          "wall_seconds": "42.426"
+        },
+        {
+          "stage": "video_audio_reconstruction",
+          "wall_seconds": "11.686"
+        },
+        {
+          "stage": "pipeline_total",
+          "wall_seconds": "77.701"
+        }
+      ],
+      "evidence": {
+        "community1_assigned_speaker_counts": [
+          "1"
+        ],
+        "community1_fallback": false,
+        "hy_mt2_requests": 14,
+        "voxcpm2_synthesis_calls": 11,
+        "speaker_labels": [
+          "SPEAKER_00"
+        ],
+        "groups": 8,
+        "max_group_sync_error_seconds": 0.18162301416917137,
+        "timing_limited_groups": 2,
+        "qa_hard_failures": 0,
+        "quality_summary": {
+          "groups": 8,
+          "passed": 8,
+          "hard_failures": 0,
+          "warnings": 2,
+          "mean_wer": null,
+          "mean_cer": null,
+          "mean_speaker_similarity": 0.9533080908579442,
+          "mean_prosody_distance": null
+        },
+        "t4_identity_overlap_proxy": null
+      },
+      "log_file": "T2.log"
+    },
+    {
+      "scenario": "T3",
+      "status": "passed",
+      "return_code": 0,
+      "input": {
+        "name": "T3_short_2p2s.mp4",
+        "duration_seconds": 2.208008,
+        "bytes": 151816,
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 640,
+            "height": 360,
+            "r_frame_rate": "24/1",
+            "start_time": "0.000000",
+            "duration": "2.208008"
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio",
+            "sample_rate": "44100",
+            "channels": 1,
+            "r_frame_rate": "0/0",
+            "start_time": "0.000000",
+            "duration": "2.200000"
+          }
+        ]
+      },
+      "output": {
+        "name": "T3_confirmed_T3_short_2p2s.mp4",
+        "bytes": 192299,
+        "probe": {
+          "ok": true,
+          "format_duration": 2.25,
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 640,
+              "height": 360,
+              "r_frame_rate": "24/1",
+              "start_time": "0.000000",
+              "duration": "2.250000"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "sample_rate": "48000",
+              "channels": 2,
+              "r_frame_rate": "0/0",
+              "start_time": "0.000000",
+              "duration": "2.250000"
+            }
+          ]
+        },
+        "decode_ok": true,
+        "decode_error": null,
+        "audio_video_duration_delta_seconds": 0.0,
+        "duration_delta_from_input_seconds": 0.04199200000000003,
+        "audio_loudness": {
+          "rc": 0,
+          "mean_db": "-24.3",
+          "max_db": "-3.4"
+        }
+      },
+      "wall_seconds": 38.214753561999714,
+      "processing_ratio": 17.307343796761476,
+      "vram": {
+        "baseline_mib": 681,
+        "peak_observed_mib": 11179,
+        "increase_mib": 10498,
+        "sample_count": 20,
+        "measurement": "nvidia-smi memory.used, sampled ~1.5s; includes runtime CUDA context"
+      },
+      "stage_totals_seconds": {
+        "input_validation": 0.047,
+        "media_extract": 0.097,
+        "vocal_background_separation": 4.63,
+        "transcription_alignment": 8.536,
+        "speaker_diarization_assignment": 4.125,
+        "voxcpm2_model_load": 7.655,
+        "voxcpm2_synthesis": 2.452,
+        "translation_tts_timing_refinement": 17.286,
+        "video_audio_reconstruction": 0.926,
+        "pipeline_total": 35.65
+      },
+      "stage_metrics": [
+        {
+          "stage": "input_validation",
+          "wall_seconds": "0.047"
+        },
+        {
+          "stage": "media_extract",
+          "wall_seconds": "0.097"
+        },
+        {
+          "stage": "vocal_background_separation",
+          "wall_seconds": "4.630"
+        },
+        {
+          "stage": "transcription_alignment",
+          "wall_seconds": "8.536",
+          "cache_hit": "false"
+        },
+        {
+          "stage": "speaker_diarization_assignment",
+          "wall_seconds": "4.125"
+        },
+        {
+          "stage": "voxcpm2_model_load",
+          "wall_seconds": "7.655"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "6.095",
+          "model_load_seconds": "4.133",
+          "generation_seconds": "0.422"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.158",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.157"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.780",
+          "group": "1",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.158",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.157"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "0.672",
+          "group": "1",
+          "attempt": "1"
+        },
+        {
+          "stage": "translation_tts_timing_refinement",
+          "wall_seconds": "17.286"
+        },
+        {
+          "stage": "video_audio_reconstruction",
+          "wall_seconds": "0.926"
+        },
+        {
+          "stage": "pipeline_total",
+          "wall_seconds": "35.650"
+        }
+      ],
+      "evidence": {
+        "community1_assigned_speaker_counts": [
+          "1"
+        ],
+        "community1_fallback": false,
+        "hy_mt2_requests": 3,
+        "voxcpm2_synthesis_calls": 2,
+        "speaker_labels": [
+          "SPEAKER_00"
+        ],
+        "groups": 1,
+        "max_group_sync_error_seconds": 0.11304347826086958,
+        "timing_limited_groups": 1,
+        "qa_hard_failures": 0,
+        "quality_summary": {
+          "groups": 1,
+          "passed": 1,
+          "hard_failures": 0,
+          "warnings": 1,
+          "mean_wer": null,
+          "mean_cer": null,
+          "mean_speaker_similarity": 0.9528724178677698,
+          "mean_prosody_distance": null
+        },
+        "t4_identity_overlap_proxy": null
+      },
+      "log_file": "T3.log"
+    },
+    {
+      "scenario": "T4",
+      "status": "passed",
+      "return_code": 0,
+      "input": {
+        "name": "T4_two_speaker_75s.mp4",
+        "duration_seconds": 75.0,
+        "bytes": 5382624,
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 640,
+            "height": 360,
+            "r_frame_rate": "30/1",
+            "start_time": "0.000000",
+            "duration": "75.000000"
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio",
+            "sample_rate": "44100",
+            "channels": 1,
+            "r_frame_rate": "0/0",
+            "start_time": "0.000000",
+            "duration": "75.000000"
+          }
+        ]
+      },
+      "output": {
+        "name": "T4_confirmed_T4_two_speaker_75s.mp4",
+        "bytes": 6753494,
+        "probe": {
+          "ok": true,
+          "format_duration": 75.233333,
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 640,
+              "height": 360,
+              "r_frame_rate": "30/1",
+              "start_time": "0.000000",
+              "duration": "75.233333"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "sample_rate": "48000",
+              "channels": 2,
+              "r_frame_rate": "0/0",
+              "start_time": "0.000000",
+              "duration": "75.233000"
+            }
+          ]
+        },
+        "decode_ok": true,
+        "decode_error": null,
+        "audio_video_duration_delta_seconds": 0.00033299999999769625,
+        "duration_delta_from_input_seconds": 0.2333330000000018,
+        "audio_loudness": {
+          "rc": 0,
+          "mean_db": "-24.6",
+          "max_db": "-3.5"
+        }
+      },
+      "wall_seconds": 109.67194271300013,
+      "processing_ratio": 1.4622925695066684,
+      "vram": {
+        "baseline_mib": 681,
+        "peak_observed_mib": 11603,
+        "increase_mib": 10922,
+        "sample_count": 56,
+        "measurement": "nvidia-smi memory.used, sampled ~1.5s; includes runtime CUDA context"
+      },
+      "stage_totals_seconds": {
+        "input_validation": 0.048,
+        "media_extract": 0.164,
+        "vocal_background_separation": 9.649,
+        "transcription_alignment": 9.613,
+        "speaker_diarization_assignment": 5.288,
+        "voxcpm2_model_load": 7.435,
+        "voxcpm2_synthesis": 42.04,
+        "translation_tts_timing_refinement": 67.983,
+        "video_audio_reconstruction": 14.013,
+        "pipeline_total": 106.808
+      },
+      "stage_metrics": [
+        {
+          "stage": "input_validation",
+          "wall_seconds": "0.048"
+        },
+        {
+          "stage": "media_extract",
+          "wall_seconds": "0.164"
+        },
+        {
+          "stage": "vocal_background_separation",
+          "wall_seconds": "9.649"
+        },
+        {
+          "stage": "transcription_alignment",
+          "wall_seconds": "9.613",
+          "cache_hit": "false"
+        },
+        {
+          "stage": "speaker_diarization_assignment",
+          "wall_seconds": "5.288"
+        },
+        {
+          "stage": "voxcpm2_model_load",
+          "wall_seconds": "7.435"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "6.309",
+          "model_load_seconds": "4.142",
+          "generation_seconds": "0.615"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.339",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.338"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "2.972",
+          "group": "1",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.309",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.308"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.658",
+          "group": "1",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.319",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.318"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.317",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.317"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.609",
+          "group": "2",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.310",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.308"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.608",
+          "group": "2",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.373",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.372"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.371",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.371"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.667",
+          "group": "3",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.319",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.318"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.567",
+          "group": "3",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.373",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.372"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.403",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.402"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "2.269",
+          "group": "4",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.339",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.338"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "2.067",
+          "group": "4",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.295",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.294"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.764",
+          "group": "5",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.251",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.250"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.495",
+          "group": "5",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.328",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.327"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.359",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.359"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.958",
+          "group": "6",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.339",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.338"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "2.005",
+          "group": "6",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.361",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.360"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.358",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.357"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.707",
+          "group": "7",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.330",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.328"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.651",
+          "group": "7",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.328",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.327"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.306",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.305"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.861",
+          "group": "8",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.329",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.327"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.707",
+          "group": "8",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.340",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.339"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.401",
+          "group": "9",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.297",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.296"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.350",
+          "group": "9",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.343",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.341"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.318",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.317"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "2.076",
+          "group": "10",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.274",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.272"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.808",
+          "group": "10",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.264",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.263"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.445",
+          "group": "11",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.200",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.199"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.094",
+          "group": "11",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.274",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.273"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.273",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.272"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.702",
+          "group": "12",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.284",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.283"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.599",
+          "group": "12",
+          "attempt": "1"
+        },
+        {
+          "stage": "translation_tts_timing_refinement",
+          "wall_seconds": "67.983"
+        },
+        {
+          "stage": "video_audio_reconstruction",
+          "wall_seconds": "14.013"
+        },
+        {
+          "stage": "pipeline_total",
+          "wall_seconds": "106.808"
+        }
+      ],
+      "evidence": {
+        "community1_assigned_speaker_counts": [
+          "3"
+        ],
+        "community1_fallback": false,
+        "hy_mt2_requests": 33,
+        "voxcpm2_synthesis_calls": 24,
+        "speaker_labels": [
+          "SPEAKER_00",
+          "SPEAKER_01",
+          "SPEAKER_02"
+        ],
+        "groups": 12,
+        "max_group_sync_error_seconds": 0.12800176250275358,
+        "timing_limited_groups": 2,
+        "qa_hard_failures": 0,
+        "quality_summary": {
+          "groups": 12,
+          "passed": 12,
+          "hard_failures": 0,
+          "warnings": 2,
+          "mean_wer": null,
+          "mean_cer": null,
+          "mean_speaker_similarity": 0.9450961337573415,
+          "mean_prosody_distance": null
+        },
+        "t4_identity_overlap_proxy": {
+          "label_to_ground_truth_overlap_seconds": {
+            "SPEAKER_00": {
+              "A": 25.734999999999992
+            },
+            "SPEAKER_01": {
+              "B": 22.89499999999999
+            },
+            "SPEAKER_02": {
+              "B": 4.099000000000004
+            }
+          },
+          "overlap_majority_mapping_accuracy": 1.0,
+          "mapped_overlap_seconds": 52.728999999999985,
+          "total_group_overlap_seconds": 52.728999999999985,
+          "interpretation": "ground-truth timestamp overlap proxy; not an acoustic or human identity score"
+        }
+      },
+      "log_file": "T4.log"
+    },
+    {
+      "scenario": "T7",
+      "status": "passed",
+      "return_code": 0,
+      "input": {
+        "name": "T7_trailing_silence_75s.mp4",
+        "duration_seconds": 75.0,
+        "bytes": 4563557,
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 640,
+            "height": 360,
+            "r_frame_rate": "24/1",
+            "start_time": "0.000000",
+            "duration": "75.000000"
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio",
+            "sample_rate": "44100",
+            "channels": 1,
+            "r_frame_rate": "0/0",
+            "start_time": "0.000000",
+            "duration": "75.000000"
+          }
+        ]
+      },
+      "output": {
+        "name": "T7_confirmed_T7_trailing_silence_75s.mp4",
+        "bytes": 5324293,
+        "probe": {
+          "ok": true,
+          "format_duration": 75.041667,
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 640,
+              "height": 360,
+              "r_frame_rate": "24/1",
+              "start_time": "0.000000",
+              "duration": "75.041667"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "sample_rate": "48000",
+              "channels": 2,
+              "r_frame_rate": "0/0",
+              "start_time": "0.000000",
+              "duration": "75.041000"
+            }
+          ]
+        },
+        "decode_ok": true,
+        "decode_error": null,
+        "audio_video_duration_delta_seconds": 0.0006670000000070786,
+        "duration_delta_from_input_seconds": 0.041667000000003895,
+        "audio_loudness": {
+          "rc": 0,
+          "mean_db": "-34.6",
+          "max_db": "-4.0"
+        }
+      },
+      "wall_seconds": 52.31084270700012,
+      "processing_ratio": 0.6974779027600015,
+      "vram": {
+        "baseline_mib": 681,
+        "peak_observed_mib": 11469,
+        "increase_mib": 10788,
+        "sample_count": 27,
+        "measurement": "nvidia-smi memory.used, sampled ~1.5s; includes runtime CUDA context"
+      },
+      "stage_totals_seconds": {
+        "input_validation": 0.047,
+        "media_extract": 0.155,
+        "vocal_background_separation": 9.659,
+        "transcription_alignment": 8.926,
+        "speaker_diarization_assignment": 5.097,
+        "voxcpm2_model_load": 7.481,
+        "voxcpm2_synthesis": 4.289,
+        "translation_tts_timing_refinement": 19.583,
+        "video_audio_reconstruction": 5.884,
+        "pipeline_total": 49.397
+      },
+      "stage_metrics": [
+        {
+          "stage": "input_validation",
+          "wall_seconds": "0.047"
+        },
+        {
+          "stage": "media_extract",
+          "wall_seconds": "0.155"
+        },
+        {
+          "stage": "vocal_background_separation",
+          "wall_seconds": "9.659"
+        },
+        {
+          "stage": "transcription_alignment",
+          "wall_seconds": "8.926",
+          "cache_hit": "false"
+        },
+        {
+          "stage": "speaker_diarization_assignment",
+          "wall_seconds": "5.097"
+        },
+        {
+          "stage": "voxcpm2_model_load",
+          "wall_seconds": "7.481"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "6.086",
+          "model_load_seconds": "4.125",
+          "generation_seconds": "0.424"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.169",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.168"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.988",
+          "group": "1",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.192",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.190"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "0.840",
+          "group": "1",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.168",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.167"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.166",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.165"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "0.732",
+          "group": "2",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.168",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.167"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "0.729",
+          "group": "2",
+          "attempt": "1"
+        },
+        {
+          "stage": "translation_tts_timing_refinement",
+          "wall_seconds": "19.583"
+        },
+        {
+          "stage": "video_audio_reconstruction",
+          "wall_seconds": "5.884"
+        },
+        {
+          "stage": "pipeline_total",
+          "wall_seconds": "49.397"
+        }
+      ],
+      "evidence": {
+        "community1_assigned_speaker_counts": [
+          "1"
+        ],
+        "community1_fallback": false,
+        "hy_mt2_requests": 6,
+        "voxcpm2_synthesis_calls": 4,
+        "speaker_labels": [
+          "SPEAKER_00"
+        ],
+        "groups": 2,
+        "max_group_sync_error_seconds": 1.171121333992781e-16,
+        "timing_limited_groups": 0,
+        "qa_hard_failures": 0,
+        "quality_summary": {
+          "groups": 2,
+          "passed": 2,
+          "hard_failures": 0,
+          "warnings": 0,
+          "mean_wer": null,
+          "mean_cer": null,
+          "mean_speaker_similarity": 0.9449886444545421,
+          "mean_prosody_distance": null
+        },
+        "t4_identity_overlap_proxy": null
+      },
+      "log_file": "T7.log"
+    },
+    {
+      "scenario": "T8",
+      "status": "passed",
+      "return_code": 0,
+      "input": {
+        "name": "T8_portrait_30fps_15s.mp4",
+        "duration_seconds": 15.0,
+        "bytes": 1142309,
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 360,
+            "height": 640,
+            "r_frame_rate": "30/1",
+            "start_time": "0.000000",
+            "duration": "15.000000"
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio",
+            "sample_rate": "44100",
+            "channels": 1,
+            "r_frame_rate": "0/0",
+            "start_time": "0.000000",
+            "duration": "15.000000"
+          }
+        ]
+      },
+      "output": {
+        "name": "T8_confirmed_T8_portrait_30fps_15s.mp4",
+        "bytes": 1394719,
+        "probe": {
+          "ok": true,
+          "format_duration": 15.066667,
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 360,
+              "height": 640,
+              "r_frame_rate": "30/1",
+              "start_time": "0.000000",
+              "duration": "15.066667"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "sample_rate": "48000",
+              "channels": 2,
+              "r_frame_rate": "0/0",
+              "start_time": "0.000000",
+              "duration": "15.066000"
+            }
+          ]
+        },
+        "decode_ok": true,
+        "decode_error": null,
+        "audio_video_duration_delta_seconds": 0.0006669999999999732,
+        "duration_delta_from_input_seconds": 0.0666670000000007,
+        "audio_loudness": {
+          "rc": 0,
+          "mean_db": "-24.5",
+          "max_db": "-3.9"
+        }
+      },
+      "wall_seconds": 49.299176626999724,
+      "processing_ratio": 3.286611775133315,
+      "vram": {
+        "baseline_mib": 681,
+        "peak_observed_mib": 11423,
+        "increase_mib": 10742,
+        "sample_count": 26,
+        "measurement": "nvidia-smi memory.used, sampled ~1.5s; includes runtime CUDA context"
+      },
+      "stage_totals_seconds": {
+        "input_validation": 0.047,
+        "media_extract": 0.109,
+        "vocal_background_separation": 5.513,
+        "transcription_alignment": 8.751,
+        "speaker_diarization_assignment": 4.29,
+        "voxcpm2_model_load": 7.733,
+        "voxcpm2_synthesis": 7.481,
+        "translation_tts_timing_refinement": 24.193,
+        "video_audio_reconstruction": 3.242,
+        "pipeline_total": 46.156
+      },
+      "stage_metrics": [
+        {
+          "stage": "input_validation",
+          "wall_seconds": "0.047"
+        },
+        {
+          "stage": "media_extract",
+          "wall_seconds": "0.109"
+        },
+        {
+          "stage": "vocal_background_separation",
+          "wall_seconds": "5.513"
+        },
+        {
+          "stage": "transcription_alignment",
+          "wall_seconds": "8.751",
+          "cache_hit": "false"
+        },
+        {
+          "stage": "speaker_diarization_assignment",
+          "wall_seconds": "4.290"
+        },
+        {
+          "stage": "voxcpm2_model_load",
+          "wall_seconds": "7.733"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "6.188",
+          "model_load_seconds": "4.136",
+          "generation_seconds": "0.513"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.264",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.263"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "2.303",
+          "group": "1",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.266",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.265"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.306",
+          "group": "1",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.168",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.167"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.187",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.187"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "0.739",
+          "group": "2",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.329",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.328"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "translate",
+          "rpc_wall_seconds": "0.327",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.326"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.569",
+          "group": "3",
+          "attempt": "1"
+        },
+        {
+          "stage": "hymt2",
+          "operation": "rewrite_for_duration",
+          "rpc_wall_seconds": "0.328",
+          "model_load_seconds": "0.000",
+          "generation_seconds": "0.326"
+        },
+        {
+          "stage": "voxcpm2_synthesis",
+          "wall_seconds": "1.564",
+          "group": "3",
+          "attempt": "1"
+        },
+        {
+          "stage": "translation_tts_timing_refinement",
+          "wall_seconds": "24.193"
+        },
+        {
+          "stage": "video_audio_reconstruction",
+          "wall_seconds": "3.242"
+        },
+        {
+          "stage": "pipeline_total",
+          "wall_seconds": "46.156"
+        }
+      ],
+      "evidence": {
+        "community1_assigned_speaker_counts": [
+          "1"
+        ],
+        "community1_fallback": false,
+        "hy_mt2_requests": 8,
+        "voxcpm2_synthesis_calls": 5,
+        "speaker_labels": [
+          "SPEAKER_00"
+        ],
+        "groups": 3,
+        "max_group_sync_error_seconds": 0.07484483388097848,
+        "timing_limited_groups": 1,
+        "qa_hard_failures": 0,
+        "quality_summary": {
+          "groups": 3,
+          "passed": 3,
+          "hard_failures": 0,
+          "warnings": 1,
+          "mean_wer": null,
+          "mean_cer": null,
+          "mean_speaker_similarity": 0.9583968357192897,
+          "mean_prosody_distance": null
+        },
+        "t4_identity_overlap_proxy": null
+      },
+      "log_file": "T8.log"
+    }
+  ]
+}
